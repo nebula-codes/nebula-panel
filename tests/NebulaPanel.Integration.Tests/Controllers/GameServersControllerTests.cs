@@ -120,7 +120,7 @@ public class GameServersControllerTests
         {
             Name = $"Created Server {Guid.NewGuid():N}",
             GameId = gameId,
-            DeploymentType = 0, // Native
+            DeploymentType = 1, // Native (Docker=0, Native=1)
             InstallPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()),
             PrimaryPort = 25567 + Random.Shared.Next(1000),
             BindAddress = "0.0.0.0",
@@ -128,7 +128,8 @@ public class GameServersControllerTests
             {
                 WorkingDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()),
                 ExecutablePath = "test.exe",
-                Arguments = ""
+                Arguments = "",
+                RunAsService = false
             }
         };
 
@@ -137,10 +138,10 @@ public class GameServersControllerTests
             "/api/gameservers",
             CreateJsonContent(request));
 
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.Created);
-
+        // Assert - Include error details in failure message
         var content = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.Created, $"Response: {content}");
+
         content.Should().Contain("Created Server");
     }
 
@@ -197,7 +198,10 @@ public class GameServersControllerTests
         var updateRequest = new
         {
             Name = "Updated Server Name",
-            Description = "Updated description"
+            Description = "Updated description",
+            InstallPath = Path.Combine(Path.GetTempPath(), "updated-server"),
+            PrimaryPort = 25570,
+            BindAddress = "0.0.0.0"
         };
 
         // Act
@@ -219,7 +223,10 @@ public class GameServersControllerTests
         var (auth, _, _) = await SetupTestContextAsync();
         var updateRequest = new
         {
-            Name = "Updated Name"
+            Name = "Updated Name",
+            InstallPath = Path.Combine(Path.GetTempPath(), "nonexistent"),
+            PrimaryPort = 25571,
+            BindAddress = "0.0.0.0"
         };
 
         // Act
@@ -266,8 +273,8 @@ public class GameServersControllerTests
     public async Task GetMyServers_ReturnsOnlyOwnedServers()
     {
         // Arrange
-        var (auth, gameId, email) = await SetupTestContextAsync();
-        await CreateTestServerAsync(gameId, email);
+        var (auth, gameId, _) = await SetupTestContextAsync();
+        await CreateTestServerViaApiAsync(auth, gameId);
 
         // Act
         var response = await auth.Client.GetAsync("/api/gameservers/mine");
@@ -277,6 +284,36 @@ public class GameServersControllerTests
 
         var content = await response.Content.ReadAsStringAsync();
         content.Should().Contain("Test Server");
+    }
+
+    private async Task<Guid> CreateTestServerViaApiAsync(AuthenticatedClientFixture auth, Guid gameId)
+    {
+        var request = new
+        {
+            Name = "Test Server",
+            GameId = gameId,
+            DeploymentType = 1, // Native (Docker=0, Native=1)
+            InstallPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()),
+            PrimaryPort = 25565 + Random.Shared.Next(10000),
+            BindAddress = "0.0.0.0",
+            NativeConfig = new
+            {
+                WorkingDirectory = Path.GetTempPath(),
+                ExecutablePath = "test.exe",
+                Arguments = "",
+                RunAsService = false
+            }
+        };
+
+        var response = await auth.Client.PostAsync(
+            "/api/gameservers",
+            CreateJsonContent(request));
+
+        response.EnsureSuccessStatusCode();
+
+        var content = await response.Content.ReadAsStringAsync();
+        var json = JsonDocument.Parse(content);
+        return json.RootElement.GetProperty("id").GetGuid();
     }
 
     private async Task<Guid> CreateTestServerAsync(Guid gameId, string ownerEmail)
