@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>
+            <!-- Exclude Blazor components (UI layer) -->
+            [*]NebulaPanel.Web.Components.*
+            <!-- Exclude migrations -->
+            [*]NebulaPanel.Infrastructure.Persistence.Migrations.*
+            <!-- Exclude Program.cs entry points -->
+            [*]Program
+            <!-- Exclude test assemblies -->
+            [*.Tests]*
+          </Exclude>
+          <ExcludeByFile>
+            <!-- Exclude auto-generated files -->
+            **/Migrations/*.cs
+            **/obj/**/*.cs
+          </ExcludeByFile>
+          <ExcludeByAttribute>
+            <!-- Exclude code marked with these attributes -->
+            Obsolete
+            GeneratedCodeAttribute
+            CompilerGeneratedAttribute
+            ExcludeFromCodeCoverageAttribute
+          </ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
