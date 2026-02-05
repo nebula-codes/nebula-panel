@@ -14,6 +14,7 @@ namespace NebulaPanel.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/servers/{serverId:guid}/mods")]
+[IgnoreAntiforgeryToken]
 [Authorize]
 public class ModsController(
     IUnifiedModService modService,

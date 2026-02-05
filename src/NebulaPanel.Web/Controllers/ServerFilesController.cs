@@ -11,6 +11,7 @@ namespace NebulaPanel.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/servers/{serverId:guid}/files")]
+[IgnoreAntiforgeryToken]
 [Authorize]
 public class ServerFilesController(
     IFileExplorerService fileService,

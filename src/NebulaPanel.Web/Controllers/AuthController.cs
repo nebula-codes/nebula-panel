@@ -9,6 +9,7 @@ using NebulaPanel.Application.Services;
 
 [ApiController]
 [Route("api/[controller]")]
+[IgnoreAntiforgeryToken]  // JWT auth provides CSRF protection
 public class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("login")]

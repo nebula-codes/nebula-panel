@@ -8,6 +8,7 @@ namespace NebulaPanel.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[IgnoreAntiforgeryToken]
 [Authorize]
 public class GameServersController(IGameServerService serverService) : ControllerBase
 {

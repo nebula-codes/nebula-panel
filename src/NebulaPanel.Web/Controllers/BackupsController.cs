@@ -8,6 +8,7 @@ namespace NebulaPanel.Web.Controllers;
 
 [ApiController]
 [Route("api/servers/{serverId:guid}/backups")]
+[IgnoreAntiforgeryToken]
 [Authorize]
 public class BackupsController(IBackupService backupService, IGameServerService serverService) : ControllerBase
 {
@@ -245,6 +246,7 @@ public class BackupsController(IBackupService backupService, IGameServerService 
 /// </summary>
 [ApiController]
 [Route("api/backups")]
+[IgnoreAntiforgeryToken]
 [Authorize]
 public class GlobalBackupsController(IBackupService backupService) : ControllerBase
 {

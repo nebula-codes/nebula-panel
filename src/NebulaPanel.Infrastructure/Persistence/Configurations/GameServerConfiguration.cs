@@ -108,8 +108,12 @@ public class GameServerConfiguration : IEntityTypeConfiguration<GameServer>
             .HasColumnType("TEXT");
 
         // Concurrency token for optimistic locking
+        // Note: SQLite doesn't support auto-generated row versions like SQL Server
+        // Using IsConcurrencyToken() instead of IsRowVersion() for cross-database compatibility
         builder.Property(s => s.RowVersion)
-            .IsRowVersion();
+            .IsConcurrencyToken()
+            .IsRequired()
+            .HasDefaultValueSql("randomblob(8)");
 
         // Indexes per specification
         builder.HasIndex(s => s.GameId);

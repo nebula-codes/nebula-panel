@@ -54,7 +54,7 @@ public class AuthenticatedClientFixture
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         // Now login to get the access token
-        var loginRequest = new { Email = email, Password = password };
+        var loginRequest = new { Username = username, Password = password };
         var loginResponse = await _client.PostAsync(
             "/api/auth/login",
             new StringContent(
@@ -78,9 +78,9 @@ public class AuthenticatedClientFixture
     /// <summary>
     /// Authenticates with existing user credentials.
     /// </summary>
-    public async Task<AuthResponse> AuthenticateAsync(string email, string password)
+    public async Task<AuthResponse> AuthenticateAsync(string username, string password)
     {
-        var loginRequest = new { Email = email, Password = password };
+        var loginRequest = new { Username = username, Password = password };
         var loginResponse = await _client.PostAsync(
             "/api/auth/login",
             new StringContent(
