@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NebulaPanel.Infrastructure.Persistence;
 
@@ -10,9 +11,11 @@ using NebulaPanel.Infrastructure.Persistence;
 namespace NebulaPanel.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NebulaPanelDbContext))]
-    partial class NebulaPanelDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260205035101_FixRowVersionForSqlite")]
+    partial class FixRowVersionForSqlite
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.1");
