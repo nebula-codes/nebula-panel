@@ -20,12 +20,14 @@ bld/
 *.sln.docstates
 .vs/
 *.rsuser
+*.DotSettings.user
 
 # Build results
 [Oo]ut/
 [Bb]uild/
 publish/
 artifacts/
+*.binlog
 
 # NuGet
 *.nupkg
@@ -63,6 +65,7 @@ nCrunchTemp_*
 appsettings.*.local.json
 appsettings.Local.json
 appsettings.Development.json
+appsettings.Production.json
 *.local.json
 secrets.json
 .env
