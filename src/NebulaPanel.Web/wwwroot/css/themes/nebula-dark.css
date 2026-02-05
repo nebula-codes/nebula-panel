@@ -1,0 +1,56 @@
+/* Nebula Panel - Dark Theme */
+:root[data-theme="dark"],
+.dark {
+    /* Background Colors */
+    --nebula-bg-primary: #0a0a0f;
+    --nebula-bg-secondary: #12121a;
+    --nebula-bg-tertiary: #1a1a25;
+    --nebula-bg-elevated: #222230;
+
+    /* Text Colors */
+    --nebula-text-primary: #f0f0f5;
+    --nebula-text-secondary: #a0a0b0;
+    --nebula-text-muted: #606070;
+
+    /* Border Colors */
+    --nebula-border: #2a2a3a;
+    --nebula-border-subtle: #1f1f2a;
+
+    /* Accent Colors - Purple/Blue Nebula Theme */
+    --nebula-accent: #8b5cf6;
+    --nebula-accent-hover: #a78bfa;
+    --nebula-accent-subtle: rgba(139, 92, 246, 0.15);
+
+    /* Status Colors */
+    --nebula-success: #22c55e;
+    --nebula-warning: #f59e0b;
+    --nebula-error: #ef4444;
+    --nebula-info: #3b82f6;
+
+    /* Fonts */
+    --nebula-font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --nebula-font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+    /* Shadows & Effects */
+    --nebula-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --nebula-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+    --nebula-glow: 0 0 20px rgba(139, 92, 246, 0.3);
+
+    /* Border Radius */
+    --nebula-radius: 0.5rem;
+    --nebula-radius-lg: 0.75rem;
+    --nebula-radius-sm: 0.25rem;
+
+    /* Gradients */
+    --nebula-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f0f1a 100%);
+    --nebula-gradient-subtle: linear-gradient(180deg, rgba(139, 92, 246, 0.05) 0%, transparent 100%);
+
+    /* Specific Component Colors */
+    --nebula-sidebar-bg: #0d0d12;
+    --nebula-card-bg: #15151f;
+    --nebula-input-bg: #1a1a25;
+    --nebula-console-bg: #050508;
+
+    /* Focus ring */
+    --nebula-focus-ring: 0 0 0 2px var(--nebula-bg-primary), 0 0 0 4px var(--nebula-accent);
+}

@@ -1,0 +1,269 @@
+@page "/games"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IGameService GameService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Games - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Games</h1>
+            <p class="text-nebula-text-muted mt-1">Manage game configurations for your servers.</p>
+        </div>
+        <Button Variant="ButtonVariant.Primary"
+                Text="Add Game"
+                IconName="plus"
+                OnClick="@(() => Navigation.NavigateTo("/games/new"))" />
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    <DataGrid TItem="GameListItemDto"
+              Items="_games"
+              Loading="_loading"
+              Searchable="true"
+              SearchPlaceholder="Search games..."
+              SearchFields="@(g => $"{g.Name} {g.Slug}")"
+              Pageable="true"
+              PageSize="10"
+              EmptyMessage="No games configured yet."
+              OnRowClick="ViewGame"
+              RowClickable="@(_ => true)">
+        <Columns>
+            <DataGridColumn TItem="GameListItemDto"
+                           Title="Game"
+                           Field="@(g => g.Name)"
+                           Sortable="true">
+                <Template Context="game">
+                    <div class="flex items-center gap-3">
+                        @if (!string.IsNullOrEmpty(game.IconPath))
+                        {
+                            <img src="@game.IconPath" alt="@game.Name" class="w-8 h-8 object-contain rounded" />
+                        }
+                        else
+                        {
+                            <div class="w-8 h-8 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                                <Icon Name="gamepad-2" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            </div>
+                        }
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@game.Name</div>
+                            <div class="text-sm text-nebula-text-muted">@game.Slug</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="GameListItemDto"
+                           Title="Type"
+                           Field="@(g => g.ExecutableType)"
+                           Sortable="true"
+                           Width="120px">
+                <Template Context="game">
+                    <span class="px-2 py-1 text-xs font-medium bg-nebula-bg-tertiary text-nebula-text-secondary rounded">
+                        @game.ExecutableType
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="GameListItemDto"
+                           Title="Docker"
+                           Field="@(g => g.SupportsDocker)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="game">
+                    @if (game.SupportsDocker)
+                    {
+                        <span class="text-nebula-success" title="Docker supported">
+                            <Icon Name="check-circle" Size="IconSize.Small" />
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-nebula-text-muted" title="Docker not supported">
+                            <Icon Name="x-circle" Size="IconSize.Small" />
+                        </span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="GameListItemDto"
+                           Title="Mods"
+                           Field="@(g => g.SupportsMods)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="game">
+                    @if (game.SupportsMods)
+                    {
+                        <span class="text-nebula-success" title="Mods supported">
+                            <Icon Name="check-circle" Size="IconSize.Small" />
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-nebula-text-muted" title="Mods not supported">
+                            <Icon Name="x-circle" Size="IconSize.Small" />
+                        </span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="GameListItemDto"
+                           Title="Servers"
+                           Field="@(g => g.ServerCount)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="game">
+                    <span class="px-2 py-1 text-xs font-medium bg-nebula-accent/10 text-nebula-accent rounded">
+                        @game.ServerCount
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="GameListItemDto"
+                           Title=""
+                           Width="120px">
+                <Template Context="game">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="eye"
+                                IconOnly="true"
+                                OnClick="@(() => ViewGame(game))"
+                                title="View" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="pencil"
+                                IconOnly="true"
+                                OnClick="@(() => EditGame(game))"
+                                title="Edit" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="trash-2"
+                                IconOnly="true"
+                                Disabled="@(game.ServerCount > 0)"
+                                OnClick="@(() => ConfirmDelete(game))"
+                                title="@(game.ServerCount > 0 ? "Cannot delete: servers exist" : "Delete")" />
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+
+        <EmptyAction>
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Add Your First Game"
+                    IconName="plus"
+                    OnClick="@(() => Navigation.NavigateTo("/games/new"))" />
+        </EmptyAction>
+    </DataGrid>
+</div>
+
+@if (_showDeleteConfirm && _gameToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete Game</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_gameToDelete.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone.</p>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDelete" />
+                <Button Variant="ButtonVariant.Danger" Text="Delete" Loading="_deleting" OnClick="DeleteGame" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private List<GameListItemDto> _games = [];
+    private bool _loading = true;
+    private string? _error;
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private GameListItemDto? _gameToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGamesAsync();
+    }
+
+    private async Task LoadGamesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            var games = await GameService.GetAllGamesAsync();
+            _games = games.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ViewGame(GameListItemDto game)
+    {
+        Navigation.NavigateTo($"/games/{game.Id}");
+    }
+
+    private void EditGame(GameListItemDto game)
+    {
+        Navigation.NavigateTo($"/games/{game.Id}/edit");
+    }
+
+    private void ConfirmDelete(GameListItemDto game)
+    {
+        _gameToDelete = game;
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _gameToDelete = null;
+        _showDeleteConfirm = false;
+    }
+
+    private async Task DeleteGame()
+    {
+        if (_gameToDelete is null) return;
+
+        try
+        {
+            _deleting = true;
+            var result = await GameService.DeleteGameAsync(_gameToDelete.Id);
+
+            if (result.IsSuccess)
+            {
+                _games.Remove(_gameToDelete);
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteConfirm = false;
+            _gameToDelete = null;
+        }
+    }
+}

@@ -1,0 +1,161 @@
+@using ApexCharts
+@using NebulaPanel.Application.DTOs
+
+@* Resource history chart component showing CPU and Memory over time *@
+
+@if (DataPoints.Count > 0)
+{
+    <ApexChart TItem="ResourceDataPointDto"
+               Title=""
+               Height="220"
+               Options="_chartOptions">
+        <ApexPointSeries TItem="ResourceDataPointDto"
+                         Items="DataPoints"
+                         Name="CPU %"
+                         SeriesType="SeriesType.Area"
+                         XValue="@(d => d.Timestamp)"
+                         YValue="@(d => (decimal)d.CpuPercent)"
+                         OrderBy="d => d.X" />
+        <ApexPointSeries TItem="ResourceDataPointDto"
+                         Items="DataPoints"
+                         Name="Memory MB"
+                         SeriesType="SeriesType.Line"
+                         XValue="@(d => d.Timestamp)"
+                         YValue="@(d => (decimal)d.MemoryMb)"
+                         OrderBy="d => d.X" />
+    </ApexChart>
+}
+else
+{
+    <div class="flex items-center justify-center h-[220px] text-nebula-text-muted">
+        <div class="text-center">
+            <Icon Name="bar-chart-2" Size="IconSize.Large" Class="mb-2 opacity-50" />
+            <p class="text-sm">No resource data available</p>
+            <p class="text-xs mt-1">Data will appear when servers are running</p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<ResourceDataPointDto> DataPoints { get; set; } = [];
+
+    private ApexChartOptions<ResourceDataPointDto> _chartOptions = new();
+
+    protected override void OnInitialized()
+    {
+        InitializeChartOptions();
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Update Y axis max for memory based on data
+        if (DataPoints.Count > 0 && _chartOptions.Yaxis?.Count >= 2)
+        {
+            var maxMemory = DataPoints.Max(d => d.MemoryMb);
+            if (maxMemory > 0)
+            {
+                _chartOptions.Yaxis[1].Max = (decimal)(Math.Ceiling(maxMemory / 512) * 512 + 512);
+            }
+        }
+    }
+
+    private void InitializeChartOptions()
+    {
+        _chartOptions = new ApexChartOptions<ResourceDataPointDto>
+        {
+            Chart = new Chart
+            {
+                Background = "transparent",
+                Toolbar = new Toolbar { Show = false },
+                Zoom = new Zoom { Enabled = false },
+                Animations = new Animations
+                {
+                    Enabled = true,
+                    Speed = 300
+                }
+            },
+            Colors = ["#6366f1", "#10b981"], // Indigo for CPU, Emerald for Memory
+            Fill = new Fill
+            {
+                Type = [FillType.Gradient, FillType.Solid],
+                Gradient = new FillGradient
+                {
+                    ShadeIntensity = 1,
+                    OpacityFrom = 0.4,
+                    OpacityTo = 0.05,
+                    Stops = [0, 100]
+                }
+            },
+            Stroke = new Stroke
+            {
+                Curve = Curve.Smooth,
+                Width = 2
+            },
+            Grid = new Grid
+            {
+                BorderColor = "var(--nebula-border)",
+                StrokeDashArray = 4,
+                Xaxis = new GridXAxis { Lines = new Lines { Show = false } }
+            },
+            Xaxis = new XAxis
+            {
+                Type = XAxisType.Datetime,
+                Labels = new XAxisLabels
+                {
+                    Style = new AxisLabelStyle { Colors = "var(--nebula-text-muted)", FontSize = "11px" },
+                    DatetimeFormatter = new DatetimeFormatter
+                    {
+                        Hour = "HH:mm"
+                    }
+                },
+                AxisBorder = new AxisBorder { Show = false },
+                AxisTicks = new AxisTicks { Show = false }
+            },
+            Yaxis =
+            [
+                new YAxis
+                {
+                    SeriesName = "CPU %",
+                    Title = new AxisTitle { Text = "CPU %", Style = new AxisTitleStyle { Color = "#6366f1", FontSize = "11px" } },
+                    Labels = new YAxisLabels
+                    {
+                        Style = new AxisLabelStyle { Colors = "#6366f1", FontSize = "11px" },
+                        Formatter = "function(val) { return val.toFixed(0) + '%'; }"
+                    },
+                    Min = 0,
+                    Max = 100
+                },
+                new YAxis
+                {
+                    SeriesName = "Memory MB",
+                    Opposite = true,
+                    Title = new AxisTitle { Text = "Memory MB", Style = new AxisTitleStyle { Color = "#10b981", FontSize = "11px" } },
+                    Labels = new YAxisLabels
+                    {
+                        Style = new AxisLabelStyle { Colors = "#10b981", FontSize = "11px" },
+                        Formatter = "function(val) { return val.toFixed(0); }"
+                    },
+                    Min = 0
+                }
+            ],
+            Tooltip = new Tooltip
+            {
+                Theme = Mode.Dark,
+                X = new TooltipX
+                {
+                    Format = "MMM dd, HH:mm"
+                },
+                Shared = true
+            },
+            Legend = new Legend
+            {
+                Show = true,
+                Position = LegendPosition.Top,
+                HorizontalAlign = Align.Right,
+                FontSize = "11px",
+                Labels = new LegendLabels { Colors = "var(--nebula-text-secondary)" }
+            }
+        };
+    }
+}

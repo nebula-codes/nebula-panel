@@ -1,0 +1,77 @@
+@inject NavigationManager Navigation
+
+<div class="@HeaderClasses">
+    <div class="flex items-center gap-4">
+        @if (ShowBackButton)
+        {
+            <button type="button"
+                    @onclick="HandleBack"
+                    class="btn-ghost btn-icon"
+                    aria-label="Go back">
+                <Icon Name="arrow-left" Size="IconSize.Small" />
+            </button>
+        }
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">@Title</h1>
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <p class="text-sm text-nebula-text-muted mt-1">@Subtitle</p>
+            }
+        </div>
+    </div>
+
+    @if (Actions != null)
+    {
+        <div class="flex items-center gap-3">
+            @Actions
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    [Parameter]
+    public bool ShowBackButton { get; set; }
+
+    [Parameter]
+    public string? BackUrl { get; set; }
+
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string HeaderClasses
+    {
+        get
+        {
+            var classes = new List<string> { "page-header" };
+
+            if (!string.IsNullOrEmpty(Class))
+            {
+                classes.Add(Class);
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private void HandleBack()
+    {
+        if (!string.IsNullOrEmpty(BackUrl))
+        {
+            Navigation.NavigateTo(BackUrl);
+        }
+        else
+        {
+            // Use JavaScript history.back() as fallback
+            Navigation.NavigateTo("javascript:history.back()");
+        }
+    }
+}

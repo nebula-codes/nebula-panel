@@ -1,0 +1,257 @@
+@using NebulaPanel.Application.DTOs
+
+<div class="space-y-6">
+    @* Header *@
+    <div class="text-center">
+        <div class="w-16 h-16 mx-auto rounded-full bg-nebula-info/20 flex items-center justify-center mb-4">
+            @if (_progress.Phase == ModpackUpdatePhase.Completed)
+            {
+                <Icon Name="check" Size="IconSize.Large" Class="text-nebula-success" />
+            }
+            else if (_progress.Phase == ModpackUpdatePhase.Failed)
+            {
+                <Icon Name="x" Size="IconSize.Large" Class="text-nebula-error" />
+            }
+            else
+            {
+                <span class="spinner w-8 h-8"></span>
+            }
+        </div>
+        <h3 class="text-lg font-medium text-nebula-text-primary">
+            @(_progress.Phase == ModpackUpdatePhase.Completed ? "Update Complete!" :
+              _progress.Phase == ModpackUpdatePhase.Failed ? "Update Failed" :
+              $"Updating {ModpackName}")
+        </h3>
+        <p class="text-sm text-nebula-text-muted mt-1">@_progress.Message</p>
+    </div>
+
+    @* Progress Bar *@
+    <div>
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-nebula-text-secondary">Progress</span>
+            <span class="text-sm font-medium text-nebula-text-primary">@(_progress.Percentage.ToString("F0"))%</span>
+        </div>
+        <div class="h-2 bg-nebula-bg-tertiary rounded-full overflow-hidden">
+            <div class="h-full transition-all duration-300 @(_progress.Phase == ModpackUpdatePhase.Failed ? "bg-nebula-error" : _progress.Phase == ModpackUpdatePhase.Completed ? "bg-nebula-success" : "bg-nebula-info")"
+                 style="width: @(_progress.Percentage)%"></div>
+        </div>
+        @if (_progress.BytesDownloaded.HasValue && _progress.TotalBytes.HasValue && _progress.Phase == ModpackUpdatePhase.Downloading)
+        {
+            <div class="mt-1 text-xs text-nebula-text-muted text-right">
+                @FormatBytes(_progress.BytesDownloaded.Value) / @FormatBytes(_progress.TotalBytes.Value)
+            </div>
+        }
+    </div>
+
+    @* Phase Checklist *@
+    <div class="bg-nebula-bg-tertiary rounded-nebula p-4">
+        <div class="space-y-3">
+            @foreach (var phase in _phases)
+            {
+                var status = GetPhaseStatus(phase.Phase);
+                <div class="flex items-center gap-3">
+                    <div class="w-6 h-6 rounded-full flex items-center justify-center @GetPhaseCircleClass(status)">
+                        @if (status == PhaseStatus.Completed)
+                        {
+                            <Icon Name="check" Size="IconSize.XSmall" />
+                        }
+                        else if (status == PhaseStatus.InProgress)
+                        {
+                            <span class="spinner w-3 h-3"></span>
+                        }
+                        else if (status == PhaseStatus.Failed)
+                        {
+                            <Icon Name="x" Size="IconSize.XSmall" />
+                        }
+                    </div>
+                    <span class="text-sm @GetPhaseTextClass(status)">@phase.Label</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Elapsed Time *@
+    <div class="text-center text-sm text-nebula-text-muted">
+        Elapsed time: @FormatElapsedTime(_elapsedTime)
+    </div>
+
+    @* Cancel Button *@
+    @if (_progress.Phase != ModpackUpdatePhase.Completed && _progress.Phase != ModpackUpdatePhase.Failed)
+    {
+        <div class="flex justify-center pt-2">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Cancel Update"
+                    IconName="x"
+                    OnClick="HandleCancel" />
+        </div>
+    }
+    else if (_progress.Phase == ModpackUpdatePhase.Completed)
+    {
+        <div class="flex justify-center gap-3 pt-2">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Close"
+                    OnClick="HandleClose" />
+            <Button Variant="ButtonVariant.Primary"
+                    Text="View Server"
+                    IconName="server"
+                    OnClick="HandleViewServer" />
+        </div>
+    }
+    else if (_progress.Phase == ModpackUpdatePhase.Failed)
+    {
+        <div class="flex justify-center gap-3 pt-2">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Close"
+                    OnClick="HandleClose" />
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Retry"
+                    IconName="refresh-cw"
+                    OnClick="HandleRetry" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string ModpackName { get; set; } = "Modpack";
+
+    [Parameter]
+    public ModpackUpdateProgressDto? Progress { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback OnViewServer { get; set; }
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    private ModpackUpdateProgressDto _progress = ModpackUpdateProgressDto.Initializing();
+    private TimeSpan _elapsedTime = TimeSpan.Zero;
+    private DateTime _startTime = DateTime.UtcNow;
+    private Timer? _timer;
+
+    private readonly List<(ModpackUpdatePhase Phase, string Label)> _phases =
+    [
+        (ModpackUpdatePhase.Initializing, "Preparing update"),
+        (ModpackUpdatePhase.StoppingServer, "Stopping server"),
+        (ModpackUpdatePhase.CreatingBackup, "Creating backup"),
+        (ModpackUpdatePhase.PreservingFiles, "Preserving user data"),
+        (ModpackUpdatePhase.Downloading, "Downloading new version"),
+        (ModpackUpdatePhase.Extracting, "Extracting files"),
+        (ModpackUpdatePhase.InstallingLoader, "Installing mod loader"),
+        (ModpackUpdatePhase.Configuring, "Configuring server"),
+        (ModpackUpdatePhase.StartingServer, "Starting server"),
+        (ModpackUpdatePhase.Completed, "Complete"),
+    ];
+
+    protected override void OnInitialized()
+    {
+        _startTime = DateTime.UtcNow;
+        _timer = new Timer(_ =>
+        {
+            _elapsedTime = DateTime.UtcNow - _startTime;
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Progress is not null)
+        {
+            _progress = Progress;
+        }
+    }
+
+    private enum PhaseStatus { Pending, InProgress, Completed, Failed }
+
+    private PhaseStatus GetPhaseStatus(ModpackUpdatePhase phase)
+    {
+        if (_progress.Phase == ModpackUpdatePhase.Failed)
+        {
+            // Find where we failed
+            var failedIndex = _phases.FindIndex(p => p.Phase == _progress.Phase);
+            var currentIndex = _phases.FindIndex(p => p.Phase == phase);
+
+            if (currentIndex < failedIndex)
+                return PhaseStatus.Completed;
+            if (currentIndex == failedIndex)
+                return PhaseStatus.Failed;
+            return PhaseStatus.Pending;
+        }
+
+        var progressIndex = _phases.FindIndex(p => p.Phase == _progress.Phase);
+        var phaseIndex = _phases.FindIndex(p => p.Phase == phase);
+
+        if (phaseIndex < progressIndex)
+            return PhaseStatus.Completed;
+        if (phaseIndex == progressIndex)
+            return _progress.Phase == ModpackUpdatePhase.Completed ? PhaseStatus.Completed : PhaseStatus.InProgress;
+        return PhaseStatus.Pending;
+    }
+
+    private static string GetPhaseCircleClass(PhaseStatus status) => status switch
+    {
+        PhaseStatus.Completed => "bg-nebula-success text-white",
+        PhaseStatus.InProgress => "bg-nebula-info/20 text-nebula-info",
+        PhaseStatus.Failed => "bg-nebula-error text-white",
+        _ => "bg-nebula-bg-secondary text-nebula-text-muted"
+    };
+
+    private static string GetPhaseTextClass(PhaseStatus status) => status switch
+    {
+        PhaseStatus.Completed => "text-nebula-text-primary",
+        PhaseStatus.InProgress => "text-nebula-info font-medium",
+        PhaseStatus.Failed => "text-nebula-error",
+        _ => "text-nebula-text-muted"
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.#} {sizes[order]}";
+    }
+
+    private static string FormatElapsedTime(TimeSpan elapsed)
+    {
+        if (elapsed.TotalHours >= 1)
+            return $"{(int)elapsed.TotalHours}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+        return $"{elapsed.Minutes}:{elapsed.Seconds:D2}";
+    }
+
+    private async Task HandleCancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleViewServer()
+    {
+        await OnViewServer.InvokeAsync();
+    }
+
+    private async Task HandleRetry()
+    {
+        await OnRetry.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

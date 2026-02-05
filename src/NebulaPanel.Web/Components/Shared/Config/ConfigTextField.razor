@@ -1,0 +1,79 @@
+@using NebulaPanel.Domain.ValueObjects
+
+<div class="form-group">
+    <div class="flex items-center justify-between">
+        <label for="@_id" class="label">
+            @if (IsModified)
+            {
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-nebula-accent mr-1.5" title="Modified from default"></span>
+            }
+            @Field.DisplayName
+            @if (Field.Required)
+            {
+                <span class="text-nebula-error ml-1">*</span>
+            }
+        </label>
+        @if (IsModified && OnResetToDefault.HasDelegate)
+        {
+            <button type="button"
+                    @onclick="OnResetToDefault"
+                    class="text-xs text-nebula-text-muted hover:text-nebula-accent transition-colors"
+                    title="Reset to default">
+                <Icon Name="rotate-ccw" Size="IconSize.Small" />
+            </button>
+        }
+    </div>
+
+    <input type="text"
+           id="@_id"
+           value="@Value"
+           @oninput="OnInput"
+           placeholder="@(Field.Placeholder ?? string.Empty)"
+           disabled="@Disabled"
+           readonly="@Field.ReadOnly"
+           class="@InputClasses" />
+
+    @if (!string.IsNullOrEmpty(Field.Description) && !HasErrors)
+    {
+        <p class="text-xs text-nebula-text-muted mt-1">@Field.Description</p>
+    }
+
+    @if (HasErrors)
+    {
+        <p class="text-xs text-nebula-error mt-1">@string.Join(", ", Errors!)</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConfigField Field { get; set; } = null!;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public List<string>? Errors { get; set; }
+
+    [Parameter]
+    public bool IsModified { get; set; }
+
+    [Parameter]
+    public EventCallback OnResetToDefault { get; set; }
+
+    private string _id = Guid.NewGuid().ToString("N")[..8];
+    private bool HasErrors => Errors?.Count > 0;
+
+    private string InputClasses => HasErrors ? "input input-error" : "input";
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

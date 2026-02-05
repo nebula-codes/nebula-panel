@@ -1,0 +1,72 @@
+/* Scoped styles for MinecraftCreate wizard */
+
+/* Setup type card styles */
+.setup-type-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    border-radius: var(--nebula-radius-lg);
+    border: 2px solid var(--nebula-border-subtle);
+    background-color: var(--nebula-bg-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 12rem;
+}
+
+.setup-type-card:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+    box-shadow: var(--nebula-glow);
+}
+
+.setup-type-card.selected {
+    border-color: var(--nebula-accent);
+    background-color: rgba(139, 92, 246, 0.05);
+}
+
+.setup-type-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.5rem;
+    background-color: var(--nebula-bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.selected-indicator {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--nebula-accent);
+    color: white;
+}
+
+/* Additional deployment card styles if needed */
+.deployment-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    border-radius: var(--nebula-radius);
+    border: 2px solid var(--nebula-border-subtle);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.deployment-card:hover {
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+.deployment-card.selected {
+    border-color: var(--nebula-accent);
+    background-color: rgba(139, 92, 246, 0.05);
+}

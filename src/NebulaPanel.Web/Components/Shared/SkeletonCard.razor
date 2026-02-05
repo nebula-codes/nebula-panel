@@ -1,0 +1,146 @@
+@* Skeleton loading component with shimmer animation *@
+
+@switch (Variant)
+{
+    case SkeletonVariant.SummaryCard:
+        <div class="skeleton-card rounded-nebula-lg">
+            <div class="flex items-center gap-4">
+                <div class="skeleton-circle w-12 h-12 flex-shrink-0"></div>
+                <div class="flex-1 space-y-2">
+                    <div class="skeleton-text-sm w-20"></div>
+                    <div class="skeleton-text-lg w-16"></div>
+                </div>
+            </div>
+        </div>
+        break;
+
+    case SkeletonVariant.ServerCard:
+        <div class="skeleton-card rounded-nebula-lg">
+            <div class="flex items-start gap-4">
+                <div class="skeleton-circle w-10 h-10 flex-shrink-0"></div>
+                <div class="flex-1 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="skeleton-text w-32"></div>
+                        <div class="skeleton w-16 h-5 rounded-full"></div>
+                    </div>
+                    <div class="skeleton-text-sm w-24"></div>
+                    <div class="flex gap-4 pt-2">
+                        <div class="skeleton-text-sm w-16"></div>
+                        <div class="skeleton-text-sm w-16"></div>
+                        <div class="skeleton-text-sm w-16"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        break;
+
+    case SkeletonVariant.ActivityItem:
+        <div class="flex items-start gap-3 py-3">
+            <div class="skeleton-circle w-8 h-8 flex-shrink-0"></div>
+            <div class="flex-1 space-y-2">
+                <div class="skeleton-text w-3/4"></div>
+                <div class="skeleton-text-sm w-20"></div>
+            </div>
+        </div>
+        break;
+
+    case SkeletonVariant.HealthGauge:
+        <div class="flex flex-col items-center gap-2">
+            <div class="skeleton-circle w-20 h-20"></div>
+            <div class="skeleton-text-sm w-12"></div>
+        </div>
+        break;
+
+    case SkeletonVariant.DetailHeader:
+        <div class="flex items-start gap-4 mb-6">
+            <div class="skeleton w-10 h-10 rounded-nebula flex-shrink-0"></div>
+            <div class="skeleton-circle w-12 h-12 rounded-lg flex-shrink-0"></div>
+            <div class="flex-1 space-y-2">
+                <div class="flex items-center gap-3">
+                    <div class="skeleton-text-lg w-48"></div>
+                    <div class="skeleton w-20 h-6 rounded-full"></div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="skeleton-text-sm w-20"></div>
+                    <div class="skeleton-text-sm w-16"></div>
+                    <div class="skeleton w-28 h-5 rounded"></div>
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <div class="skeleton w-20 h-9 rounded-nebula"></div>
+                <div class="skeleton w-20 h-9 rounded-nebula"></div>
+            </div>
+        </div>
+        break;
+
+    case SkeletonVariant.SettingsForm:
+        <div class="skeleton-card rounded-nebula-lg">
+            <div class="space-y-6">
+                @for (int i = 0; i < 3; i++)
+                {
+                    <div class="space-y-2">
+                        <div class="skeleton-text-sm w-24"></div>
+                        <div class="skeleton w-full h-10 rounded-nebula"></div>
+                    </div>
+                }
+                <div class="flex justify-end gap-3 pt-4 border-t border-nebula-border">
+                    <div class="skeleton w-20 h-9 rounded-nebula"></div>
+                    <div class="skeleton w-28 h-9 rounded-nebula"></div>
+                </div>
+            </div>
+        </div>
+        break;
+
+    case SkeletonVariant.TabContent:
+        <div class="space-y-4">
+            <div class="flex gap-4 border-b border-nebula-border pb-2">
+                @for (int i = 0; i < 4; i++)
+                {
+                    <div class="skeleton w-16 h-8 rounded-nebula"></div>
+                }
+            </div>
+            <div class="space-y-3">
+                @for (int i = 0; i < 5; i++)
+                {
+                    var width = i % 2 == 0 ? "w-full" : "w-3/4";
+                    <div class="skeleton-text @width"></div>
+                }
+            </div>
+        </div>
+        break;
+
+    default:
+        <div class="skeleton-card rounded-nebula-lg @Class">
+            <div class="space-y-3">
+                @for (int i = 0; i < Lines; i++)
+                {
+                    var width = i == 0 ? "w-3/4" : i == Lines - 1 ? "w-1/2" : "w-full";
+                    <div class="skeleton-text @width"></div>
+                }
+            </div>
+        </div>
+        break;
+}
+
+@code {
+    public enum SkeletonVariant
+    {
+        Default,
+        SummaryCard,
+        ServerCard,
+        ActivityItem,
+        HealthGauge,
+        DetailHeader,
+        SettingsForm,
+        TabContent
+    }
+
+    [Parameter]
+    public SkeletonVariant Variant { get; set; } = SkeletonVariant.Default;
+
+    [Parameter]
+    public int Lines { get; set; } = 3;
+
+    [Parameter]
+    public string? Class { get; set; }
+}

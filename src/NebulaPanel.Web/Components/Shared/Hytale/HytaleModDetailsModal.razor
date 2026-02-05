@@ -1,0 +1,360 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+
+<Modal IsOpen="@IsOpen"
+       Size="ModalSize.Large"
+       OnClose="HandleClose"
+       ShowCloseButton="true"
+       CloseOnBackdropClick="true"
+       CloseOnEscape="true">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Mod Details</span>
+    </Header>
+    <Body>
+        @if (Mod == null)
+        {
+            <div class="flex items-center justify-center py-12">
+                <span class="text-nebula-text-muted">No mod selected</span>
+            </div>
+        }
+        else if (_isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <div class="flex flex-col items-center gap-3">
+                    <div class="animate-spin rounded-full h-8 w-8 border-2 border-nebula-accent border-t-transparent"></div>
+                    <span class="text-nebula-text-muted">Loading mod details...</span>
+                </div>
+            </div>
+        }
+        else if (_error != null)
+        {
+            <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4">
+                <div class="flex items-center gap-2">
+                    <Icon Name="alert-circle" Size="IconSize.Small" />
+                    <span>@_error</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="mod-details-content">
+                @* Header Section *@
+                <div class="flex gap-4 mb-6">
+                    @* Icon *@
+                    <div class="mod-detail-icon">
+                        @if (!string.IsNullOrEmpty(Mod.IconUrl))
+                        {
+                            <img src="@Mod.IconUrl" alt="@Mod.Name" class="w-full h-full object-cover rounded-lg" />
+                        }
+                        else
+                        {
+                            <div class="w-full h-full flex items-center justify-center bg-nebula-bg-tertiary rounded-lg">
+                                <Icon Name="package" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                            </div>
+                        }
+                    </div>
+
+                    @* Info *@
+                    <div class="flex-1">
+                        <h2 class="text-xl font-semibold text-nebula-text-primary mb-1">@Mod.Name</h2>
+
+                        <div class="flex flex-wrap items-center gap-2 text-sm text-nebula-text-secondary mb-3">
+                            @if (!string.IsNullOrEmpty(Mod.Author))
+                            {
+                                <span>by @Mod.Author</span>
+                                <span class="text-nebula-text-muted">•</span>
+                            }
+                            <span class="version-badge">v@Mod.InstalledVersion</span>
+                            @if (Mod.UpdateAvailable)
+                            {
+                                <span class="update-chip">
+                                    <Icon Name="upload" Size="IconSize.XSmall" />
+                                    @Mod.LatestVersion available
+                                </span>
+                            }
+                        </div>
+
+                        @* Stats *@
+                        <div class="flex flex-wrap items-center gap-4 text-sm text-nebula-text-muted">
+                            <span class="flex items-center gap-1" title="@Mod.InstalledAt.ToString("F")">
+                                <Icon Name="calendar" Size="IconSize.Small" />
+                                Installed @FormatRelativeDate(Mod.InstalledAt)
+                            </span>
+                            <span class="flex items-center gap-1">
+                                <Icon Name="hard-drive" Size="IconSize.Small" />
+                                @FormatFileSize(Mod.FileSizeBytes)
+                            </span>
+                            <span class="provider-badge provider-@Mod.Provider.ToString().ToLowerInvariant()">
+                                @GetProviderDisplayName(Mod.Provider)
+                            </span>
+                        </div>
+
+                        @* Status *@
+                        <div class="flex items-center gap-2 mt-3">
+                            @if (Mod.IsEnabled)
+                            {
+                                <StatusBadge Status="StatusType.Success" Size="BadgeSize.Small">Enabled</StatusBadge>
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusType.Neutral" Size="BadgeSize.Small">Disabled</StatusBadge>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @* Tabs *@
+                <div class="border-b border-nebula-border-subtle mb-4">
+                    <div class="flex gap-4">
+                        <button type="button"
+                                class="tab-button @(_activeTab == "description" ? "active" : "")"
+                                @onclick="@(() => _activeTab = "description")">
+                            Description
+                        </button>
+                        @if (_details?.Screenshots.Count > 0)
+                        {
+                            <button type="button"
+                                    class="tab-button @(_activeTab == "screenshots" ? "active" : "")"
+                                    @onclick="@(() => _activeTab = "screenshots")">
+                                Screenshots (@_details.Screenshots.Count)
+                            </button>
+                        }
+                        <button type="button"
+                                class="tab-button @(_activeTab == "info" ? "active" : "")"
+                                @onclick="@(() => _activeTab = "info")">
+                            Info
+                        </button>
+                    </div>
+                </div>
+
+                @* Tab Content *@
+                <div class="tab-content">
+                    @if (_activeTab == "description")
+                    {
+                        <div class="prose prose-invert max-w-none text-sm text-nebula-text-secondary max-h-64 overflow-y-auto">
+                            @if (_details != null && !string.IsNullOrEmpty(_details.Description))
+                            {
+                                @((MarkupString)SanitizeHtml(_details.Description))
+                            }
+                            else if (_details != null && !string.IsNullOrEmpty(_details.Summary))
+                            {
+                                <p>@_details.Summary</p>
+                            }
+                            else
+                            {
+                                <p class="text-nebula-text-muted italic">No description available.</p>
+                            }
+                        </div>
+                    }
+                    else if (_activeTab == "screenshots" && _details?.Screenshots.Count > 0)
+                    {
+                        <div class="screenshot-grid">
+                            @foreach (var screenshot in _details.Screenshots)
+                            {
+                                <a href="@screenshot.Url" target="_blank" rel="noopener noreferrer"
+                                   class="screenshot-item">
+                                    <img src="@screenshot.Url" alt="@(screenshot.Title ?? "Screenshot")"
+                                         class="w-full h-full object-cover" loading="lazy" />
+                                </a>
+                            }
+                        </div>
+                    }
+                    else if (_activeTab == "info")
+                    {
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <span class="info-label">File Name</span>
+                                <span class="info-value font-mono text-xs">@Mod.FileName</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">File Path</span>
+                                <span class="info-value font-mono text-xs truncate" title="@Mod.FilePath">@Mod.FilePath</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Mod ID</span>
+                                <span class="info-value font-mono text-xs">@Mod.ModId</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Version ID</span>
+                                <span class="info-value font-mono text-xs">@(Mod.InstalledVersionId ?? "N/A")</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Provider</span>
+                                <span class="info-value">@GetProviderDisplayName(Mod.Provider)</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Installed</span>
+                                <span class="info-value">@Mod.InstalledAt.ToLocalTime().ToString("g")</span>
+                            </div>
+                            @if (Mod.UpdateAvailable && Mod.LatestVersionDate.HasValue)
+                            {
+                                <div class="info-item">
+                                    <span class="info-label">Latest Version Date</span>
+                                    <span class="info-value">@Mod.LatestVersionDate.Value.ToLocalTime().ToString("g")</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </Body>
+    <Footer>
+        <div class="flex justify-between gap-3 w-full">
+            <Button Variant="ButtonVariant.Ghost"
+                    Text="Uninstall"
+                    IconName="trash"
+                    Class="btn-danger"
+                    OnClick="HandleUninstall" />
+            <div class="flex gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="HandleClose" />
+                @if (Mod?.UpdateAvailable == true)
+                {
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="@($"Update to {Mod.LatestVersion}")"
+                            IconName="refresh-cw"
+                            OnClick="HandleUpdate" />
+                }
+            </div>
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The installed mod to display details for.
+    /// </summary>
+    [Parameter]
+    public HytaleInstalledModInfo? Mod { get; set; }
+
+    /// <summary>
+    /// Whether the modal is open.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the modal is closed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks Update.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnUpdate { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks Uninstall.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnUninstall { get; set; }
+
+    [Inject]
+    private IHytaleModService ModService { get; set; } = default!;
+
+    // State
+    private ModDetails? _details;
+    private bool _isLoading;
+    private string? _error;
+    private string _activeTab = "description";
+    private string? _lastLoadedModId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && Mod != null && Mod.ModId != _lastLoadedModId)
+        {
+            await LoadDetailsAsync();
+        }
+    }
+
+    private async Task LoadDetailsAsync()
+    {
+        if (Mod == null) return;
+
+        _isLoading = true;
+        _error = null;
+        _details = null;
+        _activeTab = "description";
+        _lastLoadedModId = Mod.ModId;
+        StateHasChanged();
+
+        try
+        {
+            _details = await ModService.GetDetailsAsync(Mod.Provider, Mod.ModId);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load mod details: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        _lastLoadedModId = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleUpdate()
+    {
+        if (Mod != null)
+        {
+            await OnUpdate.InvokeAsync(Mod);
+            await HandleClose();
+        }
+    }
+
+    private async Task HandleUninstall()
+    {
+        if (Mod != null)
+        {
+            await OnUninstall.InvokeAsync(Mod);
+            await HandleClose();
+        }
+    }
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+
+    private static string FormatRelativeDate(DateTime date)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - date.ToUniversalTime();
+
+        if (diff.TotalSeconds < 60) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+
+    private static string SanitizeHtml(string html)
+    {
+        // Basic HTML sanitization - in production, use a proper sanitizer
+        return html;
+    }
+}

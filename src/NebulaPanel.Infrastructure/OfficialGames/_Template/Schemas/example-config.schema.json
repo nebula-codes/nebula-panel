@@ -1,0 +1,88 @@
+{
+  "$schema": "https://nebula-panel.dev/schemas/config-schema-v1.json",
+  "schemaVersion": "1.0",
+  "fileName": "server.cfg",
+  "fileType": "Properties",
+  "fields": [
+    {
+      "key": "hostname",
+      "displayName": "Server Name",
+      "description": "The name of your server displayed in the server browser.",
+      "type": "String",
+      "defaultValue": "My Server",
+      "category": "General",
+      "required": true
+    },
+    {
+      "key": "port",
+      "displayName": "Server Port",
+      "description": "The network port the server listens on.",
+      "type": "Port",
+      "defaultValue": 27015,
+      "category": "Network",
+      "required": true
+    },
+    {
+      "key": "maxplayers",
+      "displayName": "Max Players",
+      "description": "Maximum number of players allowed on the server.",
+      "type": "Int",
+      "defaultValue": 24,
+      "validation": {
+        "minValue": 1,
+        "maxValue": 64
+      },
+      "category": "General"
+    },
+    {
+      "key": "password",
+      "displayName": "Server Password",
+      "description": "Password required to join the server. Leave empty for no password.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Security"
+    },
+    {
+      "key": "rcon_password",
+      "displayName": "RCON Password",
+      "description": "Password for remote console access.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Security",
+      "required": true
+    },
+    {
+      "key": "sv_cheats",
+      "displayName": "Enable Cheats",
+      "description": "Allow cheat commands on the server.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Gameplay"
+    },
+    {
+      "key": "difficulty",
+      "displayName": "Difficulty",
+      "description": "Game difficulty level.",
+      "type": "Select",
+      "defaultValue": "normal",
+      "options": [
+        { "value": "easy", "label": "Easy" },
+        { "value": "normal", "label": "Normal" },
+        { "value": "hard", "label": "Hard" }
+      ],
+      "category": "Gameplay"
+    },
+    {
+      "key": "tick_rate",
+      "displayName": "Tick Rate",
+      "description": "Server tick rate (updates per second).",
+      "type": "Float",
+      "defaultValue": 64.0,
+      "validation": {
+        "minValue": 20.0,
+        "maxValue": 128.0
+      },
+      "category": "Performance"
+    }
+  ]
+}

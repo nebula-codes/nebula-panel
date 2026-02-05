@@ -1,0 +1,187 @@
+.installed-mods-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    border-radius: var(--nebula-radius-lg);
+    background-color: var(--nebula-card-bg);
+    border: 1px solid var(--nebula-border);
+    overflow: hidden;
+}
+
+/* Header */
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid var(--nebula-border-subtle);
+    background-color: var(--nebula-bg-secondary);
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.mod-count {
+    font-size: 0.875rem;
+    color: var(--nebula-text-muted);
+}
+
+.updates-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    background: linear-gradient(135deg, var(--nebula-accent) 0%, var(--nebula-info) 100%);
+    color: white;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 8px var(--nebula-accent-glow);
+    }
+    50% {
+        box-shadow: 0 0 16px var(--nebula-accent-glow);
+    }
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Search box */
+.search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: var(--nebula-text-muted);
+    pointer-events: none;
+}
+
+.search-input {
+    width: 220px;
+    padding: 0.5rem 2rem 0.5rem 2.25rem;
+    font-size: 0.875rem;
+    background-color: var(--nebula-input-bg);
+    border: 1px solid var(--nebula-border);
+    border-radius: var(--nebula-radius);
+    color: var(--nebula-text-primary);
+    transition: all 0.2s ease;
+}
+
+.search-input::placeholder {
+    color: var(--nebula-text-muted);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--nebula-accent);
+    box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+}
+
+.clear-search {
+    position: absolute;
+    right: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--nebula-radius-sm);
+    color: var(--nebula-text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.clear-search:hover {
+    color: var(--nebula-text-primary);
+    background-color: var(--nebula-bg-tertiary);
+}
+
+/* Content */
+.panel-content {
+    flex: 1;
+    overflow: auto;
+    padding: 1rem 1.5rem;
+}
+
+/* Bulk update bar */
+.bulk-update-bar {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, var(--nebula-accent) 0%, var(--nebula-info) 100%);
+    color: white;
+}
+
+.update-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.update-icon {
+    animation: bounce-up 1s ease-in-out infinite;
+}
+
+@keyframes bounce-up {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-3px);
+    }
+}
+
+::deep .btn-update-all {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+}
+
+::deep .btn-update-all:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .panel-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .header-left {
+        justify-content: center;
+    }
+
+    .header-right {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+
+    .search-input {
+        width: 100%;
+        min-width: 200px;
+    }
+}

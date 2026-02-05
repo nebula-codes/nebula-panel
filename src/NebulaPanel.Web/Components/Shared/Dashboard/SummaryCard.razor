@@ -1,0 +1,37 @@
+@* Summary card component for dashboard statistics *@
+
+<div class="bg-nebula-gradient-subtle rounded-nebula p-4 border border-nebula-border">
+    <div class="flex items-center gap-4">
+        <div class="@($"p-3 rounded-nebula bg-nebula-{ColorClass}/20")">
+            <Icon Name="@IconName" Size="IconSize.Large" Class="@($"text-nebula-{ColorClass}")" />
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm text-nebula-text-muted truncate">@Label</p>
+            <p class="text-2xl font-bold text-nebula-text-primary">@Value</p>
+        </div>
+        @if (Trend is not null)
+        {
+            <div class="text-sm @(Trend >= 0 ? "text-nebula-success" : "text-nebula-error")">
+                <Icon Name="@(Trend >= 0 ? "trending-up" : "trending-down")" Size="IconSize.Small" />
+                <span>@Math.Abs(Trend.Value)%</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Value { get; set; } = "0";
+
+    [Parameter, EditorRequired]
+    public string IconName { get; set; } = "activity";
+
+    [Parameter]
+    public string ColorClass { get; set; } = "info";
+
+    [Parameter]
+    public int? Trend { get; set; }
+}

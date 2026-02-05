@@ -1,0 +1,120 @@
+<div class="install-error-container">
+    <div class="install-error-content">
+        @* Error Icon *@
+        <div class="error-icon-wrapper">
+            <div class="error-icon">
+                <Icon Name="x" Size="IconSize.XLarge" />
+            </div>
+        </div>
+
+        @* Title *@
+        <h2 class="error-title">Installation Failed</h2>
+
+        @* Error Message *@
+        <div class="error-message-box">
+            <p class="error-message">@ErrorMessage</p>
+            @if (!string.IsNullOrEmpty(DetailedError))
+            {
+                <p class="error-details">@DetailedError</p>
+            }
+        </div>
+
+        @* Log Viewer *@
+        @if (LogLines?.Count > 0)
+        {
+            <div class="log-section">
+                <button class="log-toggle" @onclick="@(() => _showLogs = !_showLogs)">
+                    <Icon Name="@(_showLogs ? "chevron-up" : "chevron-down")" Size="IconSize.Small" />
+                    <span>@(_showLogs ? "Hide" : "View") Full Log</span>
+                </button>
+
+                @if (_showLogs)
+                {
+                    <div class="log-viewer">
+                        @foreach (var line in LogLines)
+                        {
+                            <div class="log-line @(IsErrorLine(line) ? "error" : "")">@line</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @* Help Text *@
+        <div class="help-section">
+            <p class="help-text">What would you like to do?</p>
+        </div>
+
+        @* Action Buttons *@
+        <div class="action-buttons">
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Retry Installation"
+                    IconName="refresh-cw"
+                    OnClick="HandleRetry" />
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Start Fresh"
+                    IconName="trash-2"
+                    OnClick="HandleStartFresh" />
+            <Button Variant="ButtonVariant.Ghost"
+                    Text="Cancel"
+                    OnClick="HandleCancel" />
+        </div>
+
+        @* Tips *@
+        <div class="error-tips">
+            <p class="tips-header">Troubleshooting tips:</p>
+            <ul class="tips-list">
+                <li>Check your internet connection</li>
+                <li>Ensure you have enough disk space</li>
+                <li>Try again in a few minutes if the download server is busy</li>
+                <li>Check if the modpack provider (CurseForge/Modrinth) is online</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string ErrorMessage { get; set; } = "An unknown error occurred";
+
+    [Parameter]
+    public string? DetailedError { get; set; }
+
+    [Parameter]
+    public List<string>? LogLines { get; set; }
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    [Parameter]
+    public EventCallback OnStartFresh { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private bool _showLogs;
+
+    private static bool IsErrorLine(string line)
+    {
+        var lower = line.ToLowerInvariant();
+        return lower.Contains("[error]") ||
+               lower.Contains("error:") ||
+               lower.Contains("failed") ||
+               lower.Contains("exception");
+    }
+
+    private async Task HandleRetry()
+    {
+        await OnRetry.InvokeAsync();
+    }
+
+    private async Task HandleStartFresh()
+    {
+        await OnStartFresh.InvokeAsync();
+    }
+
+    private async Task HandleCancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+}

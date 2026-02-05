@@ -1,0 +1,100 @@
+@using NebulaPanel.Application.DTOs
+
+<div class="mb-4 p-4 bg-nebula-info/10 border border-nebula-info/30 rounded-nebula">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-nebula-info/20 flex items-center justify-center">
+                <Icon Name="download" Size="IconSize.Small" Class="text-nebula-info" />
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="font-medium text-nebula-text-primary">Modpack Update Available</span>
+                    <StatusBadge Status="StatusType.Info" Text="New Version" ShowDot="true" Size="BadgeSize.Small" />
+                </div>
+                <div class="text-sm text-nebula-text-secondary mt-0.5">
+                    @UpdateInfo.CurrentVersionName
+                    <Icon Name="arrow-right" Size="IconSize.XSmall" Class="inline mx-1" />
+                    <span class="font-medium text-nebula-info">@UpdateInfo.LatestVersionName</span>
+                    @if (UpdateInfo.ReleasedAt != default)
+                    {
+                        <span class="text-nebula-text-muted ml-2">
+                            Released @FormatRelativeTime(UpdateInfo.ReleasedAt)
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            @if (UpdateInfo.IsBreakingChange)
+            {
+                <StatusBadge Status="StatusType.Warning" Text="Breaking Change" ShowDot="true" Size="BadgeSize.Small" />
+            }
+            <Button Variant="ButtonVariant.Ghost"
+                    Size="ButtonSize.Small"
+                    IconName="x"
+                    IconOnly="true"
+                    OnClick="HandleDismiss"
+                    title="Dismiss this update" />
+            <Button Variant="ButtonVariant.Primary"
+                    Size="ButtonSize.Small"
+                    Text="View Details"
+                    IconName="eye"
+                    OnClick="HandleViewDetails" />
+        </div>
+    </div>
+
+    @if (UpdateInfo.Warnings.Count > 0 && ShowWarnings)
+    {
+        <div class="mt-3 pt-3 border-t border-nebula-info/20">
+            <div class="flex items-start gap-2">
+                <Icon Name="alert-triangle" Size="IconSize.Small" Class="text-nebula-warning mt-0.5" />
+                <div class="text-sm text-nebula-text-secondary">
+                    @foreach (var warning in UpdateInfo.Warnings.Take(2))
+                    {
+                        <div>@warning</div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ModpackUpdateInfo UpdateInfo { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback OnViewDetails { get; set; }
+
+    [Parameter]
+    public EventCallback OnDismiss { get; set; }
+
+    [Parameter]
+    public bool ShowWarnings { get; set; } = true;
+
+    private async Task HandleViewDetails()
+    {
+        await OnViewDetails.InvokeAsync();
+    }
+
+    private async Task HandleDismiss()
+    {
+        await OnDismiss.InvokeAsync();
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1)
+            return "just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+}

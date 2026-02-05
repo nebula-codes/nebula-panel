@@ -1,0 +1,141 @@
+@*
+    Card component for displaying a Steam game preset in the game selection wizard.
+*@
+@using NebulaPanel.Application.Services
+
+<div class="@GetCardClass()"
+     @onclick="HandleClick"
+     tabindex="0"
+     role="button"
+     @onkeydown="HandleKeyDown">
+    <div class="flex items-start gap-4">
+        @if (!string.IsNullOrEmpty(Preset.IconUrl))
+        {
+            <img src="@Preset.IconUrl"
+                 alt="@Preset.Name"
+                 class="w-16 h-16 object-cover rounded-lg shrink-0"
+                 loading="lazy"
+                 @onerror="HandleImageError" />
+        }
+        else
+        {
+            <div class="w-16 h-16 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center shrink-0">
+                <Icon Name="gamepad-2" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+            </div>
+        }
+
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+                <h3 class="font-medium text-nebula-text-primary truncate">@Preset.Name</h3>
+                @if (!string.IsNullOrEmpty(Preset.Category))
+                {
+                    <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">
+                        @Preset.Category
+                    </span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(Preset.Description))
+            {
+                <p class="text-sm text-nebula-text-muted line-clamp-2 mb-2">
+                    @Preset.Description
+                </p>
+            }
+
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="flex items-center gap-1 text-nebula-text-muted">
+                    <Icon Name="server" Size="IconSize.XSmall" />
+                    Port @Preset.DefaultPort
+                </span>
+
+                @if (Preset.RconPreset?.Supported == true)
+                {
+                    <span class="flex items-center gap-1 text-nebula-success">
+                        <Icon Name="terminal" Size="IconSize.XSmall" />
+                        RCON
+                    </span>
+                }
+
+                @if (Preset.SupportsDocker)
+                {
+                    <span class="flex items-center gap-1 text-nebula-info">
+                        <Icon Name="box" Size="IconSize.XSmall" />
+                        Docker
+                    </span>
+                }
+
+                @if (Preset.SupportsWorkshop)
+                {
+                    <span class="flex items-center gap-1 text-nebula-accent">
+                        <Icon Name="package" Size="IconSize.XSmall" />
+                        Workshop
+                    </span>
+                }
+            </div>
+        </div>
+
+        @if (Selected)
+        {
+            <div class="shrink-0">
+                <Icon Name="check-circle" Class="text-nebula-accent" />
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The game preset to display.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public SteamGamePreset Preset { get; set; } = default!;
+
+    /// <summary>
+    /// Whether this card is currently selected.
+    /// </summary>
+    [Parameter]
+    public bool Selected { get; set; }
+
+    /// <summary>
+    /// Event callback when the card is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    /// <summary>
+    /// Whether the card is in compact mode.
+    /// </summary>
+    [Parameter]
+    public bool Compact { get; set; }
+
+    private bool _imageError;
+
+    private string GetCardClass()
+    {
+        var baseClass = "rounded-nebula border-2 cursor-pointer transition-all";
+        var padding = Compact ? "p-3" : "p-4";
+
+        if (Selected)
+            return $"{baseClass} {padding} border-nebula-accent bg-nebula-accent/5";
+
+        return $"{baseClass} {padding} border-nebula-border-subtle hover:border-nebula-accent/50 bg-nebula-bg-secondary";
+    }
+
+    private async Task HandleClick()
+    {
+        await OnClick.InvokeAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await OnClick.InvokeAsync();
+        }
+    }
+
+    private void HandleImageError()
+    {
+        _imageError = true;
+    }
+}

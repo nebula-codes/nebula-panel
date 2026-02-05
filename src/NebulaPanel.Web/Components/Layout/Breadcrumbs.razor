@@ -1,0 +1,161 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<nav aria-label="Breadcrumb" class="breadcrumb-nav">
+    <ol class="flex items-center">
+        @if (_breadcrumbs.Count <= 3)
+        {
+            @* Short path: show all items *@
+            @for (var i = 0; i < _breadcrumbs.Count; i++)
+            {
+                var crumb = _breadcrumbs[i];
+                var isLast = i == _breadcrumbs.Count - 1;
+
+                <li class="flex items-center">
+                    @if (!isLast)
+                    {
+                        <a href="@crumb.Href" class="breadcrumb-link">@crumb.Label</a>
+                        <Icon Name="chevron-right" Size="IconSize.XSmall" Class="breadcrumb-separator" />
+                    }
+                    else
+                    {
+                        <span class="breadcrumb-current">@crumb.Label</span>
+                    }
+                </li>
+            }
+        }
+        else
+        {
+            @* Long path: show first, ellipsis (hidden on mobile), parent, current *@
+            @* First item (Dashboard) *@
+            <li class="flex items-center">
+                <a href="@_breadcrumbs[0].Href" class="breadcrumb-link">@_breadcrumbs[0].Label</a>
+                <Icon Name="chevron-right" Size="IconSize.XSmall" Class="breadcrumb-separator" />
+            </li>
+
+            @* Middle items: hidden on mobile, shown on desktop *@
+            @for (var i = 1; i < _breadcrumbs.Count - 2; i++)
+            {
+                var crumb = _breadcrumbs[i];
+                <li class="hidden md:flex items-center">
+                    <a href="@crumb.Href" class="breadcrumb-link">@crumb.Label</a>
+                    <Icon Name="chevron-right" Size="IconSize.XSmall" Class="breadcrumb-separator" />
+                </li>
+            }
+
+            @* Ellipsis on mobile only *@
+            <li class="flex md:hidden items-center">
+                <span class="breadcrumb-link">...</span>
+                <Icon Name="chevron-right" Size="IconSize.XSmall" Class="breadcrumb-separator" />
+            </li>
+
+            @* Parent item *@
+            <li class="flex items-center">
+                <a href="@_breadcrumbs[^2].Href" class="breadcrumb-link">@_breadcrumbs[^2].Label</a>
+                <Icon Name="chevron-right" Size="IconSize.XSmall" Class="breadcrumb-separator" />
+            </li>
+
+            @* Current item *@
+            <li class="flex items-center">
+                <span class="breadcrumb-current">@_breadcrumbs[^1].Label</span>
+            </li>
+        }
+    </ol>
+</nav>
+
+@code {
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    private static readonly Dictionary<string, string> RouteLabels = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "", "Dashboard" },
+        { "servers", "Servers" },
+        { "games", "Games" },
+        { "users", "Users" },
+        { "roles", "Roles" },
+        { "settings", "Settings" },
+        { "backups", "Backups" },
+        { "schedules", "Schedules" },
+        { "create", "Create" },
+        { "edit", "Edit" },
+        { "config", "Configuration" },
+        { "mods", "Mods" },
+        { "console", "Console" },
+        { "files", "Files" },
+        { "profile", "Profile" },
+        { "security", "Security" },
+        { "appearance", "Appearance" },
+        { "general", "General" },
+        { "database", "Database" },
+        { "logs", "Logs" },
+        { "updates", "Updates" },
+        { "system-health", "System Health" },
+        { "official-games", "Official Games" },
+        { "mod-cache", "Mod Cache" },
+        { "integrations", "Integrations" },
+        { "announcements", "Announcements" },
+        { "schedule", "Schedule" },
+        { "minecraft", "Minecraft" },
+        { "hytale", "Hytale" }
+    };
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        UpdateBreadcrumbs();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        UpdateBreadcrumbs();
+        StateHasChanged();
+    }
+
+    private void UpdateBreadcrumbs()
+    {
+        _breadcrumbs.Clear();
+
+        var uri = new Uri(Navigation.Uri);
+        var path = uri.AbsolutePath.Trim('/');
+
+        // Always start with Dashboard/Home
+        _breadcrumbs.Add(new BreadcrumbItem("Dashboard", "/"));
+
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var currentPath = "";
+
+        foreach (var segment in segments)
+        {
+            currentPath += "/" + segment;
+
+            // Check if segment is a GUID (entity ID)
+            if (Guid.TryParse(segment, out _))
+            {
+                // For GUIDs, use "Details" as the label
+                _breadcrumbs.Add(new BreadcrumbItem("Details", currentPath));
+            }
+            else if (RouteLabels.TryGetValue(segment, out var label))
+            {
+                _breadcrumbs.Add(new BreadcrumbItem(label, currentPath));
+            }
+            else
+            {
+                // Fallback: Capitalize the segment
+                var fallbackLabel = char.ToUpper(segment[0]) + segment[1..];
+                _breadcrumbs.Add(new BreadcrumbItem(fallbackLabel, currentPath));
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+
+    private record BreadcrumbItem(string Label, string Href);
+}

@@ -1,0 +1,560 @@
+@page "/games/new/custom"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.ValueObjects
+@using static NebulaPanel.Web.Components.Shared.WizardSteps
+@inject IGameService GameService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Add Custom Game - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+            <a href="/games" class="hover:text-nebula-text-primary transition-colors">Games</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <a href="/games/new" class="hover:text-nebula-text-primary transition-colors">Add Game</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">Custom Game</span>
+        </nav>
+        <h1 class="text-2xl font-semibold text-nebula-text-primary">Add Custom Game</h1>
+        <p class="text-nebula-text-muted mt-1">Manually configure a game server with full control over all settings.</p>
+    </div>
+
+    @* Wizard Steps *@
+    <WizardSteps CurrentStep="_currentStep" Steps="_wizardSteps" />
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Step 1: Basic Info *@
+    @if (_currentStep == 1)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Basic Information</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="name" class="label">Name <span class="text-nebula-error">*</span></label>
+                        <input id="name" type="text" @bind="_model.Name" class="input" placeholder="e.g., Minecraft" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Display name for this game</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="slug" class="label">Slug <span class="text-nebula-error">*</span></label>
+                        <input id="slug" type="text" @bind="_model.Slug" class="input" placeholder="e.g., minecraft" />
+                        <p class="text-xs text-nebula-text-muted mt-1">URL-friendly identifier (lowercase, no spaces)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="steamAppId" class="label">Steam App ID</label>
+                        <input id="steamAppId" type="text" @bind="_model.SteamAppId" class="input" placeholder="e.g., 376030" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Optional - for SteamCMD integration</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="iconPath" class="label">Icon URL</label>
+                        <input id="iconPath" type="text" @bind="_model.IconPath" class="input" placeholder="https://example.com/game-icon.png" />
+                        <p class="text-xs text-nebula-text-muted mt-1">URL to game icon image</p>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="GoBack" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" Disabled="@(!IsStep1Valid)" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 2: Executable & Docker *@
+    @if (_currentStep == 2)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Executable Configuration</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="executableType" class="label">Executable Type <span class="text-nebula-error">*</span></label>
+                        <select id="executableType" @bind="_model.ExecutableType" class="input">
+                            @foreach (var type in Enum.GetValues<ExecutableType>())
+                            {
+                                <option value="@type">@GetExecutableTypeLabel(type)</option>
+                            }
+                        </select>
+                        <p class="text-xs text-nebula-text-muted mt-1">@GetExecutableTypeHint(_model.ExecutableType)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="executablePath" class="label">Default Executable Path <span class="text-nebula-error">*</span></label>
+                        <input id="executablePath" type="text" @bind="_model.DefaultExecutablePath" class="input" placeholder="@GetExecutablePathPlaceholder(_model.ExecutableType)" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Relative to server install directory</p>
+                    </div>
+
+                    <div class="form-group md:col-span-2">
+                        <label for="startCommand" class="label">Default Start Command <span class="text-nebula-error">*</span></label>
+                        <input id="startCommand" type="text" @bind="_model.DefaultStartCommand" class="input" placeholder="@GetStartCommandPlaceholder(_model.ExecutableType)" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Command-line arguments to start the server</p>
+                    </div>
+
+                    <div class="form-group md:col-span-2">
+                        <label for="stopCommand" class="label">Default Stop Command</label>
+                        <input id="stopCommand" type="text" @bind="_model.DefaultStopCommand" class="input" placeholder="stop" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Command sent via console/RCON to gracefully stop the server</p>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card Class="mb-6">
+            <Header>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Docker Configuration</h2>
+                    <span class="text-xs text-nebula-text-muted">Optional</span>
+                </div>
+            </Header>
+            <ChildContent>
+                <div class="space-y-4">
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="supportsDocker" @bind="_model.SupportsDocker" class="checkbox" />
+                        <label for="supportsDocker" class="text-nebula-text-primary">Enable Docker Support</label>
+                    </div>
+
+                    @if (_model.SupportsDocker)
+                    {
+                        <div class="form-group">
+                            <label for="dockerImage" class="label">Default Docker Image</label>
+                            <input id="dockerImage" type="text" @bind="_model.DefaultDockerImage" class="input" placeholder="itzg/minecraft-server:latest" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Docker Hub image for containerized deployments</p>
+                        </div>
+                        <div class="form-group">
+                            <label for="dockerDataPath" class="label">Container Data Path</label>
+                            <input id="dockerDataPath" type="text" @bind="_model.DockerDataPath" class="input" placeholder="/data" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Path inside container where server data is stored (for volume mounts)</p>
+                        </div>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" Disabled="@(!IsStep2Valid)" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 3: Mod Providers *@
+    @if (_currentStep == 3)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Mod Configuration</h2>
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="supportsMods" @bind="_model.SupportsMods" class="checkbox" />
+                        <label for="supportsMods" class="text-nebula-text-primary text-sm">Enable Mod Support</label>
+                    </div>
+                </div>
+            </Header>
+            <ChildContent>
+                @if (_model.SupportsMods)
+                {
+                    @if (_model.ModProviders.Count == 0)
+                    {
+                        <div class="text-center py-8 text-nebula-text-muted">
+                            <Icon Name="package" Size="IconSize.Large" Class="mb-2" />
+                            <p>No mod providers configured.</p>
+                            <p class="text-sm">Add a provider to enable mod downloading and management.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-4 mb-4">
+                            @for (int i = 0; i < _model.ModProviders.Count; i++)
+                            {
+                                var index = i;
+                                var provider = _model.ModProviders[index];
+                                <div class="p-4 bg-nebula-bg-secondary rounded-nebula border border-nebula-border-subtle">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-3">
+                                            <input type="checkbox" @bind="provider.Enabled" class="checkbox" />
+                                            <span class="font-medium text-nebula-text-primary">@provider.Provider</span>
+                                            <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">
+                                                Search Order: @(index + 1)@GetOrdinalSuffix(index + 1)
+                                            </span>
+                                        </div>
+                                        <Button Variant="ButtonVariant.Ghost"
+                                                Size="ButtonSize.Small"
+                                                IconName="trash-2"
+                                                IconOnly="true"
+                                                OnClick="() => RemoveModProvider(index)" />
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div class="form-group">
+                                            <label class="label">
+                                                Provider Game ID
+                                                <span class="text-xs text-nebula-text-muted ml-1">(@GetProviderIdHelp(provider.Provider))</span>
+                                            </label>
+                                            <input type="text" @bind="provider.GameSlug" class="input" placeholder="@GetProviderIdPlaceholder(provider.Provider)" />
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label class="label">Game Version</label>
+                                            <input type="text" @bind="provider.GameVersion" class="input" placeholder="1.20.4" />
+                                        </div>
+
+                                        <div class="form-group md:col-span-2">
+                                            <label class="label">Mod Install Path</label>
+                                            <input type="text" @bind="provider.ModInstallPath" class="input" placeholder="mods/" />
+                                            <p class="text-xs text-nebula-text-muted mt-1">Relative path where downloaded mods will be installed</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <div class="flex items-center gap-2">
+                        <select @bind="_selectedProvider" class="input flex-1">
+                            <option value="">Select provider to add...</option>
+                            @foreach (var type in GetAvailableProviders())
+                            {
+                                <option value="@type">@type</option>
+                            }
+                        </select>
+                        <Button Variant="ButtonVariant.Secondary"
+                                Text="Add Provider"
+                                IconName="plus"
+                                OnClick="AddModProvider"
+                                Disabled="@(string.IsNullOrEmpty(_selectedProvider))" />
+                    </div>
+                }
+                else
+                {
+                    <p class="text-nebula-text-muted">Enable mod support above to configure mod providers.</p>
+                }
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 4: RCON & Review *@
+    @if (_currentStep == 4)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-medium text-nebula-text-primary">RCON Configuration</h2>
+                    <div class="flex items-center gap-3">
+                        <input type="checkbox" id="rconEnabled" @bind="_model.RconEnabled" class="checkbox" />
+                        <label for="rconEnabled" class="text-nebula-text-primary text-sm">Enable RCON by Default</label>
+                    </div>
+                </div>
+            </Header>
+            <ChildContent>
+                @if (_model.RconEnabled)
+                {
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="form-group">
+                            <label class="label">Protocol Type</label>
+                            <select @bind="_model.RconProtocol" class="input">
+                                @foreach (var protocol in Enum.GetValues<RconProtocolType>())
+                                {
+                                    <option value="@protocol">@protocol</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="label">Default Port</label>
+                            <input type="number" @bind="_model.RconPort" class="input" min="1" max="65535" />
+                        </div>
+
+                        @if (_model.RconProtocol == RconProtocolType.WebRcon)
+                        {
+                            <div class="form-group">
+                                <label class="label">WebRcon Path</label>
+                                <input type="text" @bind="_model.WebRconPath" class="input" placeholder="/" />
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-nebula-text-muted">Enable RCON above to configure remote console settings.</p>
+                }
+            </ChildContent>
+        </Card>
+
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Review Configuration</h2>
+            </Header>
+            <ChildContent>
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <div class="text-xs text-nebula-text-muted uppercase mb-1">Name</div>
+                            <div class="text-nebula-text-primary font-medium">@_model.Name</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-nebula-text-muted uppercase mb-1">Slug</div>
+                            <code class="text-nebula-text-secondary text-sm">@_model.Slug</code>
+                        </div>
+                        <div>
+                            <div class="text-xs text-nebula-text-muted uppercase mb-1">Type</div>
+                            <div class="text-nebula-text-secondary">@_model.ExecutableType</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-nebula-text-muted uppercase mb-1">Steam App ID</div>
+                            <code class="text-nebula-text-secondary text-sm">@(_model.SteamAppId ?? "None")</code>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        @if (_model.SupportsDocker)
+                        {
+                            <span class="px-3 py-1 rounded-full text-sm bg-nebula-info/10 text-nebula-info flex items-center gap-1">
+                                <Icon Name="box" Size="IconSize.XSmall" />
+                                Docker
+                            </span>
+                        }
+                        @if (_model.SupportsMods)
+                        {
+                            <span class="px-3 py-1 rounded-full text-sm bg-nebula-accent/10 text-nebula-accent flex items-center gap-1">
+                                <Icon Name="package" Size="IconSize.XSmall" />
+                                @_model.ModProviders.Count Provider(s)
+                            </span>
+                        }
+                        @if (_model.RconEnabled)
+                        {
+                            <span class="px-3 py-1 rounded-full text-sm bg-nebula-success/10 text-nebula-success flex items-center gap-1">
+                                <Icon Name="terminal" Size="IconSize.XSmall" />
+                                @_model.RconProtocol RCON
+                            </span>
+                        }
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Create Game" IconName="check" Loading="_submitting" OnClick="CreateGame" />
+        </div>
+    }
+</div>
+
+@code {
+    private int _currentStep = 1;
+    private bool _submitting;
+    private string? _error;
+    private string? _selectedProvider;
+
+    private readonly List<WizardStepInfo> _wizardSteps =
+    [
+        new("Basics"),
+        new("Executable"),
+        new("Mods"),
+        new("Review")
+    ];
+
+    private GameFormModel _model = new();
+
+    private bool IsStep1Valid => !string.IsNullOrWhiteSpace(_model.Name) && !string.IsNullOrWhiteSpace(_model.Slug);
+    private bool IsStep2Valid => !string.IsNullOrWhiteSpace(_model.DefaultExecutablePath) && !string.IsNullOrWhiteSpace(_model.DefaultStartCommand);
+
+    private void NextStep()
+    {
+        _error = null;
+        if (_currentStep < 4)
+            _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _error = null;
+        if (_currentStep > 1)
+            _currentStep--;
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/games/new");
+    }
+
+    private void AddModProvider()
+    {
+        if (Enum.TryParse<ModProviderType>(_selectedProvider, out var providerType))
+        {
+            _model.ModProviders.Add(new ModProviderConfiguration
+            {
+                Provider = providerType,
+                Enabled = true,
+                Priority = _model.ModProviders.Count,
+                ModInstallPath = "mods/"
+            });
+            _selectedProvider = null;
+        }
+    }
+
+    private void RemoveModProvider(int index)
+    {
+        if (index >= 0 && index < _model.ModProviders.Count)
+        {
+            _model.ModProviders.RemoveAt(index);
+            // Reorder priorities
+            for (int i = 0; i < _model.ModProviders.Count; i++)
+            {
+                _model.ModProviders[i].Priority = i;
+            }
+        }
+    }
+
+    private IEnumerable<ModProviderType> GetAvailableProviders()
+    {
+        var existingProviders = _model.ModProviders.Select(p => p.Provider).ToHashSet();
+        return Enum.GetValues<ModProviderType>().Where(p => !existingProviders.Contains(p));
+    }
+
+    private static string GetOrdinalSuffix(int number) => number switch
+    {
+        1 => "st",
+        2 => "nd",
+        3 => "rd",
+        _ => "th"
+    };
+
+    private static string GetProviderIdHelp(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modrinth => "Modrinth slug",
+        ModProviderType.CurseForge => "CurseForge slug",
+        ModProviderType.SteamWorkshop => "Steam App ID",
+        _ => "game identifier"
+    };
+
+    private static string GetProviderIdPlaceholder(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modrinth => "minecraft",
+        ModProviderType.CurseForge => "minecraft",
+        ModProviderType.SteamWorkshop => "252490",
+        _ => ""
+    };
+
+    private static string GetExecutableTypeLabel(ExecutableType type) => type switch
+    {
+        ExecutableType.Exe => "Executable (.exe)",
+        ExecutableType.Shell => "Shell Script (.sh)",
+        ExecutableType.Jar => "Java JAR (.jar)",
+        ExecutableType.SteamCmd => "SteamCMD Managed",
+        _ => type.ToString()
+    };
+
+    private static string GetExecutableTypeHint(ExecutableType type) => type switch
+    {
+        ExecutableType.Exe => "Windows executable or Linux binary",
+        ExecutableType.Shell => "Unix shell script (requires chmod +x)",
+        ExecutableType.Jar => "Java archive (requires JRE/JDK)",
+        ExecutableType.SteamCmd => "Managed via SteamCMD",
+        _ => ""
+    };
+
+    private static string GetExecutablePathPlaceholder(ExecutableType type) => type switch
+    {
+        ExecutableType.Jar => "server.jar",
+        ExecutableType.Shell => "start.sh",
+        _ => "server.exe"
+    };
+
+    private static string GetStartCommandPlaceholder(ExecutableType type) => type switch
+    {
+        ExecutableType.Jar => "java -Xmx4G -jar server.jar nogui",
+        ExecutableType.Shell => "./start.sh",
+        _ => "-batchmode -nographics"
+    };
+
+    private async Task CreateGame()
+    {
+        try
+        {
+            _submitting = true;
+            _error = null;
+
+            var request = new CreateGameRequest(
+                Name: _model.Name,
+                Slug: _model.Slug.ToLowerInvariant().Trim(),
+                SteamAppId: string.IsNullOrWhiteSpace(_model.SteamAppId) ? null : _model.SteamAppId,
+                ExecutableType: _model.ExecutableType,
+                DefaultExecutablePath: _model.DefaultExecutablePath,
+                DefaultStartCommand: _model.DefaultStartCommand,
+                DefaultStopCommand: string.IsNullOrWhiteSpace(_model.DefaultStopCommand) ? null : _model.DefaultStopCommand,
+                SupportsDocker: _model.SupportsDocker,
+                DefaultDockerImage: string.IsNullOrWhiteSpace(_model.DefaultDockerImage) ? null : _model.DefaultDockerImage,
+                DockerDataPath: string.IsNullOrWhiteSpace(_model.DockerDataPath) ? null : _model.DockerDataPath,
+                IconPath: string.IsNullOrWhiteSpace(_model.IconPath) ? null : _model.IconPath,
+                SupportsMods: _model.SupportsMods,
+                ModProviders: _model.SupportsMods ? _model.ModProviders : null,
+                RconDefaults: _model.RconEnabled ? new RconDefaults
+                {
+                    DefaultEnabled = true,
+                    Protocol = _model.RconProtocol,
+                    DefaultPort = _model.RconPort,
+                    UseWebSocket = _model.RconProtocol == RconProtocolType.WebRcon,
+                    WebRconPath = _model.WebRconPath
+                } : null,
+                ConfigurationSchemas: null
+            );
+
+            var result = await GameService.CreateGameAsync(request);
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo("/games");
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private class GameFormModel
+    {
+        public string Name { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string? SteamAppId { get; set; }
+        public ExecutableType ExecutableType { get; set; } = ExecutableType.Exe;
+        public string DefaultExecutablePath { get; set; } = "";
+        public string DefaultStartCommand { get; set; } = "";
+        public string? DefaultStopCommand { get; set; }
+        public bool SupportsDocker { get; set; }
+        public string? DefaultDockerImage { get; set; }
+        public string? DockerDataPath { get; set; }
+        public string? IconPath { get; set; }
+        public bool SupportsMods { get; set; }
+        public List<ModProviderConfiguration> ModProviders { get; set; } = [];
+        public bool RconEnabled { get; set; }
+        public RconProtocolType RconProtocol { get; set; } = RconProtocolType.Source;
+        public int RconPort { get; set; } = 25575;
+        public string? WebRconPath { get; set; }
+    }
+}

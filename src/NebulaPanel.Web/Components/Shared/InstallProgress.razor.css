@@ -1,0 +1,138 @@
+.phase-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 2rem;
+}
+
+.phase-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.phase-step-circle {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-muted);
+    transition: all 0.2s ease;
+}
+
+.phase-step-circle.active {
+    background-color: var(--nebula-accent);
+    color: white;
+}
+
+.phase-step-circle.complete {
+    background-color: var(--nebula-success);
+    color: white;
+}
+
+.phase-step-circle.error {
+    background-color: var(--nebula-error);
+    color: white;
+}
+
+.phase-step-label {
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.phase-connector {
+    width: 3rem;
+    height: 2px;
+    background-color: var(--nebula-border-subtle);
+    margin: 0 0.5rem;
+    margin-bottom: 1.5rem;
+    transition: background-color 0.2s ease;
+}
+
+.phase-connector.complete {
+    background-color: var(--nebula-success);
+}
+
+.progress-container {
+    position: relative;
+    height: 0.75rem;
+    border-radius: 9999px;
+    background-color: var(--nebula-bg-tertiary);
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, var(--nebula-accent), #c084fc);
+    transition: width 0.3s ease-out;
+}
+
+.progress-bar.animated {
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+.log-container {
+    border: 1px solid var(--nebula-border-subtle);
+    border-radius: var(--nebula-radius);
+    overflow: hidden;
+}
+
+.log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    background-color: var(--nebula-bg-tertiary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.log-header:hover {
+    background-color: var(--nebula-bg-elevated);
+}
+
+.log-viewer {
+    height: 12rem;
+    overflow-y: auto;
+    padding: 1rem;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    background-color: var(--nebula-bg-primary);
+    color: var(--nebula-text-secondary);
+}
+
+.log-viewer::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-viewer::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.log-viewer::-webkit-scrollbar-thumb {
+    background-color: var(--nebula-border);
+    border-radius: 3px;
+}
+
+.log-line {
+    padding: 0.125rem 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}

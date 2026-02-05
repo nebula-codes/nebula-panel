@@ -1,0 +1,1106 @@
+@page "/servers/{ServerId:guid}/mods"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.Repositories
+@using System.Text.RegularExpressions
+@inject IGameServerService ServerService
+@inject IUnifiedModService ModService
+@inject IGameServerRepository ServerRepository
+@inject IToastService ToastService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Mods - @(_serverName ?? "Server") - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="flex flex-col items-center gap-4">
+                <span class="spinner w-8 h-8"></span>
+                <span class="text-nebula-text-muted">Loading mods...</span>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <ErrorAlert Message="@_error">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Back to Server"
+                    Class="mt-4"
+                    OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}"))" />
+        </ErrorAlert>
+    }
+    else
+    {
+        @* Header *@
+        <div class="flex items-start justify-between gap-4 mb-6">
+            <div class="flex items-center gap-4">
+                <Button Variant="ButtonVariant.Ghost"
+                        IconName="arrow-left"
+                        IconOnly="true"
+                        OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}"))" />
+
+                <div>
+                    <h1 class="text-2xl font-semibold text-nebula-text-primary">Mods</h1>
+                    <p class="text-nebula-text-muted mt-1">Manage mods for @_serverName</p>
+                </div>
+            </div>
+        </div>
+
+        @* Tab navigation *@
+        <div class="flex border-b border-nebula-border mb-6">
+            <button class="@GetTabClass("installed")"
+                    @onclick="@(async () => await SetActiveTab("installed"))">
+                <Icon Name="package" Size="IconSize.Small" />
+                <span>Installed</span>
+                @if (_installedMods.Count > 0)
+                {
+                    <span class="bg-nebula-bg-tertiary text-nebula-text-secondary px-2 py-0.5 rounded-full text-xs">
+                        @_installedMods.Count
+                    </span>
+                }
+            </button>
+            <button class="@GetTabClass("browse")"
+                    @onclick="@(async () => await SetActiveTab("browse"))">
+                <Icon Name="search" Size="IconSize.Small" />
+                <span>Browse</span>
+            </button>
+            @if (_availableUpdates.Count > 0)
+            {
+                <button class="@GetTabClass("updates")"
+                        @onclick="@(async () => await SetActiveTab("updates"))">
+                    <Icon Name="download" Size="IconSize.Small" />
+                    <span>Updates</span>
+                    <span class="bg-nebula-accent text-white px-2 py-0.5 rounded-full text-xs">
+                        @_availableUpdates.Count
+                    </span>
+                </button>
+            }
+        </div>
+
+        @* Tab content *@
+        @if (_activeTab == "installed")
+        {
+            @* Installed mods list *@
+            @if (_installedMods.Count == 0)
+            {
+                <div class="text-center py-12 bg-nebula-bg-secondary rounded-nebula border border-nebula-border">
+                    <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-4" />
+                    <h3 class="text-lg font-medium text-nebula-text-primary mb-2">No mods installed</h3>
+                    <p class="text-nebula-text-muted mb-4">Browse available mods to get started.</p>
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="Browse Mods"
+                            OnClick="@(async () => await SetActiveTab("browse"))" />
+                </div>
+            }
+            else
+            {
+                <div class="grid gap-4">
+                    @foreach (var mod in _installedMods)
+                    {
+                        <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4">
+                            <div class="flex items-start gap-4">
+                                @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                {
+                                    <img src="@mod.IconUrl" alt="@mod.Name" class="w-12 h-12 object-cover rounded-lg" />
+                                }
+                                else
+                                {
+                                    <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                                        <Icon Name="package" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+                                    </div>
+                                }
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <h4 class="font-medium text-nebula-text-primary truncate">@mod.Name</h4>
+                                        <span class="text-xs text-nebula-text-muted px-2 py-0.5 bg-nebula-bg-tertiary rounded">
+                                            @mod.Version
+                                        </span>
+                                        <span class="text-xs text-nebula-text-muted px-2 py-0.5 bg-nebula-bg-tertiary rounded">
+                                            @mod.Provider
+                                        </span>
+                                    </div>
+                                    <p class="text-sm text-nebula-text-muted mt-1">
+                                        Installed @FormatRelativeTime(mod.InstalledAt)
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    @* Enable/Disable toggle *@
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="@(mod.IsEnabled ? "toggle-right" : "toggle-left")"
+                                            IconOnly="true"
+                                            Class="@(mod.IsEnabled ? "text-nebula-success" : "text-nebula-text-muted")"
+                                            title="@(mod.IsEnabled ? "Enabled - Click to disable" : "Disabled - Click to enable")"
+                                            OnClick="@(() => ToggleMod(mod))" />
+                                    @* View details *@
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="eye"
+                                            IconOnly="true"
+                                            title="View details"
+                                            OnClick="@(() => ViewModDetails(mod))" />
+                                    @* Delete *@
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="trash-2"
+                                            IconOnly="true"
+                                            Class="hover:text-nebula-error"
+                                            title="Delete mod"
+                                            OnClick="@(() => ConfirmUninstallMod(mod))" />
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (_activeTab == "browse")
+        {
+            @* Browse/Search mods *@
+            <div class="space-y-4">
+                @* Provider tabs *@
+                @if (_providers.Count > 0)
+                {
+                    <div class="flex gap-2 flex-wrap">
+                        @foreach (var provider in _providers.Where(p => p.Enabled))
+                        {
+                            var providerType = provider.Type;
+                            <button class="@GetProviderTabClass(provider.Type)"
+                                    @onclick="@(async () => await SetActiveProvider(providerType))">
+                                @provider.Name
+                            </button>
+                        }
+                    </div>
+                }
+
+                @* Search input and filters *@
+                <div class="flex flex-col gap-4">
+                    <div class="flex gap-4">
+                        <div class="flex-1 relative">
+                            <Icon Name="search" Size="IconSize.Small"
+                                  Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                            <input type="text"
+                                   @bind="_searchQuery"
+                                   @bind:event="oninput"
+                                   @onkeydown="HandleSearchKeyDown"
+                                   placeholder="Search mods..."
+                                   class="w-full pl-10 pr-4 py-2 bg-nebula-bg-primary border border-nebula-border rounded-nebula text-nebula-text-primary placeholder:text-nebula-text-muted focus:outline-none focus:ring-2 focus:ring-nebula-accent/50 focus:border-nebula-accent" />
+                        </div>
+                        <Button Variant="ButtonVariant.Primary"
+                                Text="Search"
+                                IconName="search"
+                                OnClick="SearchMods" />
+                    </div>
+
+                    @* Sort, version filter, and page size controls *@
+                    <div class="flex items-center justify-between gap-4 flex-wrap">
+                        <div class="flex items-center gap-4 flex-wrap">
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm text-nebula-text-muted">Sort by:</label>
+                                <select @bind="_sortBy" @bind:after="OnSortChanged"
+                                        class="bg-nebula-bg-primary border border-nebula-border rounded-nebula px-3 py-1.5 text-sm text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-accent/50 focus:border-nebula-accent">
+                                    <option value="@ModSearchSort.Downloads">Downloads</option>
+                                    <option value="@ModSearchSort.Updated">Recently Updated</option>
+                                    <option value="@ModSearchSort.Created">Newest</option>
+                                    <option value="@ModSearchSort.Name">Name</option>
+                                    <option value="@ModSearchSort.Relevance">Relevance</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           checked="@_filterByVersion"
+                                           @onchange="OnVersionFilterChanged"
+                                           class="w-4 h-4 rounded border-nebula-border bg-nebula-bg-primary text-nebula-accent focus:ring-nebula-accent/50" />
+                                    <span class="text-sm text-nebula-text-secondary">
+                                        @if (!string.IsNullOrEmpty(_parsedGameVersion))
+                                        {
+                                            @if (!string.IsNullOrEmpty(_parsedModLoader))
+                                            {
+                                                <text>@(_parsedModLoader.ToUpperInvariant()) @_parsedGameVersion only</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Version @_parsedGameVersion only</text>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <text>Filter by version (not set)</text>
+                                        }
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-nebula-text-muted">Show:</label>
+                            <select @bind="_pageSize" @bind:after="OnPageSizeChanged"
+                                    class="bg-nebula-bg-primary border border-nebula-border rounded-nebula px-3 py-1.5 text-sm text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-accent/50 focus:border-nebula-accent">
+                                @foreach (var size in _pageSizeOptions)
+                                {
+                                    <option value="@size">@size</option>
+                                }
+                            </select>
+                            <span class="text-sm text-nebula-text-muted">per page</span>
+                        </div>
+                    </div>
+                </div>
+
+                @* Search results - Compact datagrid *@
+                @if (_searching)
+                {
+                    <div class="flex items-center justify-center py-8">
+                        <span class="spinner w-6 h-6"></span>
+                        <span class="ml-2 text-nebula-text-muted">Searching...</span>
+                    </div>
+                }
+                else if (_searchResults.Count > 0)
+                {
+                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border overflow-hidden overflow-x-auto">
+                        <table class="w-full min-w-[800px]">
+                            <thead class="bg-nebula-bg-tertiary border-b border-nebula-border">
+                                <tr>
+                                    <th class="text-left text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3">Mod</th>
+                                    <th class="text-left text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3 w-32">Author</th>
+                                    <th class="text-left text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3 w-48">Categories</th>
+                                    <th class="text-left text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3 w-28">Version</th>
+                                    <th class="text-right text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3 w-24">Downloads</th>
+                                    <th class="text-right text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3 w-28">Updated</th>
+                                    <th class="text-center text-xs font-medium text-nebula-text-muted uppercase tracking-wider px-4 py-3 w-24">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-nebula-border">
+                                @foreach (var mod in _searchResults)
+                                {
+                                    <tr class="hover:bg-nebula-bg-tertiary/50 transition-colors">
+                                        @* Mod name & icon *@
+                                        <td class="px-4 py-1.5">
+                                            <div class="flex items-center gap-2">
+                                                @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                                {
+                                                    <img src="@mod.IconUrl" alt="@mod.Name" class="w-6 h-6 object-cover rounded flex-shrink-0" />
+                                                }
+                                                else
+                                                {
+                                                    <div class="w-6 h-6 bg-nebula-bg-tertiary rounded flex items-center justify-center flex-shrink-0">
+                                                        <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                                    </div>
+                                                }
+                                                <div class="min-w-0">
+                                                    <div class="text-sm font-medium text-nebula-text-primary truncate max-w-[200px]" title="@mod.Name">@mod.Name</div>
+                                                    <div class="text-xs text-nebula-text-muted truncate max-w-[200px]" title="@mod.Summary">@mod.Summary</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        @* Author *@
+                                        <td class="px-4 py-2 text-sm text-nebula-text-secondary">
+                                            <span class="truncate block max-w-[120px]" title="@mod.Author">@(mod.Author ?? "-")</span>
+                                        </td>
+                                        @* Categories *@
+                                        <td class="px-4 py-2">
+                                            <div class="flex flex-wrap gap-1">
+                                                @if (mod.Categories?.Count > 0)
+                                                {
+                                                    @foreach (var category in mod.Categories.Take(3))
+                                                    {
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-nebula-bg-tertiary text-nebula-text-secondary">
+                                                            @FormatCategory(category)
+                                                        </span>
+                                                    }
+                                                    @if (mod.Categories.Count > 3)
+                                                    {
+                                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-nebula-bg-tertiary text-nebula-text-muted" title="@string.Join(", ", mod.Categories.Skip(3))">
+                                                            +@(mod.Categories.Count - 3)
+                                                        </span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-xs text-nebula-text-muted">-</span>
+                                                }
+                                            </div>
+                                        </td>
+                                        @* Game Version *@
+                                        <td class="px-4 py-2 text-sm">
+                                            @if (mod.GameVersions?.Count > 0)
+                                            {
+                                                <span class="text-nebula-text-secondary" title="@string.Join(", ", mod.GameVersions.Take(5))">
+                                                    @mod.GameVersions.First()
+                                                </span>
+                                                @if (mod.GameVersions.Count > 1)
+                                                {
+                                                    <span class="text-nebula-text-muted text-xs"> +@(mod.GameVersions.Count - 1)</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-nebula-text-muted">-</span>
+                                            }
+                                        </td>
+                                        @* Downloads *@
+                                        <td class="px-4 py-2 text-sm text-nebula-text-secondary text-right tabular-nums">
+                                            @FormatDownloads(mod.Downloads)
+                                        </td>
+                                        @* Updated *@
+                                        <td class="px-4 py-2 text-sm text-nebula-text-muted text-right">
+                                            @if (mod.UpdatedAt.HasValue)
+                                            {
+                                                <span title="@mod.UpdatedAt.Value.ToString("f")">@FormatRelativeTime(mod.UpdatedAt.Value)</span>
+                                            }
+                                            else
+                                            {
+                                                <span>-</span>
+                                            }
+                                        </td>
+                                        @* Action *@
+                                        <td class="px-4 py-2 text-center">
+                                            @if (IsModInstalled(mod))
+                                            {
+                                                <span class="inline-flex items-center gap-1 text-xs text-nebula-success">
+                                                    <Icon Name="check" Size="IconSize.Small" />
+                                                    Installed
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <Button Variant="ButtonVariant.Primary"
+                                                        Size="ButtonSize.Small"
+                                                        Text="Install"
+                                                        OnClick="@(() => InstallMod(mod))" />
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @* Pagination *@
+                    @if (_totalPages > 1)
+                    {
+                        <div class="flex items-center justify-between mt-4">
+                            <div class="text-sm text-nebula-text-muted">
+                                Showing @((_currentPage - 1) * _pageSize + 1)-@Math.Min(_currentPage * _pageSize, _totalCount) of @_totalCount mods
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Size="ButtonSize.Small"
+                                        IconName="chevron-left"
+                                        IconOnly="true"
+                                        Disabled="@(_currentPage <= 1)"
+                                        OnClick="@(async () => await GoToPageAsync(_currentPage - 1))" />
+
+                                @foreach (var pageNumber in GetPageNumbers())
+                                {
+                                    @if (pageNumber == -1)
+                                    {
+                                        <span class="px-2 text-nebula-text-muted">...</span>
+                                    }
+                                    else
+                                    {
+                                        var num = pageNumber;
+                                        <button class="@GetPageButtonClass(pageNumber)"
+                                                @onclick="@(async () => await GoToPageAsync(num))">
+                                            @pageNumber
+                                        </button>
+                                    }
+                                }
+
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Size="ButtonSize.Small"
+                                        IconName="chevron-right"
+                                        IconOnly="true"
+                                        Disabled="@(_currentPage >= _totalPages)"
+                                        OnClick="@(async () => await GoToPageAsync(_currentPage + 1))" />
+                            </div>
+                        </div>
+                    }
+                }
+                else if (_hasSearched)
+                {
+                    <div class="text-center py-8 text-nebula-text-muted">
+                        No mods found matching your search.
+                    </div>
+                }
+            </div>
+        }
+        else if (_activeTab == "updates")
+        {
+            @* Available updates *@
+            <div class="grid gap-4">
+                @foreach (var update in _availableUpdates)
+                {
+                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4">
+                        <div class="flex items-center justify-between gap-4">
+                            <div>
+                                <h4 class="font-medium text-nebula-text-primary">@update.ModName</h4>
+                                <p class="text-sm text-nebula-text-muted">
+                                    @update.CurrentVersion &rarr; <span class="text-nebula-accent">@update.LatestVersion</span>
+                                </p>
+                            </div>
+                            <Button Variant="ButtonVariant.Primary"
+                                    Size="ButtonSize.Small"
+                                    Text="Update"
+                                    IconName="download"
+                                    OnClick="@(() => UpdateMod(update))" />
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@* Mod Details Modal *@
+<Modal IsOpen="@_showDetailsModal" Size="ModalSize.Medium" OnClose="CloseDetailsModal">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Mod Details</span>
+    </Header>
+    <Body>
+        @if (_selectedMod != null)
+        {
+            <div class="space-y-4">
+                @* Header with icon *@
+                <div class="flex items-start gap-4">
+                    @if (!string.IsNullOrEmpty(_selectedMod.IconUrl))
+                    {
+                        <img src="@_selectedMod.IconUrl" alt="@_selectedMod.Name" class="w-16 h-16 object-cover rounded-lg" />
+                    }
+                    else
+                    {
+                        <div class="w-16 h-16 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                            <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <div>
+                        <h3 class="text-xl font-semibold text-nebula-text-primary">@_selectedMod.Name</h3>
+                        <p class="text-sm text-nebula-text-muted">ID: @_selectedMod.ModId</p>
+                    </div>
+                </div>
+
+                @* Info grid *@
+                <div class="grid grid-cols-2 gap-4 p-4 bg-nebula-bg-tertiary rounded-nebula">
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Version</span>
+                        <p class="text-sm text-nebula-text-primary font-medium">@_selectedMod.Version</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Provider</span>
+                        <p class="text-sm text-nebula-text-primary font-medium">@_selectedMod.Provider</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Installed</span>
+                        <p class="text-sm text-nebula-text-primary font-medium">@_selectedMod.InstalledAt.ToString("MMM d, yyyy")</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Status</span>
+                        <p class="text-sm font-medium @(_selectedMod.IsEnabled ? "text-nebula-success" : "text-nebula-text-muted")">
+                            @(_selectedMod.IsEnabled ? "Enabled" : "Disabled")
+                        </p>
+                    </div>
+                </div>
+
+                @* File path *@
+                @if (!string.IsNullOrEmpty(_selectedMod.LocalPath))
+                {
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">File Path</span>
+                        <p class="text-sm text-nebula-text-secondary font-mono break-all">@_selectedMod.LocalPath</p>
+                    </div>
+                }
+            </div>
+        }
+    </Body>
+    <Footer>
+        <div class="flex justify-end gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="CloseDetailsModal" />
+        </div>
+    </Footer>
+</Modal>
+
+@* Delete Confirmation Modal *@
+<Modal IsOpen="@(_modToDelete != null)" Size="ModalSize.Small" OnClose="CancelDelete">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Delete Mod</span>
+    </Header>
+    <Body>
+        <div class="space-y-3">
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_modToDelete?.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted">
+                This will permanently remove the mod file from your server.
+            </p>
+        </div>
+    </Body>
+    <Footer>
+        <div class="flex justify-end gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDelete" />
+            <Button Variant="ButtonVariant.Danger"
+                    Text="Delete"
+                    IconName="trash-2"
+                    Loading="@_deleting"
+                    OnClick="ConfirmDelete" />
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    private Domain.Entities.GameServer? _server;
+    private string? _serverName;
+    private bool _loading = true;
+    private string? _error;
+    private string _activeTab = "installed";
+    private ModProviderType? _activeProvider;
+
+    // Installed mods
+    private List<ServerModDto> _installedMods = [];
+
+    // Available updates
+    private List<ModUpdateInfo> _availableUpdates = [];
+
+    // Providers
+    private List<ModProviderInfo> _providers = [];
+
+    // Search
+    private string _searchQuery = "";
+    private bool _searching;
+    private bool _hasSearched;
+    private List<ModSearchItem> _searchResults = [];
+
+    // Pagination
+    private int _currentPage = 1;
+    private int _totalPages;
+    private int _totalCount;
+    private int _pageSize = 10;
+    private static readonly int[] _pageSizeOptions = [10, 25, 50, 100];
+
+    // Sorting
+    private ModSearchSort _sortBy = ModSearchSort.Downloads;
+
+    // Version filtering
+    private bool _filterByVersion = true;
+    private string? _parsedGameVersion;
+    private string? _parsedModLoader;
+
+    // Mod details modal
+    private ServerModDto? _selectedMod;
+    private bool _showDetailsModal;
+
+    // Delete confirmation modal
+    private ServerModDto? _modToDelete;
+    private bool _deleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            // Get server with game details
+            _server = await ServerRepository.GetByIdWithGameAsync(ServerId);
+            if (_server is null)
+            {
+                _error = "Server not found";
+                return;
+            }
+
+            _serverName = _server.Name;
+
+            // Parse version info from InstalledVersion (e.g., "forge-1.20.1-recommended" -> version: "1.20.1", loader: "forge")
+            ParseVersionInfo(_server.InstalledVersion);
+
+            // Get providers for this game
+            if (_server.Game is not null)
+            {
+                _providers = ModService.GetProvidersForGame(_server.Game).ToList();
+            }
+
+            // Load installed mods and check for updates
+            var installedMods = await ModService.GetInstalledAsync(_server);
+            _installedMods = installedMods.ToList();
+
+            var updates = await ModService.CheckAllUpdatesAsync(_server);
+            _availableUpdates = updates.ToList();
+
+            // Set default active provider if available
+            if (_activeProvider == null && _providers.Count > 0)
+            {
+                var firstEnabled = _providers.FirstOrDefault(p => p.Enabled);
+                if (firstEnabled is not null)
+                {
+                    _activeProvider = firstEnabled.Type;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SetActiveTab(string tab)
+    {
+        _activeTab = tab;
+
+        // Load popular mods when switching to browse tab
+        if (tab == "browse" && _searchResults.Count == 0 && !_hasSearched)
+        {
+            await LoadPopularModsAsync();
+        }
+    }
+
+    private async Task SetActiveProvider(ModProviderType provider)
+    {
+        _activeProvider = provider;
+        _searchResults.Clear();
+        _hasSearched = false;
+        _currentPage = 1;
+
+        // Load popular mods for this provider
+        await LoadPopularModsAsync();
+    }
+
+    private async Task LoadPopularModsAsync()
+    {
+        if (_server is null) return;
+
+        // Set default provider if not set
+        if (!_activeProvider.HasValue && _providers.Count > 0)
+        {
+            var firstProvider = _providers.FirstOrDefault(p => p.Enabled);
+            if (firstProvider is not null)
+            {
+                _activeProvider = firstProvider.Type;
+            }
+        }
+
+        // Use shared search method with empty query (returns popular mods sorted by downloads)
+        _searchQuery = "";
+        await ExecuteSearchAsync();
+    }
+
+    private async Task SearchMods()
+    {
+        if (_server is null) return;
+
+        // Reset to page 1 for new searches
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _currentPage = 1;
+        }
+
+        await ExecuteSearchAsync();
+    }
+
+    private async Task ExecuteSearchAsync()
+    {
+        if (_server is null) return;
+
+        try
+        {
+            _searching = true;
+            _hasSearched = true;
+
+            var gameVersion = _filterByVersion ? _parsedGameVersion : null;
+            var modLoader = _filterByVersion ? _parsedModLoader : null;
+            Console.WriteLine($"[ModSearch] Searching with GameVersion={gameVersion ?? "null"}, ModLoader={modLoader ?? "null"}");
+
+            var query = new ModSearchQuery(
+                Query: string.IsNullOrWhiteSpace(_searchQuery) ? null : _searchQuery,
+                GameSlug: _server.Game?.Slug,
+                GameVersion: gameVersion,
+                ModLoader: modLoader,
+                Sort: _sortBy,
+                Page: _currentPage,
+                PageSize: _pageSize,
+                Categories: null
+            );
+
+            if (_activeProvider.HasValue)
+            {
+                // Search specific provider (supports pagination)
+                var result = await ModService.SearchProviderAsync(_server, _activeProvider.Value, query);
+                _searchResults = result.Mods.ToList();
+                _totalCount = result.TotalCount;
+                _totalPages = result.TotalPages;
+            }
+            else
+            {
+                // Unified search across all providers (no pagination, get first page only)
+                var unifiedResult = await ModService.SearchAsync(_server, query);
+                _searchResults = unifiedResult.Mods.ToList();
+                _totalCount = unifiedResult.TotalCount;
+                _totalPages = unifiedResult.HasMoreResults ? 2 : 1; // Simplified - unified search doesn't paginate well
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Search failed: {ex.Message}");
+            ToastService.ShowError("Failed to search mods. Please try again.");
+            _searchResults = [];
+            _totalCount = 0;
+            _totalPages = 0;
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SearchMods();
+        }
+    }
+
+    private async Task InstallMod(ModSearchItem mod)
+    {
+        if (_server is null) return;
+
+        try
+        {
+            var result = await ModService.InstallAsync(_server, mod.Provider, mod.Id, null);
+            if (result.Success && result.InstalledMod != null)
+            {
+                _installedMods.Add(result.InstalledMod);
+                ToastService.ShowSuccess($"Successfully installed {mod.Name}");
+                StateHasChanged();
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to install mod");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Install failed: {ex.Message}");
+            ToastService.ShowError($"Failed to install {mod.Name}");
+        }
+    }
+
+    private async Task ToggleMod(ServerModDto mod)
+    {
+        if (_server is null) return;
+
+        try
+        {
+            var result = await ModService.ToggleAsync(_server, mod.Id);
+            if (result.IsSuccess && result.Value != null)
+            {
+                // Update the local list with the new state
+                var index = _installedMods.FindIndex(m => m.Id == mod.Id);
+                if (index >= 0)
+                {
+                    _installedMods[index] = result.Value;
+                }
+                var newState = result.Value.IsEnabled ? "enabled" : "disabled";
+                ToastService.ShowSuccess($"{mod.Name} has been {newState}");
+                StateHasChanged();
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to toggle mod");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Toggle failed: {ex.Message}");
+            ToastService.ShowError($"Failed to toggle {mod.Name}");
+        }
+    }
+
+    private async Task UninstallMod(ServerModDto mod)
+    {
+        if (_server is null) return;
+
+        try
+        {
+            var result = await ModService.UninstallAsync(_server, mod.Id);
+            if (result.IsSuccess)
+            {
+                _installedMods.RemoveAll(m => m.Id == mod.Id);
+                ToastService.ShowSuccess($"Successfully uninstalled {mod.Name}");
+                StateHasChanged();
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to uninstall mod");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Uninstall failed: {ex.Message}");
+            ToastService.ShowError($"Failed to uninstall {mod.Name}");
+        }
+    }
+
+    private void ViewModDetails(ServerModDto mod)
+    {
+        _selectedMod = mod;
+        _showDetailsModal = true;
+    }
+
+    private void CloseDetailsModal()
+    {
+        _selectedMod = null;
+        _showDetailsModal = false;
+    }
+
+    private void ConfirmUninstallMod(ServerModDto mod)
+    {
+        _modToDelete = mod;
+    }
+
+    private void CancelDelete()
+    {
+        _modToDelete = null;
+        _deleting = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_modToDelete == null || _server == null) return;
+
+        _deleting = true;
+        StateHasChanged();
+
+        try
+        {
+            var modName = _modToDelete.Name;
+            var result = await ModService.UninstallAsync(_server, _modToDelete.Id);
+            if (result.IsSuccess)
+            {
+                _installedMods.RemoveAll(m => m.Id == _modToDelete.Id);
+                ToastService.ShowSuccess($"Successfully deleted {modName}");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to delete mod");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Delete failed: {ex.Message}");
+            ToastService.ShowError("Failed to delete mod");
+        }
+        finally
+        {
+            _modToDelete = null;
+            _deleting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UpdateMod(ModUpdateInfo update)
+    {
+        if (_server is null) return;
+
+        try
+        {
+            var result = await ModService.UpdateAsync(_server, update.InstalledModId);
+            if (result.Success)
+            {
+                // Remove from available updates
+                _availableUpdates.RemoveAll(u => u.InstalledModId == update.InstalledModId);
+
+                // Reload installed mods
+                var installedMods = await ModService.GetInstalledAsync(_server);
+                _installedMods = installedMods.ToList();
+                ToastService.ShowSuccess($"Successfully updated {update.ModName} to {update.LatestVersion}");
+                StateHasChanged();
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to update mod");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Update failed: {ex.Message}");
+            ToastService.ShowError($"Failed to update {update.ModName}");
+        }
+    }
+
+    private bool IsModInstalled(ModSearchItem mod)
+    {
+        return _installedMods.Any(m => m.ModId == mod.Id && m.Provider == mod.Provider);
+    }
+
+    private string GetTabClass(string tab)
+    {
+        var baseClass = "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors";
+        return tab == _activeTab
+            ? $"{baseClass} border-nebula-accent text-nebula-accent"
+            : $"{baseClass} border-transparent text-nebula-text-muted hover:text-nebula-text-primary hover:border-nebula-border";
+    }
+
+    private string GetProviderTabClass(ModProviderType provider)
+    {
+        var baseClass = "px-4 py-2 text-sm font-medium rounded-nebula transition-colors";
+        return provider == _activeProvider
+            ? $"{baseClass} bg-nebula-accent text-white"
+            : $"{baseClass} bg-nebula-bg-tertiary text-nebula-text-secondary hover:bg-nebula-bg-primary";
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+
+    private static string FormatDownloads(long downloads)
+    {
+        if (downloads >= 1_000_000) return $"{downloads / 1_000_000.0:F1}M";
+        if (downloads >= 1_000) return $"{downloads / 1_000.0:F1}K";
+        return downloads.ToString();
+    }
+
+    private static string FormatCategory(string category)
+    {
+        // Convert kebab-case or snake_case to Title Case
+        return string.Join(" ", category
+            .Replace("-", " ")
+            .Replace("_", " ")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(word => char.ToUpper(word[0]) + word[1..].ToLower()));
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        if (page < 1 || page > _totalPages || page == _currentPage) return;
+
+        _currentPage = page;
+        await ExecuteSearchAsync();
+    }
+
+    private async Task OnSortChanged()
+    {
+        _currentPage = 1; // Reset to first page when sort changes
+        await ExecuteSearchAsync();
+    }
+
+    private async Task OnPageSizeChanged()
+    {
+        _currentPage = 1; // Reset to first page when page size changes
+        await ExecuteSearchAsync();
+    }
+
+    private async Task OnVersionFilterChanged(ChangeEventArgs e)
+    {
+        _filterByVersion = (bool)(e.Value ?? true);
+        _currentPage = 1; // Reset to first page when filter changes
+        await ExecuteSearchAsync();
+    }
+
+    private void ParseVersionInfo(string? installedVersion)
+    {
+        _parsedGameVersion = null;
+        _parsedModLoader = null;
+
+        if (string.IsNullOrWhiteSpace(installedVersion))
+            return;
+
+        // Extract mod loader (forge, fabric, neoforge, quilt)
+        var loaderMatch = Regex.Match(installedVersion, @"\b(forge|fabric|neoforge|quilt)\b", RegexOptions.IgnoreCase);
+        if (loaderMatch.Success)
+        {
+            _parsedModLoader = loaderMatch.Value.ToLowerInvariant();
+        }
+
+        // Extract Minecraft version (patterns like 1.20.1, 1.7.10, 1.20)
+        var versionMatch = Regex.Match(installedVersion, @"\b(\d+\.\d+(?:\.\d+)?)\b");
+        if (versionMatch.Success)
+        {
+            _parsedGameVersion = versionMatch.Groups[1].Value;
+        }
+
+        Console.WriteLine($"[ModSearch] Parsed version info: GameVersion={_parsedGameVersion}, ModLoader={_parsedModLoader} (from '{installedVersion}')");
+    }
+
+    private IEnumerable<int> GetPageNumbers()
+    {
+        // Show up to 7 page buttons with ellipsis
+        const int maxVisiblePages = 7;
+
+        if (_totalPages <= maxVisiblePages)
+        {
+            return Enumerable.Range(1, _totalPages);
+        }
+
+        var pages = new List<int>();
+
+        // Always show first page
+        pages.Add(1);
+
+        int start = Math.Max(2, _currentPage - 2);
+        int end = Math.Min(_totalPages - 1, _currentPage + 2);
+
+        // Adjust range if at start or end
+        if (_currentPage <= 3)
+        {
+            end = Math.Min(_totalPages - 1, 5);
+        }
+        else if (_currentPage >= _totalPages - 2)
+        {
+            start = Math.Max(2, _totalPages - 4);
+        }
+
+        // Add ellipsis before middle pages if needed
+        if (start > 2)
+        {
+            pages.Add(-1); // -1 represents ellipsis
+        }
+
+        // Add middle pages
+        for (int i = start; i <= end; i++)
+        {
+            pages.Add(i);
+        }
+
+        // Add ellipsis after middle pages if needed
+        if (end < _totalPages - 1)
+        {
+            pages.Add(-1); // -1 represents ellipsis
+        }
+
+        // Always show last page
+        pages.Add(_totalPages);
+
+        return pages;
+    }
+
+    private string GetPageButtonClass(int page)
+    {
+        var baseClass = "w-8 h-8 text-sm font-medium rounded transition-colors";
+        return page == _currentPage
+            ? $"{baseClass} bg-nebula-accent text-white"
+            : $"{baseClass} text-nebula-text-secondary hover:bg-nebula-bg-tertiary";
+    }
+}

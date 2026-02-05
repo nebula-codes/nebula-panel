@@ -1,0 +1,646 @@
+@page "/roles/create"
+@page "/roles/{Id:guid}/edit"
+@attribute [Authorize(Policy = "ManageRoles")]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using System.ComponentModel.DataAnnotations
+@inject IRoleService RoleService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>@(IsCreateMode ? "Create Role" : "Edit Role") - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-5xl mx-auto">
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else if (!IsCreateMode && _role is null)
+    {
+        <div class="text-center py-12">
+            <Icon Name="alert-circle" Size="IconSize.Large" Class="text-nebula-error mx-auto mb-4" />
+            <h2 class="text-xl font-medium text-nebula-text-primary mb-2">Role Not Found</h2>
+            <p class="text-nebula-text-muted mb-6">The role you're looking for doesn't exist.</p>
+            <Button Variant="ButtonVariant.Secondary" Text="Back to Roles" OnClick="@(() => Navigation.NavigateTo("/roles"))" />
+        </div>
+    }
+    else
+    {
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+            <a href="/roles" class="hover:text-nebula-text-primary transition-colors">Roles</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">@(IsCreateMode ? "Create Role" : _role?.Name)</span>
+        </nav>
+
+        <div class="flex items-start justify-between gap-4 mb-6">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 @GetRoleIconBackground(_editModel.Name) rounded-full flex items-center justify-center">
+                    <Icon Name="shield" Size="IconSize.Medium" Class="@GetRoleIconColor(_editModel.Name)" />
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-2xl font-semibold text-nebula-text-primary">
+                            @(IsCreateMode ? "Create Role" : _role?.Name)
+                        </h1>
+                        @if (_role?.IsSystemRole == true)
+                        {
+                            <span class="px-2 py-0.5 text-xs bg-nebula-bg-tertiary text-nebula-text-muted rounded">System Role</span>
+                        }
+                    </div>
+                    @if (!IsCreateMode && !string.IsNullOrEmpty(_role?.Description))
+                    {
+                        <p class="text-nebula-text-muted">@_role.Description</p>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (_role?.IsSystemRole == true)
+        {
+            <div class="bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula p-4 mb-6">
+                <div class="flex items-start gap-2">
+                    <Icon Name="alert-triangle" Size="IconSize.Small" Class="mt-0.5 flex-shrink-0" />
+                    <div>
+                        <p class="font-medium">System Role - Read Only</p>
+                        <p class="text-sm opacity-80">System roles cannot be modified or deleted. You can view the permissions assigned to this role.</p>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <ErrorAlert Message="@_error" Class="mb-6" />
+        <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+        @if (!IsCreateMode)
+        {
+            <TabNav TValue="string"
+                    Tabs="@_tabs"
+                    @bind-Value="_activeTab"
+                    @bind-Value:after="OnTabChanged"
+                    IconSelector="@GetTabIcon" />
+
+            <div class="mt-6">
+                @switch (_activeTab)
+                {
+                    case "Details":
+                        @RenderDetailsTab()
+                        break;
+                    case "Permissions":
+                        @RenderPermissionsTab()
+                        break;
+                    case "Users":
+                        @RenderUsersTab()
+                        break;
+                }
+            </div>
+        }
+        else
+        {
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div>
+                    @RenderDetailsTab()
+                </div>
+                <div>
+                    @RenderPermissionsTab()
+                </div>
+            </div>
+
+            <div class="flex items-center justify-end gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => Navigation.NavigateTo("/roles"))" />
+                <Button Variant="ButtonVariant.Primary" Text="Create Role" Loading="_saving" OnClick="CreateRole" />
+            </div>
+        }
+    }
+</div>
+
+@if (_showDeleteConfirm)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete Role</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_role?.Name</strong>?
+            </p>
+            @if (_role?.UserCount > 0)
+            {
+                <div class="mt-3 p-3 bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula text-sm">
+                    <div class="flex items-start gap-2">
+                        <Icon Name="alert-triangle" Size="IconSize.Small" Class="mt-0.5 flex-shrink-0" />
+                        <span>This role has @_role.UserCount user(s) assigned. You must remove all users from this role before deleting it.</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone.</p>
+            }
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDelete" />
+                <Button Variant="ButtonVariant.Danger"
+                        Text="Delete"
+                        Loading="_deleting"
+                        Disabled="@(_role?.UserCount > 0)"
+                        OnClick="DeleteRole" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private bool IsCreateMode => !Id.HasValue;
+    private bool IsReadOnly => _role?.IsSystemRole == true;
+
+    private readonly string[] _tabs = ["Details", "Permissions", "Users"];
+    private string _activeTab = "Details";
+
+    private RoleDetailDto? _role;
+    private List<PermissionCategoryDto> _permissionCategories = [];
+    private List<RoleUserDto> _roleUsers = [];
+    private bool _loading = true;
+    private bool _loadingUsers;
+    private string? _error;
+    private string? _success;
+
+    // Edit form
+    private EditRoleModel _editModel = new();
+    private IReadOnlyList<Guid> _selectedPermissionIds = [];
+    private bool _saving;
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsCreateMode)
+        {
+            _loading = true;
+            await LoadPermissionsAsync();
+            _loading = false;
+        }
+        else
+        {
+            await LoadRoleAsync();
+        }
+    }
+
+    private async Task LoadRoleAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var result = await RoleService.GetRoleDetailAsync(Id!.Value);
+            if (result.IsSuccess)
+            {
+                _role = result.Value;
+                PopulateEditModel();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+
+            await LoadPermissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadPermissionsAsync()
+    {
+        try
+        {
+            _permissionCategories = (await RoleService.GetAllPermissionsGroupedAsync(Id)).ToList();
+
+            if (_role != null)
+            {
+                _selectedPermissionIds = _role.Permissions
+                    .Where(p => p.IsAssigned)
+                    .Select(p => p.Id)
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        if (!Id.HasValue) return;
+
+        try
+        {
+            _loadingUsers = true;
+            _roleUsers = (await RoleService.GetRoleUsersAsync(Id.Value)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingUsers = false;
+        }
+    }
+
+    private void PopulateEditModel()
+    {
+        if (_role is null) return;
+        _editModel = new EditRoleModel
+        {
+            Name = _role.Name,
+            Description = _role.Description ?? string.Empty,
+            Priority = _role.Priority
+        };
+    }
+
+    private async Task OnTabChanged()
+    {
+        _success = null;
+        _error = null;
+
+        if (_activeTab == "Users" && _roleUsers.Count == 0)
+        {
+            await LoadUsersAsync();
+        }
+    }
+
+    private static string? GetTabIcon(string tab) => tab switch
+    {
+        "Details" => "settings",
+        "Permissions" => "key",
+        "Users" => "users",
+        _ => null
+    };
+
+    private async Task SaveDetails()
+    {
+        if (_role is null || IsReadOnly) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateRoleRequest(
+                _editModel.Name,
+                string.IsNullOrWhiteSpace(_editModel.Description) ? null : _editModel.Description,
+                _editModel.Priority,
+                _selectedPermissionIds
+            );
+
+            var result = await RoleService.UpdateRoleAsync(Id!.Value, request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Role updated successfully.";
+                _role = result.Value;
+                PopulateEditModel();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task SavePermissions()
+    {
+        if (_role is null || IsReadOnly) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateRoleRequest(
+                _editModel.Name,
+                string.IsNullOrWhiteSpace(_editModel.Description) ? null : _editModel.Description,
+                _editModel.Priority,
+                _selectedPermissionIds
+            );
+
+            var result = await RoleService.UpdateRoleAsync(Id!.Value, request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Permissions updated successfully.";
+                _role = result.Value;
+                _selectedPermissionIds = _role.Permissions
+                    .Where(p => p.IsAssigned)
+                    .Select(p => p.Id)
+                    .ToList();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task CreateRole()
+    {
+        if (!IsCreateMode) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+
+            var request = new CreateRoleRequest(
+                _editModel.Name,
+                string.IsNullOrWhiteSpace(_editModel.Description) ? null : _editModel.Description,
+                _editModel.Priority,
+                _selectedPermissionIds
+            );
+
+            var result = await RoleService.CreateRoleAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo($"/roles/{result.Value!.Id}/edit");
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ConfirmDelete()
+    {
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteConfirm = false;
+    }
+
+    private async Task DeleteRole()
+    {
+        if (_role is null) return;
+
+        try
+        {
+            _deleting = true;
+            var result = await RoleService.DeleteRoleAsync(Id!.Value, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo("/roles");
+            }
+            else
+            {
+                _error = result.Error;
+                _showDeleteConfirm = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private static string GetRoleIconBackground(string? roleName) => (roleName?.ToLowerInvariant()) switch
+    {
+        "admin" => "bg-nebula-error/20",
+        "moderator" => "bg-nebula-warning/20",
+        "user" => "bg-nebula-accent/20",
+        _ => "bg-nebula-bg-tertiary"
+    };
+
+    private static string GetRoleIconColor(string? roleName) => (roleName?.ToLowerInvariant()) switch
+    {
+        "admin" => "text-nebula-error",
+        "moderator" => "text-nebula-warning",
+        "user" => "text-nebula-accent",
+        _ => "text-nebula-text-secondary"
+    };
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private RenderFragment RenderDetailsTab() => __builder =>
+    {
+        <Card>
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Role Information</h2>
+            </Header>
+            <ChildContent>
+                <EditForm Model="_editModel" OnValidSubmit="SaveDetails">
+                    <DataAnnotationsValidator />
+                    <div class="space-y-4">
+                        <div class="form-group">
+                            <label for="name" class="label">
+                                Name <span class="text-nebula-error">*</span>
+                            </label>
+                            <InputText id="name"
+                                       @bind-Value="_editModel.Name"
+                                       class="input"
+                                       disabled="@IsReadOnly"
+                                       placeholder="Enter role name" />
+                            <ValidationMessage For="@(() => _editModel.Name)" class="text-nebula-error text-xs mt-1" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="description" class="label">Description</label>
+                            <InputTextArea id="description"
+                                           @bind-Value="_editModel.Description"
+                                           class="input min-h-[80px]"
+                                           disabled="@IsReadOnly"
+                                           placeholder="Optional description for this role" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="priority" class="label">Priority</label>
+                            <InputNumber id="priority"
+                                         @bind-Value="_editModel.Priority"
+                                         class="input"
+                                         disabled="@IsReadOnly" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Higher priority roles take precedence. Default is 0.</p>
+                        </div>
+
+                        @if (!IsCreateMode && !IsReadOnly)
+                        {
+                            <div class="flex justify-end">
+                                <Button Type="submit" Variant="ButtonVariant.Primary" Text="Save Changes" Loading="_saving" />
+                            </div>
+                        }
+                    </div>
+                </EditForm>
+            </ChildContent>
+        </Card>
+
+        @if (!IsCreateMode && !IsReadOnly)
+        {
+            <Card Class="mt-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-error">Danger Zone</h2>
+                </Header>
+                <ChildContent>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="font-medium text-nebula-text-primary">Delete this role</p>
+                            <p class="text-sm text-nebula-text-muted">Once deleted, this role cannot be recovered.</p>
+                        </div>
+                        <Button Variant="ButtonVariant.Danger" Text="Delete Role" OnClick="ConfirmDelete" />
+                    </div>
+                </ChildContent>
+            </Card>
+        }
+    };
+
+    private RenderFragment RenderPermissionsTab() => __builder =>
+    {
+        <Card>
+            <Header>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Permissions</h2>
+                    @if (!IsReadOnly)
+                    {
+                        <span class="text-sm text-nebula-text-muted">@_selectedPermissionIds.Count selected</span>
+                    }
+                </div>
+            </Header>
+            <ChildContent>
+                <PermissionTreeView Categories="_permissionCategories"
+                                    @bind-SelectedPermissionIds="_selectedPermissionIds"
+                                    ReadOnly="@IsReadOnly" />
+
+                @if (!IsCreateMode && !IsReadOnly)
+                {
+                    <div class="flex justify-end mt-4 pt-4 border-t border-nebula-border-subtle">
+                        <Button Variant="ButtonVariant.Primary" Text="Save Permissions" Loading="_saving" OnClick="SavePermissions" />
+                    </div>
+                }
+            </ChildContent>
+        </Card>
+    };
+
+    private RenderFragment RenderUsersTab() => __builder =>
+    {
+        if (_loadingUsers)
+        {
+            <div class="flex items-center justify-center py-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+            </div>
+        }
+        else
+        {
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Users with this Role</h2>
+                        <span class="text-sm text-nebula-text-muted">@_roleUsers.Count user(s)</span>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_roleUsers.Count == 0)
+                    {
+                        <div class="text-center py-8">
+                            <Icon Name="users" Size="IconSize.Large" Class="mx-auto mb-2 text-nebula-text-muted opacity-50" />
+                            <p class="text-nebula-text-muted">No users have this role.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-2">
+                            @foreach (var user in _roleUsers)
+                            {
+                                <a href="/users/@user.Id/edit" class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula hover:bg-nebula-bg-tertiary transition-colors">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 bg-nebula-accent/20 rounded-full flex items-center justify-center">
+                                            <span class="text-sm font-medium text-nebula-accent">@user.Username[0].ToString().ToUpper()</span>
+                                        </div>
+                                        <div>
+                                            <p class="font-medium text-nebula-text-primary">@user.Username</p>
+                                            <p class="text-sm text-nebula-text-muted">@user.Email</p>
+                                        </div>
+                                    </div>
+                                    <div class="text-right text-sm text-nebula-text-muted">
+                                        <p>Assigned @user.AssignedAt.ToString("MMM d, yyyy")</p>
+                                        @if (!string.IsNullOrEmpty(user.AssignedByUsername))
+                                        {
+                                            <p class="text-xs">by @user.AssignedByUsername</p>
+                                        }
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+        }
+    };
+
+    private class EditRoleModel
+    {
+        [Required(ErrorMessage = "Role name is required")]
+        [StringLength(50, MinimumLength = 2, ErrorMessage = "Role name must be between 2 and 50 characters")]
+        public string Name { get; set; } = string.Empty;
+
+        [StringLength(200, ErrorMessage = "Description cannot exceed 200 characters")]
+        public string Description { get; set; } = string.Empty;
+
+        public int Priority { get; set; }
+    }
+}

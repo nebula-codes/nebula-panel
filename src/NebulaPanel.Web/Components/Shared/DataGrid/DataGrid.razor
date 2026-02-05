@@ -1,0 +1,285 @@
+@typeparam TItem
+@inherits ComponentBase
+
+<CascadingValue Value="this">
+    @Columns
+</CascadingValue>
+
+<div class="@GetGridClasses()"
+     @ref="_gridRef"
+     tabindex="@(KeyboardNavigation ? 0 : -1)"
+     @onkeydown="HandleKeyDown"
+     @onkeydown:preventDefault="@(KeyboardNavigation)">
+
+    @* Header with search and actions *@
+    @if (Searchable || HeaderActions != null || AllowColumnCustomization)
+    {
+        <div class="datagrid-header">
+            @if (Searchable)
+            {
+                <div class="datagrid-search">
+                    <Icon Name="search" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                    <input type="text"
+                           class="datagrid-search-input"
+                           placeholder="@SearchPlaceholder"
+                           value="@_searchTerm"
+                           @oninput="OnSearchInput" />
+                    @if (!string.IsNullOrEmpty(_searchTerm))
+                    {
+                        <button type="button" class="datagrid-search-clear" @onclick="ClearSearch">
+                            <Icon Name="x" Size="IconSize.Small" />
+                        </button>
+                    }
+                </div>
+            }
+
+            <div class="datagrid-header-actions">
+                @if (HasActiveFilters)
+                {
+                    <button type="button" class="datagrid-clear-filters" @onclick="ClearAllFilters">
+                        <Icon Name="x" Size="IconSize.Small" />
+                        <span>Clear filters</span>
+                    </button>
+                }
+
+                @if (AllowColumnCustomization)
+                {
+                    <div class="relative">
+                        <button type="button"
+                                class="datagrid-column-picker-btn"
+                                @onclick="ToggleColumnPicker"
+                                title="Customize columns">
+                            <Icon Name="columns-3" Size="IconSize.Small" />
+                        </button>
+
+                        @if (_showColumnPicker)
+                        {
+                            <div class="column-picker" @onclick:stopPropagation="true">
+                                <div class="column-picker-header">
+                                    <span class="text-sm font-medium text-nebula-text-primary">Columns</span>
+                                    <button type="button" class="column-picker-close" @onclick="ToggleColumnPicker">
+                                        <Icon Name="x" Size="IconSize.Small" />
+                                    </button>
+                                </div>
+                                <div class="column-picker-items">
+                                    @foreach (var column in _columns.Where(c => c.Hideable))
+                                    {
+                                        <label class="column-picker-item">
+                                            <Checkbox Value="@(!IsColumnHidden(column.ColumnId))"
+                                                      ValueChanged="@(_ => ToggleColumnVisibility(column.ColumnId))"
+                                                      Size="Checkbox.CheckboxSize.Small" />
+                                            <span class="text-sm text-nebula-text-secondary">@column.Title</span>
+                                        </label>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @HeaderActions
+            </div>
+        </div>
+    }
+
+    @* Bulk Actions Bar *@
+    @if (Selectable && _selectedKeys.Any() && BulkActions != null)
+    {
+        <div class="datagrid-bulk-bar">
+            <Checkbox Value="@AllCurrentPageSelected"
+                      Indeterminate="@SomeCurrentPageSelected"
+                      ValueChanged="@(_ => ToggleSelectAll())"
+                      Size="Checkbox.CheckboxSize.Small" />
+            <span class="text-sm font-medium text-nebula-accent">
+                @_selectedKeys.Count selected
+            </span>
+            <div class="datagrid-bulk-actions">
+                @BulkActions(CurrentSelectedItems)
+            </div>
+            <button type="button" class="datagrid-bulk-clear" @onclick="ClearSelection">
+                <Icon Name="x" Size="IconSize.Small" />
+            </button>
+        </div>
+    }
+
+    @* Table Container *@
+    <div class="datagrid-container">
+        @if (Loading)
+        {
+            <div class="datagrid-loading">
+                <div class="spinner"></div>
+                <span class="text-nebula-text-muted mt-2">Loading...</span>
+            </div>
+        }
+        else if (!FilteredItems.Any())
+        {
+            <div class="datagrid-empty">
+                <Icon Name="inbox" Size="IconSize.Large" Class="text-nebula-text-muted mb-2" />
+                <p class="text-nebula-text-muted">@EmptyMessage</p>
+                @if (EmptyAction != null)
+                {
+                    <div class="mt-4">
+                        @EmptyAction
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <table class="datagrid-table">
+                <thead>
+                    <tr>
+                        @* Selection checkbox column *@
+                        @if (Selectable && SelectionMode != SelectionMode.None)
+                        {
+                            <th class="datagrid-checkbox-cell">
+                                @if (SelectionMode == SelectionMode.Multiple)
+                                {
+                                    <Checkbox Value="@AllCurrentPageSelected"
+                                              Indeterminate="@SomeCurrentPageSelected"
+                                              ValueChanged="@(_ => ToggleSelectAll())"
+                                              Size="Checkbox.CheckboxSize.Small" />
+                                }
+                            </th>
+                        }
+
+                        @* Data columns *@
+                        @foreach (var column in VisibleColumns)
+                        {
+                            <th class="@GetHeaderClasses(column)"
+                                style="@GetColumnStyle(column)"
+                                @onclick="() => OnHeaderClick(column)">
+                                <div class="datagrid-th-content">
+                                    @if (column.HeaderTemplate != null)
+                                    {
+                                        @column.HeaderTemplate
+                                    }
+                                    else
+                                    {
+                                        <span>@column.Title</span>
+                                    }
+
+                                    @* Sort indicator *@
+                                    @if (column.Sortable && _sortColumn == column)
+                                    {
+                                        <Icon Name="@(_sortDirection == SortDirection.Descending ? "chevron-down" : "chevron-up")"
+                                              Size="IconSize.Small"
+                                              Class="text-nebula-accent" />
+                                    }
+
+                                    @* Filter button *@
+                                    @if (column.Filterable)
+                                    {
+                                        <button type="button"
+                                                class="datagrid-filter-btn @(IsColumnFiltered(column.ColumnId) ? "active" : "")"
+                                                @onclick="() => ToggleFilterPopover(column.ColumnId)"
+                                                @onclick:stopPropagation="true">
+                                            <Icon Name="filter" Size="IconSize.XSmall" />
+                                        </button>
+
+                                        @if (_activeFilterColumn == column.ColumnId)
+                                        {
+                                            <div class="filter-popover" @onclick:stopPropagation="true">
+                                                <DataGridFilterPopover TItem="TItem"
+                                                                       Column="column"
+                                                                       CurrentValue="@GetColumnFilterValue(column.ColumnId)"
+                                                                       OnFilterChanged="@(v => SetColumnFilter(column.ColumnId, v))"
+                                                                       OnClose="@(() => _activeFilterColumn = null)" />
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var index = 0; }
+                    @foreach (var item in PagedItems)
+                    {
+                        var currentIndex = index;
+                        <tr class="@GetRowClasses(item, currentIndex)"
+                            @onclick="@(e => HandleRowClick(item, currentIndex, e))"
+                            @ondblclick="@(() => HandleRowDoubleClick(item))">
+
+                            @* Selection checkbox *@
+                            @if (Selectable && SelectionMode != SelectionMode.None)
+                            {
+                                <td class="datagrid-checkbox-cell" @onclick:stopPropagation="true">
+                                    <Checkbox Value="@IsItemSelected(item)"
+                                              ValueChanged="@(_ => HandleCheckboxClick(item, currentIndex))"
+                                              Size="Checkbox.CheckboxSize.Small" />
+                                </td>
+                            }
+
+                            @* Data cells *@
+                            @foreach (var column in VisibleColumns)
+                            {
+                                <td class="@GetCellClasses(column)" style="@GetColumnStyle(column)">
+                                    @if (column.Template != null)
+                                    {
+                                        @column.Template(item)
+                                    }
+                                    else if (column.Field != null)
+                                    {
+                                        @column.Field(item)?.ToString()
+                                    }
+                                </td>
+                            }
+                        </tr>
+                        index++;
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @* Pagination Footer *@
+    @if (Pageable && FilteredItems.Any())
+    {
+        <div class="datagrid-footer">
+            <div class="datagrid-pagination-info">
+                <span>
+                    Showing @StartIndex to @EndIndex of @TotalFilteredCount
+                </span>
+                @if (PageSizeOptions.Length > 1)
+                {
+                    <select class="datagrid-page-size-select" value="@_pageSize" @onchange="OnPageSizeChange">
+                        @foreach (var size in PageSizeOptions)
+                        {
+                            <option value="@size">@size per page</option>
+                        }
+                    </select>
+                }
+            </div>
+
+            @if (TotalPages > 1)
+            {
+                <div class="datagrid-pagination">
+                    <button type="button"
+                            class="datagrid-page-btn"
+                            disabled="@(_currentPage <= 1)"
+                            @onclick="PreviousPage">
+                        <Icon Name="chevron-left" Size="IconSize.Small" />
+                    </button>
+
+                    @foreach (var pageNum in GetPageNumbers())
+                    {
+                        <button type="button"
+                                class="datagrid-page-btn @(pageNum == _currentPage ? "active" : "")"
+                                @onclick="() => GoToPage(pageNum)">
+                            @pageNum
+                        </button>
+                    }
+
+                    <button type="button"
+                            class="datagrid-page-btn"
+                            disabled="@(_currentPage >= TotalPages)"
+                            @onclick="NextPage">
+                        <Icon Name="chevron-right" Size="IconSize.Small" />
+                    </button>
+                </div>
+            }
+        </div>
+    }
+</div>

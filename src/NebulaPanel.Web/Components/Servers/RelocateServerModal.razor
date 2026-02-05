@@ -1,0 +1,481 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.ValueObjects
+@using NebulaPanel.Web.Services
+@inject IServerRelocationService RelocationService
+@inject AuthStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject ILogger<RelocateServerModal> Logger
+@implements IAsyncDisposable
+
+<Modal IsOpen="IsOpen" OnClose="HandleClose" Size="ModalSize.Large" CloseOnBackdropClick="@(!_relocating)">
+    <Header>
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-nebula-info/20 flex items-center justify-center">
+                <Icon Name="folder-symlink" Size="IconSize.Small" Class="text-nebula-info" />
+            </div>
+            <div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">Relocate Server</h3>
+                <div class="text-sm text-nebula-text-muted">Move server files to a new location</div>
+            </div>
+        </div>
+    </Header>
+    <Body>
+        <div class="space-y-6">
+            @if (_relocating)
+            {
+                @* Progress Display *@
+                <div class="bg-nebula-bg-tertiary rounded-nebula p-6">
+                    <div class="flex flex-col items-center text-center space-y-4">
+                        @if (_progress?.State == "Failed")
+                        {
+                            <div class="w-16 h-16 rounded-full bg-nebula-error/20 flex items-center justify-center">
+                                <Icon Name="x" Size="IconSize.Large" Class="text-nebula-error" />
+                            </div>
+                            <div>
+                                <div class="font-medium text-nebula-error">Relocation Failed</div>
+                                <div class="text-sm text-nebula-text-muted mt-1">@_progress?.ErrorMessage</div>
+                            </div>
+                        }
+                        else if (_progress?.State == "Completed")
+                        {
+                            <div class="w-16 h-16 rounded-full bg-nebula-success/20 flex items-center justify-center">
+                                <Icon Name="check" Size="IconSize.Large" Class="text-nebula-success" />
+                            </div>
+                            <div>
+                                <div class="font-medium text-nebula-success">Relocation Complete</div>
+                                <div class="text-sm text-nebula-text-muted mt-1">Server has been moved to the new location</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="w-16 h-16 rounded-full bg-nebula-info/20 flex items-center justify-center animate-pulse">
+                                <Icon Name="loader-2" Size="IconSize.Large" Class="text-nebula-info animate-spin" />
+                            </div>
+                            <div>
+                                <div class="font-medium text-nebula-text-primary">@(_progress?.CurrentStep ?? "Preparing...")</div>
+                                @if (_progress is not null && !_progress.IsIndeterminate)
+                                {
+                                    <div class="text-sm text-nebula-text-muted mt-1">
+                                        @_progress.FilesCopied.ToString("N0") / @_progress.TotalFiles.ToString("N0") files
+                                        (@FormatBytes(_progress.BytesCopied) / @FormatBytes(_progress.TotalBytes))
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @* Progress Bar *@
+                        @if (_progress is not null && !_progress.IsIndeterminate && _progress.State != "Failed" && _progress.State != "Completed")
+                        {
+                            <div class="w-full">
+                                <div class="h-2 bg-nebula-bg-secondary rounded-full overflow-hidden">
+                                    <div class="h-full bg-nebula-info transition-all duration-300 rounded-full"
+                                         style="width: @(_progress.PercentComplete.ToString("F1"))%">
+                                    </div>
+                                </div>
+                                <div class="text-xs text-nebula-text-muted mt-2">@(_progress.PercentComplete.ToString("F1"))%</div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(_progress?.CurrentFile))
+                        {
+                            <div class="text-xs text-nebula-text-muted font-mono truncate max-w-full">
+                                @_progress.CurrentFile
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @* Path Info *@
+                <div class="bg-nebula-bg-tertiary rounded-nebula p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-xs text-nebula-text-muted uppercase tracking-wider mb-1">From</div>
+                            <div class="text-sm text-nebula-text-secondary font-mono break-all">@CurrentPath</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-nebula-text-muted uppercase tracking-wider mb-1">To</div>
+                            <div class="text-sm text-nebula-text-secondary font-mono break-all">@_newPath</div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                @* Path Input *@
+                <div class="bg-nebula-bg-tertiary rounded-nebula p-4">
+                    <label class="block text-sm font-medium text-nebula-text-primary mb-2">New Installation Path</label>
+                    <input type="text"
+                           @bind="_newPath"
+                           @bind:event="oninput"
+                           class="w-full px-3 py-2 border border-nebula-border rounded-lg bg-nebula-bg-secondary text-nebula-text-primary focus:border-nebula-info focus:ring-1 focus:ring-nebula-info font-mono text-sm"
+                           placeholder="/var/games/servers/my-server" />
+                    <div class="text-xs text-nebula-text-muted mt-2">
+                        <span class="font-medium">Current:</span> <span class="font-mono">@CurrentPath</span>
+                    </div>
+                </div>
+
+                @* Validation Result *@
+                @if (_validation is not null)
+                {
+                    @if (_validation.IsValid)
+                    {
+                        <div class="bg-nebula-success/10 border border-nebula-success/30 rounded-nebula p-4">
+                            <div class="flex items-start gap-3">
+                                <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success mt-0.5" />
+                                <div class="flex-1">
+                                    <div class="font-medium text-nebula-success mb-2">Ready to Relocate</div>
+                                    <div class="grid grid-cols-2 gap-4 text-sm text-nebula-text-secondary">
+                                        <div>
+                                            <span class="text-nebula-text-muted">Files:</span>
+                                            @_validation.TotalFileCount.ToString("N0")
+                                        </div>
+                                        <div>
+                                            <span class="text-nebula-text-muted">Size:</span>
+                                            @FormatBytes(_validation.TotalSizeBytes)
+                                        </div>
+                                        <div class="col-span-2">
+                                            <span class="text-nebula-text-muted">Available space:</span>
+                                            @FormatBytes(_validation.AvailableSpaceBytes)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="bg-nebula-error/10 border border-nebula-error/30 rounded-nebula p-4">
+                            <div class="flex items-start gap-3">
+                                <Icon Name="alert-circle" Size="IconSize.Small" Class="text-nebula-error mt-0.5" />
+                                <div class="flex-1">
+                                    <div class="font-medium text-nebula-error mb-1">Cannot Relocate</div>
+                                    <div class="text-sm text-nebula-text-secondary">@_validation.ErrorMessage</div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="bg-nebula-error/10 border border-nebula-error/30 rounded-nebula p-4">
+                        <div class="flex items-start gap-3">
+                            <Icon Name="alert-circle" Size="IconSize.Small" Class="text-nebula-error mt-0.5" />
+                            <div class="text-sm text-nebula-error">@_error</div>
+                        </div>
+                    </div>
+                }
+
+                @* Options *@
+                <div class="bg-nebula-bg-tertiary rounded-nebula p-4">
+                    <h4 class="text-sm font-medium text-nebula-text-primary mb-3">Options</h4>
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox"
+                               checked="@_deleteOldFiles"
+                               @onchange="@(e => _deleteOldFiles = (bool)(e.Value ?? true))"
+                               class="mt-1 w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                        <div>
+                            <div class="text-sm text-nebula-text-primary">Delete old files after copy</div>
+                            <div class="text-xs text-nebula-text-muted">Remove original files after successful relocation. Disable to keep a copy.</div>
+                        </div>
+                    </label>
+                </div>
+
+                @* Warning *@
+                <div class="flex items-start gap-2 text-sm text-nebula-text-muted">
+                    <Icon Name="info" Size="IconSize.Small" Class="mt-0.5 flex-shrink-0" />
+                    <span>
+                        The server must remain stopped during relocation.
+                        Docker container will be recreated on next start.
+                    </span>
+                </div>
+            }
+        </div>
+    </Body>
+    <Footer>
+        <div class="flex items-center justify-between gap-3 w-full">
+            @if (_relocating && _progress?.State == "Completed")
+            {
+                <div></div>
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Done"
+                        IconName="check"
+                        OnClick="HandleComplete" />
+            }
+            else if (_relocating && _progress?.State == "Failed")
+            {
+                <div></div>
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Close"
+                        OnClick="HandleClose" />
+            }
+            else if (_relocating)
+            {
+                <div></div>
+                <Button Variant="ButtonVariant.Danger"
+                        Text="Cancel"
+                        OnClick="HandleCancel"
+                        Disabled="@(!_canCancel)" />
+            }
+            else
+            {
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Cancel"
+                        OnClick="HandleClose" />
+                <div class="flex items-center gap-3">
+                    <Button Variant="ButtonVariant.Secondary"
+                            Text="Validate"
+                            IconName="check-circle"
+                            Loading="_validating"
+                            OnClick="HandleValidate"
+                            Disabled="@(string.IsNullOrWhiteSpace(_newPath))" />
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="Relocate"
+                            IconName="folder-symlink"
+                            OnClick="HandleRelocate"
+                            Disabled="@(_validation?.IsValid != true)" />
+                </div>
+            }
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback OnComplete { get; set; }
+
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    [Parameter]
+    public string CurrentPath { get; set; } = "";
+
+    private string _newPath = "";
+    private bool _deleteOldFiles = true;
+    private bool _validating;
+    private bool _relocating;
+    private bool _canCancel = true;
+    private string? _error;
+    private ServerRelocationValidation? _validation;
+    private ServerRelocationProgressDto? _progress;
+    private Guid _relocationId;
+    private HubConnection? _hubConnection;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && string.IsNullOrEmpty(_newPath))
+        {
+            // Suggest a new path by appending "-new" to the directory name
+            var parentDir = Path.GetDirectoryName(CurrentPath);
+            var dirName = Path.GetFileName(CurrentPath);
+            _newPath = Path.Combine(parentDir ?? "", dirName + "-relocated");
+        }
+
+        if (!IsOpen)
+        {
+            // Reset state when modal closes
+            _validation = null;
+            _progress = null;
+            _error = null;
+            _relocating = false;
+        }
+    }
+
+    private async Task HandleValidate()
+    {
+        if (string.IsNullOrWhiteSpace(_newPath)) return;
+
+        _validating = true;
+        _error = null;
+        _validation = null;
+
+        try
+        {
+            var result = await RelocationService.ValidateRelocationAsync(ServerId, _newPath.Trim());
+            if (result.IsSuccess)
+            {
+                _validation = result.Value;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to validate relocation");
+            _error = ex.Message;
+        }
+        finally
+        {
+            _validating = false;
+        }
+    }
+
+    private async Task HandleRelocate()
+    {
+        if (_validation?.IsValid != true) return;
+
+        _error = null;
+        _relocating = true;
+
+        try
+        {
+            // Start the relocation
+            var result = await RelocationService.StartRelocationAsync(
+                ServerId,
+                _newPath.Trim(),
+                _deleteOldFiles);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                _relocating = false;
+                return;
+            }
+
+            _relocationId = result.Value!;
+
+            // Connect to SignalR for progress updates
+            await ConnectToHubAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to start relocation");
+            _error = ex.Message;
+            _relocating = false;
+        }
+    }
+
+    private async Task ConnectToHubAsync()
+    {
+        try
+        {
+            var token = await AuthStateProvider.GetTokenAsync();
+            var hubUrl = Navigation.ToAbsoluteUri("/hubs/server-relocation");
+
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(hubUrl, options =>
+                {
+                    options.AccessTokenProvider = () => Task.FromResult(token);
+                })
+                .WithAutomaticReconnect()
+                .Build();
+
+            _hubConnection.On<ServerRelocationProgressDto>("ReceiveProgress", OnProgressReceived);
+            _hubConnection.On<Guid, bool, string?>("RelocationComplete", OnRelocationComplete);
+
+            await _hubConnection.StartAsync();
+            await _hubConnection.SendAsync("JoinRelocation", _relocationId);
+
+            Logger.LogDebug("Connected to relocation hub for {RelocationId}", _relocationId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to connect to relocation hub");
+            // Continue without real-time updates - we can poll for status
+        }
+    }
+
+    private void OnProgressReceived(ServerRelocationProgressDto progress)
+    {
+        _progress = progress;
+        _canCancel = progress.State != "UpdatingConfiguration" &&
+                     progress.State != "CleaningUp" &&
+                     progress.State != "Completed" &&
+                     progress.State != "Failed";
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnRelocationComplete(Guid serverId, bool success, string? error)
+    {
+        if (success)
+        {
+            _progress = new ServerRelocationProgressDto(
+                _relocationId, serverId, "Completed", 100, "Relocation complete",
+                null, 0, 0, 0, 0, null, false);
+        }
+        else
+        {
+            _progress = new ServerRelocationProgressDto(
+                _relocationId, serverId, "Failed", 0, "Relocation failed",
+                null, 0, 0, 0, 0, error, false);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleCancel()
+    {
+        try
+        {
+            await RelocationService.CancelRelocationAsync(_relocationId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to cancel relocation");
+        }
+    }
+
+    private async Task HandleComplete()
+    {
+        await OnComplete.InvokeAsync();
+        await HandleClose();
+    }
+
+    private async Task HandleClose()
+    {
+        if (_relocating && _progress?.State != "Completed" && _progress?.State != "Failed")
+        {
+            // Don't close while relocating unless it's complete or failed
+            return;
+        }
+
+        _newPath = "";
+        _validation = null;
+        _progress = null;
+        _error = null;
+        _relocating = false;
+
+        await OnClose.InvokeAsync();
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                if (_hubConnection.State == HubConnectionState.Connected)
+                {
+                    await _hubConnection.SendAsync("LeaveRelocation", _relocationId);
+                }
+                await _hubConnection.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error disposing hub connection");
+            }
+        }
+    }
+}

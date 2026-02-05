@@ -1,0 +1,686 @@
+@page "/games/new/steam"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.ValueObjects
+@using static NebulaPanel.Web.Components.Shared.WizardSteps
+@inject IGameService GameService
+@inject ISteamGamePresetService PresetService
+@inject ISteamApiService SteamApiService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Add Steam Game - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+            <a href="/games" class="hover:text-nebula-text-primary transition-colors">Games</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <a href="/games/new" class="hover:text-nebula-text-primary transition-colors">Add Game</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">Steam Game</span>
+        </nav>
+        <h1 class="text-2xl font-semibold text-nebula-text-primary">Add Steam Game</h1>
+        <p class="text-nebula-text-muted mt-1">Quick setup for Steam dedicated servers with SteamCMD.</p>
+    </div>
+
+    @* Wizard Steps *@
+    <WizardSteps CurrentStep="_currentStep" Steps="_wizardSteps" />
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Step 1: Select Game *@
+    @if (_currentStep == 1)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Select Game</h2>
+                    <div class="text-sm text-nebula-text-muted">
+                        @_filteredPresets.Count games available
+                    </div>
+                </div>
+            </Header>
+            <ChildContent>
+                @* Search/Filter *@
+                <div class="mb-4">
+                    <div class="relative">
+                        <Icon Name="search" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                        <input type="text"
+                               @bind="_searchQuery"
+                               @bind:event="oninput"
+                               @onkeyup="FilterPresets"
+                               placeholder="Search games or enter Steam App ID..."
+                               class="input pl-10" />
+                    </div>
+                </div>
+
+                @* Category Filter *@
+                <div class="flex flex-wrap gap-2 mb-4">
+                    @foreach (var category in _categories)
+                    {
+                        <button type="button"
+                                class="@GetCategoryButtonClass(category)"
+                                @onclick="() => FilterByCategory(category)">
+                            @category
+                        </button>
+                    }
+                </div>
+
+                @* Game Grid *@
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-2">
+                    @foreach (var preset in _filteredPresets)
+                    {
+                        <SteamGameCard Preset="preset"
+                                       Selected="_selectedPreset?.Slug == preset.Slug"
+                                       OnClick="() => SelectPreset(preset)" />
+                    }
+                </div>
+
+                @* Custom App ID Section *@
+                <div class="mt-6 pt-6 border-t border-nebula-border-subtle">
+                    <div class="flex items-center gap-3 mb-3">
+                        <Icon Name="hash" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        <span class="text-sm text-nebula-text-secondary">
+                            Don't see your game? Enter a Steam App ID directly
+                        </span>
+                    </div>
+                    <div class="flex gap-3">
+                        <input type="text"
+                               @bind="_customAppId"
+                               placeholder="e.g., 258550 (Rust)"
+                               class="input flex-1" />
+                        <Button Variant="ButtonVariant.Secondary"
+                                Text="Look Up"
+                                IconName="search"
+                                OnClick="LookupAppId"
+                                Loading="_lookingUp"
+                                Disabled="@(string.IsNullOrWhiteSpace(_customAppId))" />
+                    </div>
+                    @if (_lookupResult is not null)
+                    {
+                        <div class="mt-3 p-3 rounded-nebula bg-nebula-bg-tertiary">
+                            <div class="flex items-center gap-3">
+                                @if (!string.IsNullOrEmpty(_lookupResult.IconUrl))
+                                {
+                                    <img src="@_lookupResult.IconUrl" alt="@_lookupResult.Name" class="w-12 h-12 object-cover rounded" />
+                                }
+                                <div class="flex-1">
+                                    <div class="font-medium text-nebula-text-primary">@_lookupResult.Name</div>
+                                    <div class="text-xs text-nebula-text-muted">App ID: @_lookupResult.AppId</div>
+                                </div>
+                                <Button Variant="ButtonVariant.Primary"
+                                        Text="Use This"
+                                        Size="ButtonSize.Small"
+                                        OnClick="UseCustomLookup" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="GoBack" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" Disabled="@(_selectedPreset is null && !_useCustomConfig)" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 2: Configure Settings *@
+    @if (_currentStep == 2)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <div class="flex items-center gap-3">
+                    @if (!string.IsNullOrEmpty(_model.IconUrl))
+                    {
+                        <img src="@_model.IconUrl" alt="@_model.Name" class="w-10 h-10 object-cover rounded" />
+                    }
+                    <div>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">@_model.Name</h2>
+                        <div class="text-sm text-nebula-text-muted">Steam App ID: @_model.SteamAppId</div>
+                    </div>
+                </div>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="name" class="label">Game Name <span class="text-nebula-error">*</span></label>
+                        <input id="name" type="text" @bind="_model.Name" class="input" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="slug" class="label">Slug <span class="text-nebula-error">*</span></label>
+                        <input id="slug" type="text" @bind="_model.Slug" class="input" />
+                        <p class="text-xs text-nebula-text-muted mt-1">URL-friendly identifier</p>
+                    </div>
+                </div>
+
+                @* Network Settings *@
+                <div class="mt-4 p-4 rounded-nebula bg-nebula-bg-secondary">
+                    <h3 class="font-medium text-nebula-text-primary mb-3 flex items-center gap-2">
+                        <Icon Name="wifi" Size="IconSize.Small" />
+                        Default Network Settings
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="form-group">
+                            <label class="label">Default Port</label>
+                            <input type="number" @bind="_model.DefaultPort" class="input" min="1" max="65535" />
+                        </div>
+
+                        @if (_model.RconEnabled)
+                        {
+                            <div class="form-group">
+                                <label class="label">RCON Port</label>
+                                <input type="number" @bind="_model.RconPort" class="input" min="1" max="65535" />
+                            </div>
+
+                            <div class="form-group">
+                                <label class="label">RCON Protocol</label>
+                                <select @bind="_model.RconProtocol" class="input">
+                                    @foreach (var protocol in Enum.GetValues<RconProtocolType>())
+                                    {
+                                        <option value="@protocol">@protocol</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    </div>
+
+                    @if (!_model.RconEnabled && _selectedPreset?.RconPreset?.Supported == true)
+                    {
+                        <button type="button"
+                                class="mt-3 text-sm text-nebula-accent hover:underline flex items-center gap-1"
+                                @onclick="EnableRcon">
+                            <Icon Name="plus" Size="IconSize.XSmall" />
+                            Enable RCON
+                        </button>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        @* Executable Configuration - Collapsible *@
+        <CollapsibleSection Title="Executable Configuration" IconName="terminal" Class="mb-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label class="label">Executable Type</label>
+                    <select @bind="_model.ExecutableType" class="input">
+                        @foreach (var type in Enum.GetValues<ExecutableType>())
+                        {
+                            <option value="@type">@type</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="label">Executable Path</label>
+                    <input type="text" @bind="_model.ExecutablePath" class="input" placeholder="e.g., RustDedicated.exe" />
+                </div>
+
+                <div class="form-group md:col-span-2">
+                    <label class="label">Start Command</label>
+                    <input type="text" @bind="_model.StartCommand" class="input" />
+                    <p class="text-xs text-nebula-text-muted mt-1">Command-line arguments for the server executable</p>
+                </div>
+
+                <div class="form-group md:col-span-2">
+                    <label class="label">Stop Command</label>
+                    <input type="text" @bind="_model.StopCommand" class="input" placeholder="quit" />
+                    <p class="text-xs text-nebula-text-muted mt-1">Command sent via console/RCON to stop the server gracefully</p>
+                </div>
+            </div>
+        </CollapsibleSection>
+
+        @* Docker Configuration - Collapsible *@
+        <CollapsibleSection Title="Docker Configuration" Subtitle="Optional" IconName="box" Class="mb-4">
+            <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="supportsDocker" @bind="_model.SupportsDocker" class="checkbox" />
+                    <label for="supportsDocker" class="text-nebula-text-primary">Enable Docker Support</label>
+                </div>
+
+                @if (_model.SupportsDocker)
+                {
+                    <div class="form-group">
+                        <label class="label">Default Docker Image</label>
+                        <input type="text" @bind="_model.DockerImage" class="input" placeholder="e.g., didstopia/rust-server" />
+                    </div>
+                }
+            </div>
+        </CollapsibleSection>
+
+        @* Mod Configuration - Collapsible *@
+        <CollapsibleSection Title="Mod Configuration" Subtitle="Optional" IconName="package" Class="mb-6">
+            <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                    <input type="checkbox" id="supportsMods" @bind="_model.SupportsMods" class="checkbox" />
+                    <label for="supportsMods" class="text-nebula-text-primary">Enable Mod Support</label>
+                </div>
+
+                @if (_model.SupportsMods)
+                {
+                    <div class="form-group">
+                        <label class="label">Mod Install Path</label>
+                        <input type="text" @bind="_model.ModInstallPath" class="input" placeholder="mods/" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Relative path where mods should be installed</p>
+                    </div>
+
+                    @if (_model.SupportsWorkshop)
+                    {
+                        <div class="flex items-center gap-2 text-sm text-nebula-accent">
+                            <Icon Name="check-circle" Size="IconSize.Small" />
+                            <span>Steam Workshop support enabled</span>
+                        </div>
+                    }
+                }
+            </div>
+        </CollapsibleSection>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Review & Create" IconName="arrow-right" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 3: Review & Create *@
+    @if (_currentStep == 3)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Review Configuration</h2>
+            </Header>
+            <ChildContent>
+                <div class="space-y-6">
+                    @* Basic Info *@
+                    <div>
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Game Information</h3>
+                        <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Name</span>
+                                <span class="text-nebula-text-primary font-medium">@_model.Name</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Slug</span>
+                                <code class="text-nebula-text-secondary text-sm">@_model.Slug</code>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Steam App ID</span>
+                                <code class="text-nebula-text-secondary text-sm">@_model.SteamAppId</code>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Executable Type</span>
+                                <span class="text-nebula-text-secondary">@_model.ExecutableType</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Network *@
+                    <div>
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Network</h3>
+                        <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Default Port</span>
+                                <code class="text-nebula-text-primary">@_model.DefaultPort</code>
+                            </div>
+                            @if (_model.RconEnabled)
+                            {
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">RCON</span>
+                                    <span class="text-nebula-text-secondary">@_model.RconProtocol on port @_model.RconPort</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Features *@
+                    <div>
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Features</h3>
+                        <div class="flex flex-wrap gap-2">
+                            @if (_model.SupportsDocker)
+                            {
+                                <span class="px-3 py-1 rounded-full text-sm bg-nebula-info/10 text-nebula-info flex items-center gap-1">
+                                    <Icon Name="box" Size="IconSize.XSmall" />
+                                    Docker
+                                </span>
+                            }
+                            @if (_model.SupportsMods)
+                            {
+                                <span class="px-3 py-1 rounded-full text-sm bg-nebula-accent/10 text-nebula-accent flex items-center gap-1">
+                                    <Icon Name="package" Size="IconSize.XSmall" />
+                                    Mods
+                                </span>
+                            }
+                            @if (_model.SupportsWorkshop)
+                            {
+                                <span class="px-3 py-1 rounded-full text-sm bg-blue-500/10 text-blue-400 flex items-center gap-1">
+                                    <Icon Name="cloud" Size="IconSize.XSmall" />
+                                    Workshop
+                                </span>
+                            }
+                            @if (_model.RconEnabled)
+                            {
+                                <span class="px-3 py-1 rounded-full text-sm bg-nebula-success/10 text-nebula-success flex items-center gap-1">
+                                    <Icon Name="terminal" Size="IconSize.XSmall" />
+                                    RCON
+                                </span>
+                            }
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(_selectedPreset?.SetupNotes))
+                    {
+                        <div class="p-4 rounded-nebula bg-nebula-warning/10 border border-nebula-warning/30">
+                            <div class="flex items-start gap-2">
+                                <Icon Name="info" Size="IconSize.Small" Class="text-nebula-warning mt-0.5" />
+                                <div>
+                                    <div class="font-medium text-nebula-warning text-sm mb-1">Setup Notes</div>
+                                    <p class="text-sm text-nebula-text-secondary">@_selectedPreset.SetupNotes</p>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Create Game" IconName="check" Loading="_submitting" OnClick="CreateGame" />
+        </div>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Preset { get; set; }
+
+    private int _currentStep = 1;
+    private bool _submitting;
+    private bool _lookingUp;
+    private string? _error;
+
+    private string _searchQuery = "";
+    private string? _selectedCategory;
+    private string _customAppId = "";
+    private SteamAppDetails? _lookupResult;
+    private bool _useCustomConfig;
+
+    private SteamGamePreset? _selectedPreset;
+    private List<SteamGamePreset> _allPresets = [];
+    private List<SteamGamePreset> _filteredPresets = [];
+    private List<string> _categories = ["All", "Survival", "Sandbox", "FPS", "Racing", "Simulation"];
+
+    private readonly List<WizardStepInfo> _wizardSteps =
+    [
+        new("Select"),
+        new("Configure"),
+        new("Create")
+    ];
+
+    private SteamGameFormModel _model = new();
+
+    protected override void OnInitialized()
+    {
+        _allPresets = PresetService.GetAllPresets().ToList();
+        _filteredPresets = _allPresets;
+
+        // Check for preset in query string
+        if (!string.IsNullOrEmpty(Preset))
+        {
+            var preset = PresetService.GetPresetBySlug(Preset);
+            if (preset is not null)
+            {
+                SelectPreset(preset);
+                _currentStep = 2; // Jump to configure step
+            }
+        }
+    }
+
+    private void FilterPresets()
+    {
+        var query = _searchQuery?.Trim() ?? "";
+
+        // Check if query is a number (App ID)
+        if (int.TryParse(query, out _))
+        {
+            _filteredPresets = _allPresets
+                .Where(p => p.ServerAppId.Contains(query))
+                .ToList();
+        }
+        else
+        {
+            _filteredPresets = PresetService.SearchPresets(query).ToList();
+        }
+
+        // Apply category filter
+        if (!string.IsNullOrEmpty(_selectedCategory) && _selectedCategory != "All")
+        {
+            _filteredPresets = _filteredPresets
+                .Where(p => p.Category == _selectedCategory)
+                .ToList();
+        }
+    }
+
+    private void FilterByCategory(string category)
+    {
+        _selectedCategory = category == "All" ? null : category;
+        FilterPresets();
+    }
+
+    private string GetCategoryButtonClass(string category)
+    {
+        var isSelected = (_selectedCategory ?? "All") == category;
+        var baseClass = "px-3 py-1 rounded-full text-sm transition-colors";
+
+        if (isSelected)
+            return $"{baseClass} bg-nebula-accent text-white";
+
+        return $"{baseClass} bg-nebula-bg-tertiary text-nebula-text-muted hover:text-nebula-text-primary";
+    }
+
+    private void SelectPreset(SteamGamePreset preset)
+    {
+        _selectedPreset = preset;
+        _useCustomConfig = false;
+        PopulateModelFromPreset(preset);
+    }
+
+    private void PopulateModelFromPreset(SteamGamePreset preset)
+    {
+        _model = new SteamGameFormModel
+        {
+            Name = preset.Name,
+            Slug = preset.Slug,
+            SteamAppId = preset.ServerAppId,
+            ExecutableType = preset.ExecutableType,
+            ExecutablePath = preset.DefaultExecutablePath,
+            StartCommand = preset.DefaultStartCommand,
+            StopCommand = preset.DefaultStopCommand,
+            DefaultPort = preset.DefaultPort,
+            SupportsDocker = preset.SupportsDocker,
+            DockerImage = preset.DefaultDockerImage,
+            DockerDataPath = preset.DockerDataPath,
+            SupportsMods = preset.SupportsWorkshop || !string.IsNullOrEmpty(preset.ModInstallPath),
+            SupportsWorkshop = preset.SupportsWorkshop,
+            ModInstallPath = preset.ModInstallPath ?? "mods/",
+            RconEnabled = preset.RconPreset?.Supported ?? false,
+            RconProtocol = preset.RconPreset?.Protocol ?? RconProtocolType.Source,
+            RconPort = preset.RconPreset?.DefaultPort ?? 25575,
+            WebRconPath = preset.RconPreset?.WebRconPath,
+            IconUrl = preset.IconUrl
+        };
+    }
+
+    private async Task LookupAppId()
+    {
+        if (string.IsNullOrWhiteSpace(_customAppId))
+            return;
+
+        _lookingUp = true;
+        _lookupResult = null;
+        _error = null;
+
+        try
+        {
+            _lookupResult = await SteamApiService.GetAppDetailsAsync(_customAppId.Trim());
+            if (_lookupResult is null)
+            {
+                _error = $"Could not find Steam app with ID {_customAppId}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to look up app: {ex.Message}";
+        }
+        finally
+        {
+            _lookingUp = false;
+        }
+    }
+
+    private void UseCustomLookup()
+    {
+        if (_lookupResult is null) return;
+
+        _selectedPreset = null;
+        _useCustomConfig = true;
+        _model = new SteamGameFormModel
+        {
+            Name = _lookupResult.Name,
+            Slug = GenerateSlug(_lookupResult.Name),
+            SteamAppId = _lookupResult.AppId,
+            ExecutableType = ExecutableType.Exe,
+            ExecutablePath = "",
+            StartCommand = "",
+            DefaultPort = 27015,
+            IconUrl = _lookupResult.IconUrl
+        };
+        _currentStep = 2;
+    }
+
+    private static string GenerateSlug(string name)
+    {
+        return name.ToLowerInvariant()
+            .Replace(" ", "-")
+            .Replace(":", "")
+            .Replace("'", "");
+    }
+
+    private void EnableRcon()
+    {
+        _model.RconEnabled = true;
+        _model.RconPort = _selectedPreset?.RconPreset?.DefaultPort ?? 25575;
+        _model.RconProtocol = _selectedPreset?.RconPreset?.Protocol ?? RconProtocolType.Source;
+    }
+
+    private void NextStep()
+    {
+        _error = null;
+        if (_currentStep < 3)
+            _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _error = null;
+        if (_currentStep > 1)
+            _currentStep--;
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/games/new");
+    }
+
+    private async Task CreateGame()
+    {
+        try
+        {
+            _submitting = true;
+            _error = null;
+
+            var modProviders = new List<ModProviderConfiguration>();
+            if (_model.SupportsMods && _model.SupportsWorkshop)
+            {
+                modProviders.Add(new ModProviderConfiguration
+                {
+                    Provider = ModProviderType.SteamWorkshop,
+                    Enabled = true,
+                    Priority = 0,
+                    ModInstallPath = _model.ModInstallPath ?? "mods/"
+                });
+            }
+
+            var request = new CreateGameRequest(
+                Name: _model.Name,
+                Slug: _model.Slug.ToLowerInvariant().Trim(),
+                SteamAppId: _model.SteamAppId,
+                ExecutableType: _model.ExecutableType,
+                DefaultExecutablePath: _model.ExecutablePath,
+                DefaultStartCommand: _model.StartCommand,
+                DefaultStopCommand: string.IsNullOrWhiteSpace(_model.StopCommand) ? null : _model.StopCommand,
+                SupportsDocker: _model.SupportsDocker,
+                DefaultDockerImage: string.IsNullOrWhiteSpace(_model.DockerImage) ? null : _model.DockerImage,
+                DockerDataPath: string.IsNullOrWhiteSpace(_model.DockerDataPath) ? null : _model.DockerDataPath,
+                IconPath: _model.IconUrl,
+                SupportsMods: _model.SupportsMods,
+                ModProviders: modProviders.Count > 0 ? modProviders : null,
+                RconDefaults: _model.RconEnabled ? new RconDefaults
+                {
+                    DefaultEnabled = true,
+                    Protocol = _model.RconProtocol,
+                    DefaultPort = _model.RconPort,
+                    UseWebSocket = _model.RconProtocol == RconProtocolType.WebRcon,
+                    WebRconPath = _model.WebRconPath
+                } : null,
+                ConfigurationSchemas: null
+            );
+
+            var result = await GameService.CreateGameAsync(request);
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo("/games");
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private class SteamGameFormModel
+    {
+        public string Name { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string? SteamAppId { get; set; }
+        public ExecutableType ExecutableType { get; set; } = ExecutableType.Exe;
+        public string ExecutablePath { get; set; } = "";
+        public string StartCommand { get; set; } = "";
+        public string? StopCommand { get; set; }
+        public int DefaultPort { get; set; } = 27015;
+        public bool SupportsDocker { get; set; }
+        public string? DockerImage { get; set; }
+        public string? DockerDataPath { get; set; }
+        public bool SupportsMods { get; set; }
+        public bool SupportsWorkshop { get; set; }
+        public string? ModInstallPath { get; set; }
+        public bool RconEnabled { get; set; }
+        public RconProtocolType RconProtocol { get; set; } = RconProtocolType.Source;
+        public int RconPort { get; set; } = 25575;
+        public string? WebRconPath { get; set; }
+        public string? IconUrl { get; set; }
+    }
+}

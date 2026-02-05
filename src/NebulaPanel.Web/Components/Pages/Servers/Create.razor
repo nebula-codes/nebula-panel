@@ -1,0 +1,983 @@
+@page "/servers/create"
+@attribute [Authorize]
+@using System.Security.Claims
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.ValueObjects
+@inject IGameServerService ServerService
+@inject IGameService GameService
+@inject IOfficialGameRegistry GameRegistry
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Create Server - Nebula Panel</PageTitle>
+<NavigationLock OnBeforeInternalNavigation="OnBeforeInternalNavigation" ConfirmExternalNavigation="_isDirty" />
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+            <a href="/servers" class="hover:text-nebula-text-primary transition-colors">Servers</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">Create Server</span>
+        </nav>
+        <h1 class="text-2xl font-semibold text-nebula-text-primary">Create New Server</h1>
+        <p class="text-nebula-text-muted mt-1">Configure a new game server instance.</p>
+    </div>
+
+    @* Wizard Steps Indicator *@
+    <div class="flex items-center justify-center mb-8">
+        @for (int i = 1; i <= 4; i++)
+        {
+            var step = i;
+            <div class="flex items-center">
+                <div class="@GetStepClass(step)">
+                    @if (_currentStep > step)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" />
+                    }
+                    else
+                    {
+                        @step
+                    }
+                </div>
+                <span class="@GetStepLabelClass(step) ml-2 text-sm hidden sm:inline">@GetStepLabel(step)</span>
+                @if (i < 4)
+                {
+                    <div class="w-8 sm:w-16 h-0.5 mx-2 sm:mx-4 @(_currentStep > step ? "bg-nebula-accent" : "bg-nebula-border-subtle")"></div>
+                }
+            </div>
+        }
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Step 1: Select Game *@
+    @if (_currentStep == 1)
+    {
+        <Card>
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Select Game</h2>
+            </Header>
+            <ChildContent>
+                @if (_loadingGames)
+                {
+                    <div class="flex items-center justify-center py-8">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+                    </div>
+                }
+                else if (_games.Count == 0)
+                {
+                    <div class="text-center py-8">
+                        <Icon Name="gamepad-2" Size="IconSize.Large" Class="text-nebula-text-muted mb-4" />
+                        <p class="text-nebula-text-muted mb-4">No games configured yet. Add a game first.</p>
+                        <Button Variant="ButtonVariant.Primary" Text="Add Game" OnClick="@(() => Navigation.NavigateTo("/games/new"))" />
+                    </div>
+                }
+                else
+                {
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        @foreach (var game in _games)
+                        {
+                            <div class="@GetGameCardClass(game.Id)"
+                                 @onclick="async () => await SelectGame(game)">
+                                <div class="flex items-center gap-3">
+                                    @if (!string.IsNullOrEmpty(game.IconPath))
+                                    {
+                                        <img src="@game.IconPath" alt="@game.Name" class="w-10 h-10 object-contain rounded" />
+                                    }
+                                    else
+                                    {
+                                        <div class="w-10 h-10 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                                            <Icon Name="gamepad-2" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                        </div>
+                                    }
+                                    <div>
+                                        <div class="font-medium text-nebula-text-primary">@game.Name</div>
+                                        <div class="text-xs text-nebula-text-muted">
+                                            @game.ExecutableType
+                                            @if (game.SupportsDocker)
+                                            {
+                                                <span class="ml-2">Docker</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-end gap-3 mt-6">
+            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" Disabled="@(_selectedGame is null)" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 2: Basic Information & Network *@
+    @if (_currentStep == 2)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Basic Information</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="name" class="label">Server Name <span class="text-nebula-error">*</span></label>
+                        <input id="name" type="text" value="@_model.Name" @oninput="OnServerNameChanged" class="input" placeholder="My Terraria Server" />
+                        <p class="text-xs text-nebula-text-muted mt-1">A friendly name for this server</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="installPath" class="label">Install Path <span class="text-nebula-error">*</span></label>
+                        <input id="installPath" type="text" @bind="_model.InstallPath" @bind:event="oninput" @onfocusout="OnInstallPathManualEdit" class="input" placeholder="~/game-servers/my-server" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Directory where server files will be stored (auto-filled based on server name)</p>
+                    </div>
+
+                    <div class="form-group md:col-span-2">
+                        <label for="description" class="label">Description</label>
+                        <textarea id="description" @bind="_model.Description" class="input" rows="2" placeholder="Optional description..."></textarea>
+                    </div>
+
+                    <div class="form-group md:col-span-2">
+                        <label for="iconUrl" class="label">Icon URL</label>
+                        <input id="iconUrl" type="text" @bind="_model.IconUrl" class="input" placeholder="https://example.com/server-icon.png" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Custom server icon URL. Will be downloaded and stored locally. Leave empty to use the game's default icon.</p>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Network Configuration</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="primaryPort" class="label">Primary Port <span class="text-nebula-error">*</span></label>
+                        <input id="primaryPort" type="number" @bind="_model.PrimaryPort" class="input" min="1" max="65535" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Main game server port</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bindAddress" class="label">Bind Address</label>
+                        <input id="bindAddress" type="text" @bind="_model.BindAddress" class="input" placeholder="0.0.0.0" />
+                        <p class="text-xs text-nebula-text-muted mt-1">IP address to bind to (default: 0.0.0.0)</p>
+                    </div>
+
+                    @if (_selectedGame?.RconDefaults?.DefaultEnabled == true)
+                    {
+                        <div class="form-group">
+                            <label for="rconPort" class="label">RCON Port</label>
+                            <input id="rconPort" type="number" @bind="_model.RconPort" class="input" min="1" max="65535" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Port for remote console</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="queryPort" class="label">Query Port</label>
+                            <input id="queryPort" type="number" @bind="_model.QueryPort" class="input" min="1" max="65535" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Port for server query (optional)</p>
+                        </div>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3 mt-6">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" Disabled="@(!IsStep2Valid)" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 3: Deployment Type *@
+    @if (_currentStep == 3)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Deployment Type</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    @* Native Option *@
+                    <div class="@GetDeploymentCardClass(ServerDeploymentType.Native)"
+                         @onclick="() => SelectDeploymentType(ServerDeploymentType.Native)">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center shrink-0">
+                                <Icon Name="terminal" Class="text-nebula-text-secondary" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-medium text-nebula-text-primary">Native Process</h3>
+                                <p class="text-sm text-nebula-text-muted mt-1">
+                                    Run the server as a native process directly on the host system.
+                                </p>
+                                <ul class="text-xs text-nebula-text-muted mt-2 space-y-1">
+                                    <li class="flex items-center gap-1">
+                                        <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                        Lower overhead
+                                    </li>
+                                    <li class="flex items-center gap-1">
+                                        <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                        Direct hardware access
+                                    </li>
+                                    <li class="flex items-center gap-1">
+                                        <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                        Simpler configuration
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    @* Docker Option *@
+                    <div class="@GetDeploymentCardClass(ServerDeploymentType.Docker, _selectedGame?.SupportsDocker != true)"
+                         @onclick="() => { if (_selectedGame?.SupportsDocker == true) SelectDeploymentType(ServerDeploymentType.Docker); }">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center shrink-0">
+                                <Icon Name="box" Class="text-nebula-text-secondary" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="font-medium text-nebula-text-primary">Docker Container</h3>
+                                @if (_selectedGame?.SupportsDocker != true)
+                                {
+                                    <p class="text-sm text-nebula-warning mt-1">
+                                        Not available for @(_selectedGame?.Name ?? "this game")
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="text-sm text-nebula-text-muted mt-1">
+                                        Run the server in an isolated Docker container.
+                                    </p>
+                                    <ul class="text-xs text-nebula-text-muted mt-2 space-y-1">
+                                        <li class="flex items-center gap-1">
+                                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                            Isolated environment
+                                        </li>
+                                        <li class="flex items-center gap-1">
+                                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                            Resource limits
+                                        </li>
+                                        <li class="flex items-center gap-1">
+                                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                            Easy cleanup
+                                        </li>
+                                    </ul>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        @* Deployment Configuration *@
+        @if (_model.DeploymentType == ServerDeploymentType.Native)
+        {
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Native Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="workingDir" class="label">Working Directory</label>
+                            <input id="workingDir" type="text" @bind="_model.NativeWorkingDirectory" class="input"
+                                   placeholder="@_model.InstallPath" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Leave empty to use install path</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="executable" class="label">Executable Path</label>
+                            <input id="executable" type="text" @bind="_model.NativeExecutablePath" class="input"
+                                   placeholder="@(_selectedGame?.DefaultExecutablePath ?? "server.jar")" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Relative to working directory</p>
+                        </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label for="arguments" class="label">Arguments</label>
+                            <input id="arguments" type="text" @bind="_model.NativeArguments" class="input"
+                                   placeholder="@(_selectedGame?.DefaultStartCommand ?? "")" />
+                        </div>
+
+                        @if (_selectedGame?.ExecutableType == ExecutableType.Jar)
+                        {
+                            <div class="form-group">
+                                <label for="javaPath" class="label">Java Path</label>
+                                <input id="javaPath" type="text" @bind="_model.JavaPath" class="input" placeholder="java" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Path to Java executable</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="javaArgs" class="label">Java Arguments</label>
+                                <input id="javaArgs" type="text" @bind="_model.JavaArguments" class="input" placeholder="-Xmx4G -Xms2G" />
+                                <p class="text-xs text-nebula-text-muted mt-1">JVM options like memory allocation</p>
+                            </div>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+        }
+        else if (_model.DeploymentType == ServerDeploymentType.Docker)
+        {
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Docker Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="dockerImage" class="label">Docker Image <span class="text-nebula-error">*</span></label>
+                            <input id="dockerImage" type="text" @bind="_model.DockerImage" class="input"
+                                   placeholder="@(_selectedGame?.DefaultDockerImage ?? "itzg/minecraft-server")" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="dockerTag" class="label">Tag</label>
+                            <input id="dockerTag" type="text" @bind="_model.DockerTag" class="input" placeholder="latest" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="dockerNetwork" class="label">Network</label>
+                            <input id="dockerNetwork" type="text" @bind="_model.DockerNetwork" class="input" placeholder="bridge" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="restartPolicy" class="label">Restart Policy</label>
+                            <select id="restartPolicy" @bind="_model.RestartPolicy" class="input">
+                                @foreach (var policy in Enum.GetValues<RestartPolicy>())
+                                {
+                                    <option value="@policy">@policy</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+        }
+
+        @* Resource Limits *@
+        <Card Class="mb-6">
+            <Header>
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Resource Limits</h2>
+                    <span class="text-xs text-nebula-text-muted">Optional</span>
+                </div>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="maxMemory" class="label">Max Memory (MB)</label>
+                        <input id="maxMemory" type="number" @bind="_model.MaxMemoryMb" class="input" min="0" placeholder="4096" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="maxCpu" class="label">Max CPU (%)</label>
+                        <input id="maxCpu" type="number" @bind="_model.MaxCpuPercent" class="input" min="0" max="100" placeholder="100" />
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3 mt-6">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" OnClick="NextStep" />
+        </div>
+    }
+
+    @* Step 4: Review & Create *@
+    @if (_currentStep == 4)
+    {
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Review Configuration</h2>
+            </Header>
+            <ChildContent>
+                <div class="space-y-6">
+                    @* Server Info *@
+                    <div>
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Server Information</h3>
+                        <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Name</span>
+                                <span class="text-nebula-text-primary font-medium">@_model.Name</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Game</span>
+                                <span class="text-nebula-text-primary">@_selectedGame?.Name</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Install Path</span>
+                                <code class="text-nebula-text-secondary text-sm">@_model.InstallPath</code>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_model.Description))
+                            {
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Description</span>
+                                    <span class="text-nebula-text-secondary text-sm truncate max-w-xs">@_model.Description</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Network *@
+                    <div>
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Network</h3>
+                        <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Primary Port</span>
+                                <code class="text-nebula-text-primary">@_model.BindAddress:@_model.PrimaryPort</code>
+                            </div>
+                            @if (_model.RconPort > 0)
+                            {
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">RCON Port</span>
+                                    <code class="text-nebula-text-secondary">@_model.RconPort</code>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* Deployment *@
+                    <div>
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Deployment</h3>
+                        <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-nebula-text-muted">Type</span>
+                                <div class="flex items-center gap-2">
+                                    <Icon Name="@(_model.DeploymentType == ServerDeploymentType.Docker ? "box" : "terminal")" Size="IconSize.Small" Class="text-nebula-text-secondary" />
+                                    <span class="text-nebula-text-primary">@_model.DeploymentType</span>
+                                </div>
+                            </div>
+                            @if (_model.DeploymentType == ServerDeploymentType.Docker)
+                            {
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Image</span>
+                                    <code class="text-nebula-text-secondary text-sm">@GetDockerImage()</code>
+                                </div>
+                            }
+                            @if (_model.MaxMemoryMb > 0)
+                            {
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Memory Limit</span>
+                                    <span class="text-nebula-text-secondary">@_model.MaxMemoryMb MB</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-between gap-3 mt-6">
+            <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+            <Button Variant="ButtonVariant.Primary" Text="Create Server" IconName="check" Loading="_submitting" OnClick="CreateServer" />
+        </div>
+    }
+</div>
+
+@code {
+    private int _currentStep = 1;
+    private bool _loadingGames = true;
+    private bool _submitting;
+    private bool _navigationAllowed;
+    private string? _error;
+
+    private List<GameListItemDto> _games = [];
+    private GameDto? _selectedGame;
+    private string? _selectedGameSlug;
+    private string? _lastSuggestedPath;
+    private ServerFormModel _model = new();
+
+    private bool _isDirty => _currentStep > 1 || _selectedGame is not null;
+
+    private async Task OnBeforeInternalNavigation(LocationChangingContext context)
+    {
+        if (_navigationAllowed || !_isDirty || _submitting)
+            return;
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "You have unsaved changes. Are you sure you want to leave?");
+
+        if (!confirmed)
+        {
+            context.PreventNavigation();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGamesAsync();
+    }
+
+    private async Task LoadGamesAsync()
+    {
+        try
+        {
+            _loadingGames = true;
+            var games = await GameService.GetAllGamesAsync();
+            _games = games.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingGames = false;
+        }
+    }
+
+    private async Task SelectGame(GameListItemDto game)
+    {
+        // Redirect to specialized wizard for official games
+        if (game.SourceType == GameSourceType.Official)
+        {
+            if (game.Slug == "minecraft-java")
+            {
+                Navigation.NavigateTo("/servers/create/minecraft");
+                return;
+            }
+            if (game.Slug == "hytale")
+            {
+                Navigation.NavigateTo("/servers/create/hytale");
+                return;
+            }
+        }
+
+        var result = await GameService.GetGameByIdAsync(game.Id);
+        if (result.IsSuccess)
+        {
+            _selectedGame = result.Value;
+            _selectedGameSlug = game.Slug;
+            _model.GameId = game.Id;
+
+            // Apply game defaults - always set the port from the game's default
+            _model.PrimaryPort = _selectedGame.DefaultPort ?? GetDefaultPortForGame(_selectedGame.Slug);
+
+            // Suggest RCON port if RCON is enabled
+            if (_selectedGame.RconDefaults?.DefaultEnabled == true)
+            {
+                _model.RconPort = _selectedGame.RconDefaults.DefaultPort;
+            }
+
+            // Update suggested install path based on the selected game's provider
+            UpdateSuggestedInstallPath();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    /// <summary>
+    /// Gets a sensible default port for known games when DefaultPort is not set in the database.
+    /// This handles the case where the database hasn't been migrated yet.
+    /// </summary>
+    private static int GetDefaultPortForGame(string slug) => slug switch
+    {
+        "terraria-tmodloader" => 7777,
+        "minecraft-java" => 25565,
+        "hytale" => 5520,
+        _ => 25565  // Fallback for unknown games
+    };
+
+    private void SelectDeploymentType(ServerDeploymentType type)
+    {
+        _model.DeploymentType = type;
+
+        // Auto-fill Docker image when Docker is selected
+        if (type == ServerDeploymentType.Docker && string.IsNullOrWhiteSpace(_model.DockerImage))
+        {
+            _model.DockerImage = _selectedGame?.DefaultDockerImage;
+        }
+    }
+
+    private void OnServerNameChanged(ChangeEventArgs e)
+    {
+        _model.Name = e.Value?.ToString() ?? "";
+        UpdateSuggestedInstallPath();
+    }
+
+    private void OnInstallPathManualEdit()
+    {
+        // If the user has manually edited the path to something different from
+        // the last auto-suggested path, stop auto-updating it.
+        if (_model.InstallPath != _lastSuggestedPath)
+        {
+            _lastSuggestedPath = null;
+        }
+    }
+
+    private void UpdateSuggestedInstallPath()
+    {
+        // Only suggest path if it's empty or matches the last auto-suggested path
+        if (!string.IsNullOrWhiteSpace(_model.InstallPath)
+            && _lastSuggestedPath is not null
+            && _model.InstallPath != _lastSuggestedPath)
+        {
+            // User has manually edited the path — don't overwrite
+            return;
+        }
+
+        var sanitizedName = SanitizeForPath(_model.Name);
+        if (string.IsNullOrWhiteSpace(sanitizedName))
+            return;
+
+        // Try to get the provider-specific default path
+        string suggestedPath;
+        if (_selectedGameSlug is not null)
+        {
+            var provider = GameRegistry.GetProvider(_selectedGameSlug);
+            if (provider is not null)
+            {
+                suggestedPath = provider.GetDefaultInstallPath(_model.Name);
+            }
+            else
+            {
+                suggestedPath = GetFallbackInstallPath(sanitizedName);
+            }
+        }
+        else
+        {
+            suggestedPath = GetFallbackInstallPath(sanitizedName);
+        }
+
+        _model.InstallPath = suggestedPath;
+        _lastSuggestedPath = suggestedPath;
+    }
+
+    private static string GetFallbackInstallPath(string sanitizedName)
+    {
+        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        return OperatingSystem.IsWindows()
+            ? Path.Combine(basePath, "GameServers", sanitizedName)
+            : Path.Combine(basePath, "game-servers", sanitizedName);
+    }
+
+    private static string SanitizeForPath(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "";
+
+        // Convert to lowercase and replace invalid characters
+        var sanitized = name.ToLowerInvariant()
+            .Replace(' ', '-')
+            .Replace('_', '-');
+
+        // Remove any characters that aren't alphanumeric or hyphens
+        sanitized = new string(sanitized.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+
+        // Remove consecutive hyphens and trim
+        while (sanitized.Contains("--"))
+            sanitized = sanitized.Replace("--", "-");
+
+        return sanitized.Trim('-');
+    }
+
+    private void NextStep()
+    {
+        _error = null;
+        if (_currentStep < 4)
+            _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _error = null;
+        if (_currentStep > 1)
+            _currentStep--;
+    }
+
+    private void Cancel()
+    {
+        _navigationAllowed = true;
+        Navigation.NavigateTo("/servers");
+    }
+
+    private async Task CreateServer()
+    {
+        try
+        {
+            _submitting = true;
+            _error = null;
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                _error = "Unable to determine current user.";
+                return;
+            }
+
+            var additionalPorts = new Dictionary<string, int>();
+            if (_model.RconPort > 0)
+                additionalPorts["rcon"] = _model.RconPort;
+            if (_model.QueryPort > 0)
+                additionalPorts["query"] = _model.QueryPort;
+
+            var request = new CreateGameServerRequest(
+                Name: _model.Name,
+                Description: string.IsNullOrWhiteSpace(_model.Description) ? null : _model.Description,
+                IconUrl: string.IsNullOrWhiteSpace(_model.IconUrl) ? null : _model.IconUrl,
+                GameId: _model.GameId,
+                DeploymentType: _model.DeploymentType,
+                InstallPath: _model.InstallPath,
+                PrimaryPort: _model.PrimaryPort,
+                AdditionalPorts: additionalPorts.Count > 0 ? additionalPorts : null,
+                BindAddress: string.IsNullOrWhiteSpace(_model.BindAddress) ? null : _model.BindAddress,
+                DockerConfig: _model.DeploymentType == ServerDeploymentType.Docker ? BuildDockerConfig() : null,
+                NativeConfig: _model.DeploymentType == ServerDeploymentType.Native ? BuildNativeConfig() : null,
+                RconConfig: BuildRconConfig(),
+                ResourceLimits: BuildResourceLimits()
+            );
+
+            var result = await ServerService.CreateServerAsync(request, userId);
+
+            if (result.IsSuccess)
+            {
+                _navigationAllowed = true;
+                Navigation.NavigateTo($"/servers/{result.Value!.Id}");
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private DockerConfigurationRequest? BuildDockerConfig()
+    {
+        var image = string.IsNullOrWhiteSpace(_model.DockerImage) ? _selectedGame?.DefaultDockerImage : _model.DockerImage;
+        if (string.IsNullOrWhiteSpace(image))
+            return null;
+
+        // Extract tag from image name if present (e.g., "image:tag" -> "image" and "tag")
+        var tag = string.IsNullOrWhiteSpace(_model.DockerTag) ? "latest" : _model.DockerTag;
+        if (image.Contains(':'))
+        {
+            var parts = image.Split(':', 2);
+            image = parts[0];
+            if (string.IsNullOrWhiteSpace(_model.DockerTag) && parts.Length > 1)
+            {
+                tag = parts[1];
+            }
+        }
+
+        // Auto-create volume mount from InstallPath to DockerDataPath if configured
+        List<VolumeMountRequest>? volumes = null;
+        var dockerDataPath = _selectedGame?.DockerDataPath;
+        if (!string.IsNullOrWhiteSpace(dockerDataPath) && !string.IsNullOrWhiteSpace(_model.InstallPath))
+        {
+            volumes =
+            [
+                new VolumeMountRequest(_model.InstallPath, dockerDataPath, ReadOnly: false)
+            ];
+        }
+
+        // Auto-enable RunAsRoot for images that require it
+        var runAsRoot = image.Contains("tmodloader", StringComparison.OrdinalIgnoreCase);
+
+        // Build environment variables and additional volume mounts for specific games
+        Dictionary<string, string>? envVars = null;
+        DockerCommandMode? commandMode = null;
+
+        if (_selectedGame?.Slug == "terraria-tmodloader")
+        {
+            // tModLoader Docker image (jacobsmile/tmodloader1.4) generates serverconfig.txt
+            // from TMOD_* env vars. Setting TMOD_USECONFIGFILE=Yes tells it to use a mounted
+            // config file instead, which works with the existing config schema.
+            envVars = new Dictionary<string, string>
+            {
+                ["TMOD_USECONFIGFILE"] = "Yes"
+            };
+
+            // Mount serverconfig.txt into the container as customconfig.txt
+            // (the tModLoader image looks for /terraria-server/customconfig.txt when TMOD_USECONFIGFILE=Yes)
+            volumes ??= [];
+            var configPath = Path.Combine(_model.InstallPath, "serverconfig.txt");
+            volumes.Add(new VolumeMountRequest(configPath, "/terraria-server/customconfig.txt", ReadOnly: true));
+
+            // tModLoader container runs the server inside tmux; stdin writes go nowhere.
+            // Commands must be sent via `docker exec <container> inject "command"`.
+            commandMode = DockerCommandMode.TmuxInject;
+        }
+
+        return new DockerConfigurationRequest(
+            Image: image,
+            Tag: tag,
+            EnvironmentVariables: envVars,
+            Volumes: volumes,
+            Ports: null,
+            Network: string.IsNullOrWhiteSpace(_model.DockerNetwork) ? null : _model.DockerNetwork,
+            Limits: BuildResourceLimits(),
+            RestartPolicy: _model.RestartPolicy,
+            RunAsRoot: runAsRoot,
+            CommandMode: commandMode
+        );
+    }
+
+    private NativeConfigurationRequest? BuildNativeConfig()
+    {
+        var workingDir = string.IsNullOrWhiteSpace(_model.NativeWorkingDirectory) ? _model.InstallPath : _model.NativeWorkingDirectory;
+        var executable = string.IsNullOrWhiteSpace(_model.NativeExecutablePath) ? _selectedGame?.DefaultExecutablePath : _model.NativeExecutablePath;
+
+        return new NativeConfigurationRequest(
+            WorkingDirectory: workingDir ?? _model.InstallPath,
+            ExecutablePath: executable ?? "",
+            Arguments: string.IsNullOrWhiteSpace(_model.NativeArguments) ? _selectedGame?.DefaultStartCommand : _model.NativeArguments,
+            EnvironmentVariables: null,
+            JavaPath: string.IsNullOrWhiteSpace(_model.JavaPath) ? null : _model.JavaPath,
+            JavaArguments: string.IsNullOrWhiteSpace(_model.JavaArguments) ? null : _model.JavaArguments,
+            RunAsService: false,
+            RunAsUser: null
+        );
+    }
+
+    private RconConfigurationRequest? BuildRconConfig()
+    {
+        if (_model.RconPort <= 0)
+            return null;
+
+        var rconDefaults = _selectedGame?.RconDefaults;
+        return new RconConfigurationRequest(
+            Enabled: true,
+            Protocol: rconDefaults?.Protocol ?? RconProtocolType.Source,
+            Host: "localhost",
+            Port: _model.RconPort,
+            Password: null,
+            UseWebSocket: rconDefaults?.UseWebSocket ?? false,
+            WebRconPath: rconDefaults?.WebRconPath,
+            TimeoutSeconds: 10
+        );
+    }
+
+    private ResourceLimitsRequest? BuildResourceLimits()
+    {
+        if (_model.MaxMemoryMb <= 0 && _model.MaxCpuPercent <= 0)
+            return null;
+
+        return new ResourceLimitsRequest(
+            MaxMemoryMb: _model.MaxMemoryMb > 0 ? _model.MaxMemoryMb : null,
+            MaxCpuPercent: _model.MaxCpuPercent > 0 ? _model.MaxCpuPercent : null,
+            MaxDiskMb: null,
+            MaxNetworkMbps: null
+        );
+    }
+
+    private string GetDockerImage()
+    {
+        var image = string.IsNullOrWhiteSpace(_model.DockerImage) ? _selectedGame?.DefaultDockerImage : _model.DockerImage;
+        var tag = string.IsNullOrWhiteSpace(_model.DockerTag) ? "latest" : _model.DockerTag;
+
+        // Handle images that already contain a tag
+        if (image?.Contains(':') == true)
+        {
+            var parts = image.Split(':', 2);
+            image = parts[0];
+            if (string.IsNullOrWhiteSpace(_model.DockerTag) && parts.Length > 1)
+            {
+                tag = parts[1];
+            }
+        }
+
+        return $"{image}:{tag}";
+    }
+
+    private bool IsStep2Valid => !string.IsNullOrWhiteSpace(_model.Name)
+                                  && !string.IsNullOrWhiteSpace(_model.InstallPath)
+                                  && _model.PrimaryPort > 0 && _model.PrimaryPort <= 65535;
+
+    private string GetStepClass(int step)
+    {
+        var baseClass = "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors";
+        if (_currentStep > step)
+            return $"{baseClass} bg-nebula-accent text-white";
+        if (_currentStep == step)
+            return $"{baseClass} bg-nebula-accent text-white";
+        return $"{baseClass} bg-nebula-bg-tertiary text-nebula-text-muted";
+    }
+
+    private string GetStepLabelClass(int step)
+    {
+        if (_currentStep >= step)
+            return "text-nebula-text-primary font-medium";
+        return "text-nebula-text-muted";
+    }
+
+    private string GetStepLabel(int step) => step switch
+    {
+        1 => "Game",
+        2 => "Details",
+        3 => "Deploy",
+        4 => "Review",
+        _ => ""
+    };
+
+    private string GetGameCardClass(Guid gameId)
+    {
+        var baseClass = "p-4 rounded-nebula border-2 cursor-pointer transition-all";
+        if (_selectedGame?.Id == gameId)
+            return $"{baseClass} border-nebula-accent bg-nebula-accent/5";
+        return $"{baseClass} border-nebula-border-subtle hover:border-nebula-accent/50 bg-nebula-bg-secondary";
+    }
+
+    private string GetDeploymentCardClass(ServerDeploymentType type, bool disabled = false)
+    {
+        var baseClass = "p-4 rounded-nebula border-2 transition-all";
+        if (disabled)
+            return $"{baseClass} border-nebula-border-subtle bg-nebula-bg-tertiary opacity-50 cursor-not-allowed";
+        if (_model.DeploymentType == type)
+            return $"{baseClass} border-nebula-accent bg-nebula-accent/5 cursor-pointer";
+        return $"{baseClass} border-nebula-border-subtle hover:border-nebula-accent/50 bg-nebula-bg-secondary cursor-pointer";
+    }
+
+    private class ServerFormModel
+    {
+        public Guid GameId { get; set; }
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public string? IconUrl { get; set; }
+        public string InstallPath { get; set; } = "";
+        public int PrimaryPort { get; set; }  // Set from game's DefaultPort when selected
+        public string BindAddress { get; set; } = "0.0.0.0";
+        public int RconPort { get; set; }
+        public int QueryPort { get; set; }
+
+        public ServerDeploymentType DeploymentType { get; set; } = ServerDeploymentType.Native;
+
+        // Native config
+        public string? NativeWorkingDirectory { get; set; }
+        public string? NativeExecutablePath { get; set; }
+        public string? NativeArguments { get; set; }
+        public string? JavaPath { get; set; }
+        public string? JavaArguments { get; set; }
+
+        // Docker config
+        public string? DockerImage { get; set; }
+        public string? DockerTag { get; set; }
+        public string? DockerNetwork { get; set; }
+        public RestartPolicy RestartPolicy { get; set; } = RestartPolicy.None;
+
+        // Resource limits
+        public int MaxMemoryMb { get; set; }
+        public int MaxCpuPercent { get; set; }
+    }
+
+}

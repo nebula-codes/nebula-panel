@@ -1,0 +1,144 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@inject NavigationManager Navigation
+@inject IAuthClientService AuthService
+@inject IHytaleAuthService HytaleAuthService
+
+<Dropdown Position="Dropdown.DropdownPosition.BottomRight" Width="200px">
+    <Trigger>
+        <button type="button" class="user-dropdown-trigger">
+            <div class="user-avatar">
+                <Icon Name="user" Size="IconSize.Small" Class="text-nebula-accent" />
+            </div>
+            <span class="hidden lg:block text-sm font-medium text-nebula-text-primary">@_userName</span>
+            <Icon Name="chevron-down" Size="IconSize.XSmall" Class="hidden lg:block text-nebula-text-muted" />
+        </button>
+    </Trigger>
+    <ChildContent>
+        @* User info header *@
+        <div class="px-3 py-2 border-b border-nebula-border-subtle">
+            <p class="text-sm font-medium text-nebula-text-primary">@_userName</p>
+            <p class="text-xs text-nebula-text-muted">@_userRole</p>
+        </div>
+
+        @* Hytale status *@
+        @if (_hytaleCredentials?.IsValid == true)
+        {
+            <a href="/settings/integrations/hytale" class="dropdown-item">
+                <Icon Name="lock" Size="IconSize.Small" Class="@HytaleIconClass" />
+                <span>Hytale: @HytaleTimeText</span>
+            </a>
+        }
+
+        @* Menu items *@
+        <a href="/settings/profile" class="dropdown-item">
+            <Icon Name="user" Size="IconSize.Small" />
+            <span>Profile</span>
+        </a>
+        <a href="/settings" class="dropdown-item">
+            <Icon Name="settings" Size="IconSize.Small" />
+            <span>Settings</span>
+        </a>
+
+        <div class="dropdown-divider"></div>
+
+        <button type="button" @onclick="HandleLogout" class="dropdown-item dropdown-item-danger w-full">
+            <Icon Name="log-out" Size="IconSize.Small" />
+            <span>Logout</span>
+        </button>
+    </ChildContent>
+</Dropdown>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string _userName = "User";
+    private string _userRole = "Member";
+    private HytaleUserCredentials? _hytaleCredentials;
+    private bool _credentialsLoaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+
+            var nameClaim = state.User.FindFirst(ClaimTypes.Name);
+            if (nameClaim is not null)
+            {
+                _userName = nameClaim.Value;
+            }
+
+            _userRole = state.User.IsInRole("Admin") ? "Administrator" : "Member";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_credentialsLoaded && AuthState is not null)
+        {
+            _credentialsLoaded = true;
+            await LoadHytaleCredentialsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadHytaleCredentialsAsync()
+    {
+        try
+        {
+            if (AuthState is null) return;
+
+            var state = await AuthState;
+            var userIdClaim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                _hytaleCredentials = await HytaleAuthService.GetCredentialsAsync(userId);
+            }
+        }
+        catch
+        {
+            // Silently fail - credentials are optional
+            _hytaleCredentials = null;
+        }
+    }
+
+    private string HytaleIconClass
+    {
+        get
+        {
+            if (_hytaleCredentials == null || !_hytaleCredentials.IsValid)
+                return "text-nebula-text-muted";
+
+            var days = _hytaleCredentials.TimeRemaining.TotalDays;
+            if (days >= 7) return "text-nebula-success";
+            if (days >= 1) return "text-nebula-warning";
+            return "text-nebula-error";
+        }
+    }
+
+    private string HytaleTimeText
+    {
+        get
+        {
+            if (_hytaleCredentials == null || !_hytaleCredentials.IsValid)
+                return "Expired";
+
+            var remaining = _hytaleCredentials.TimeRemaining;
+            if (remaining.TotalDays >= 1)
+                return $"{(int)remaining.TotalDays}d remaining";
+            if (remaining.TotalHours >= 1)
+                return $"{(int)remaining.TotalHours}h remaining";
+            return $"{(int)remaining.TotalMinutes}m remaining";
+        }
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthService.LogoutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

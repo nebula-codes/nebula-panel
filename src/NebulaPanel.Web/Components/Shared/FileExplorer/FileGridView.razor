@@ -1,0 +1,111 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+@using NebulaPanel.Application.DTOs
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="file-grid">
+    @foreach (var entry in Entries)
+    {
+        var isSelected = SelectedItems.Contains(entry.Path);
+        <div class="file-grid-item @(isSelected ? "selected" : "") @(entry.IsHidden ? "opacity-60" : "")"
+             @onclick="e => HandleClick(e, entry.Path)"
+             @onclick:stopPropagation
+             @ondblclick="() => OnOpen.InvokeAsync(entry)"
+             @oncontextmenu="e => OnContextMenu.InvokeAsync((entry, e))"
+             @oncontextmenu:preventDefault>
+
+            <div class="file-grid-icon">
+                @if (entry.Type == "directory")
+                {
+                    <Icon Name="folder" Size="IconSize.XLarge" Class="text-nebula-warning" />
+                }
+                else
+                {
+                    <Icon Name="@GetFileIcon(entry.Extension)" Size="IconSize.XLarge" Class="@GetFileIconClass(entry)" />
+                }
+            </div>
+
+            <div class="file-grid-name" title="@entry.Name">
+                @entry.Name
+            </div>
+
+            @if (entry.Type == "file" && entry.Size.HasValue)
+            {
+                <div class="file-grid-size">
+                    @FormatFileSize(entry.Size.Value)
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<FileSystemEntryDto> Entries { get; set; } = [];
+    [Parameter] public HashSet<string> SelectedItems { get; set; } = [];
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    [Parameter] public EventCallback<string> OnMultiSelect { get; set; }
+    [Parameter] public EventCallback<FileSystemEntryDto> OnOpen { get; set; }
+    [Parameter] public EventCallback<(FileSystemEntryDto Entry, MouseEventArgs Args)> OnContextMenu { get; set; }
+
+    private async Task HandleClick(MouseEventArgs e, string path)
+    {
+        if (e.CtrlKey || e.MetaKey)
+        {
+            await OnMultiSelect.InvokeAsync(path);
+        }
+        else
+        {
+            await OnSelect.InvokeAsync(path);
+        }
+    }
+
+    private string GetFileIcon(string? extension) => extension?.ToLowerInvariant() switch
+    {
+        ".json" => "file-json",
+        ".xml" => "file-code",
+        ".yaml" or ".yml" => "file-code",
+        ".properties" or ".cfg" or ".conf" or ".ini" or ".toml" => "settings",
+        ".sh" or ".bat" or ".cmd" or ".ps1" => "terminal",
+        ".log" or ".txt" => "file-text",
+        ".md" => "file-text",
+        ".zip" or ".tar" or ".gz" or ".7z" or ".rar" => "package",
+        ".jar" => "box",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".svg" or ".ico" => "image",
+        ".js" or ".ts" => "file-code",
+        ".py" => "file-code",
+        ".java" or ".cs" => "file-code",
+        ".lua" => "file-code",
+        ".html" or ".htm" => "file-code",
+        ".css" => "file-code",
+        ".sql" => "database",
+        _ => "file"
+    };
+
+    private string GetFileIconClass(FileSystemEntryDto entry) => entry.Extension?.ToLowerInvariant() switch
+    {
+        ".json" or ".xml" or ".yaml" or ".yml" => "text-nebula-info",
+        ".log" => "text-nebula-text-muted",
+        ".zip" or ".tar" or ".gz" or ".7z" or ".rar" => "text-nebula-accent",
+        ".jar" => "text-nebula-warning",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" => "text-nebula-success",
+        ".js" or ".ts" => "text-yellow-500",
+        ".py" => "text-blue-400",
+        ".java" => "text-orange-500",
+        ".cs" => "text-purple-400",
+        _ => "text-nebula-text-secondary"
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+
+        return $"{size:0.##} {sizes[order]}";
+    }
+}

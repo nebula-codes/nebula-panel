@@ -1,0 +1,413 @@
+@page "/backups"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@inject IBackupService BackupService
+@inject IGameServerService ServerService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Backups - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @* Header *@
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Backups</h1>
+            <p class="text-nebula-text-muted mt-1">Manage all server backups</p>
+        </div>
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Server Filter *@
+    <div class="mb-4 flex items-center gap-4">
+        <div class="w-64">
+            <select @bind="_selectedServerId" @bind:after="FilterBackups"
+                    class="w-full px-3 py-2 rounded-nebula border border-nebula-border bg-nebula-bg-secondary text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-accent">
+                <option value="">All Servers</option>
+                @foreach (var server in _servers)
+                {
+                    <option value="@server.Id">@server.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @* Backup List *@
+    <DataGrid TItem="BackupListItemDto"
+              Items="_filteredBackups"
+              Loading="_loading"
+              EmptyMessage="No backups found."
+              Pageable="true"
+              PageSize="15">
+        <Columns>
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Backup"
+                           Field="@(b => b.Name)"
+                           Sortable="true">
+                <Template Context="backup">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center @GetScopeColor(backup.Scope)">
+                            <Icon Name="@GetScopeIcon(backup.Scope)" Size="IconSize.Small" />
+                        </div>
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@backup.Name</div>
+                            <div class="text-sm text-nebula-text-muted">@backup.ServerName</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Size"
+                           Width="100px">
+                <Template Context="backup">
+                    <span class="text-sm text-nebula-text-secondary">@FormatFileSize(backup.FileSizeBytes)</span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Created"
+                           Field="@(b => b.CreatedAt)"
+                           Sortable="true"
+                           Width="160px">
+                <Template Context="backup">
+                    <span class="text-sm text-nebula-text-muted" title="@backup.CreatedAt.ToLocalTime().ToString("f")">
+                        @FormatRelativeTime(backup.CreatedAt)
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Type"
+                           Width="100px">
+                <Template Context="backup">
+                    <StatusBadge Status="@GetTypeBadgeStatus(backup.Type)"
+                                 Text="@backup.Type.ToString()"
+                                 Size="StatusBadge.BadgeSize.Small" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Status"
+                           Width="100px">
+                <Template Context="backup">
+                    <StatusBadge Status="@GetStatusBadgeStatus(backup.Status)"
+                                 Text="@backup.Status.ToString()"
+                                 ShowDot="true"
+                                 Size="StatusBadge.BadgeSize.Small" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title=""
+                           Width="140px">
+                <Template Context="backup">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="download"
+                                IconOnly="true"
+                                OnClick="@(() => DownloadBackup(backup))"
+                                Disabled="@(backup.Status != BackupStatus.Completed)"
+                                title="Download" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="rotate-ccw"
+                                IconOnly="true"
+                                OnClick="@(() => ConfirmRestore(backup))"
+                                Disabled="@(backup.Status != BackupStatus.Completed)"
+                                title="Restore" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="trash-2"
+                                IconOnly="true"
+                                OnClick="@(() => ConfirmDelete(backup))"
+                                title="Delete" />
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+    </DataGrid>
+</div>
+
+@* Restore Confirmation Modal *@
+@if (_showRestoreConfirm && _backupToRestore is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelRestore" Size="ModalSize.Small">
+        <Header>
+            <div class="flex items-center gap-2">
+                <Icon Name="rotate-ccw" Size="IconSize.Medium" />
+                <span>Restore Backup</span>
+            </div>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary mb-4">
+                Are you sure you want to restore the backup "<strong>@_backupToRestore.Name</strong>"?
+            </p>
+            <p class="text-nebula-text-muted text-sm">
+                This will overwrite the current server files. A pre-restore backup will be created automatically.
+            </p>
+        </Body>
+        <Footer>
+            <div class="flex justify-end gap-2">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Cancel"
+                        OnClick="CancelRestore" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Restore"
+                        IconName="rotate-ccw"
+                        Loading="_restoring"
+                        OnClick="ExecuteRestore" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Delete Confirmation Modal *@
+@if (_showDeleteConfirm && _backupToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="ModalSize.Small">
+        <Header>
+            <div class="flex items-center gap-2 text-nebula-error">
+                <Icon Name="trash-2" Size="IconSize.Medium" />
+                <span>Delete Backup</span>
+            </div>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary mb-4">
+                Are you sure you want to delete the backup "<strong>@_backupToDelete.Name</strong>"?
+            </p>
+            <p class="text-nebula-text-muted text-sm">
+                This action cannot be undone. The backup file will be permanently deleted.
+            </p>
+        </Body>
+        <Footer>
+            <div class="flex justify-end gap-2">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Cancel"
+                        OnClick="CancelDelete" />
+                <Button Variant="ButtonVariant.Danger"
+                        Text="Delete"
+                        IconName="trash-2"
+                        Loading="_deleting"
+                        OnClick="ExecuteDelete" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<BackupListItemDto> _backups = [];
+    private List<BackupListItemDto> _filteredBackups = [];
+    private List<GameServerListItemDto> _servers = [];
+    private string _selectedServerId = "";
+
+    // Restore modal state
+    private bool _showRestoreConfirm;
+    private bool _restoring;
+    private BackupListItemDto? _backupToRestore;
+
+    // Delete modal state
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private BackupListItemDto? _backupToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var serversTask = ServerService.GetAllServersAsync();
+            var backupsTask = BackupService.GetAllBackupsAsync();
+
+            await Task.WhenAll(serversTask, backupsTask);
+
+            _servers = (await serversTask).ToList();
+            _backups = (await backupsTask).ToList();
+            FilterBackups();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void FilterBackups()
+    {
+        if (string.IsNullOrEmpty(_selectedServerId))
+        {
+            _filteredBackups = _backups;
+        }
+        else if (Guid.TryParse(_selectedServerId, out var serverId))
+        {
+            _filteredBackups = _backups.Where(b => b.ServerId == serverId).ToList();
+        }
+    }
+
+    private void DownloadBackup(BackupListItemDto backup)
+    {
+        Navigation.NavigateTo($"/api/servers/{backup.ServerId}/backups/{backup.Id}/download", forceLoad: true);
+    }
+
+    private void ConfirmRestore(BackupListItemDto backup)
+    {
+        _backupToRestore = backup;
+        _showRestoreConfirm = true;
+    }
+
+    private void CancelRestore()
+    {
+        _showRestoreConfirm = false;
+        _backupToRestore = null;
+    }
+
+    private async Task ExecuteRestore()
+    {
+        if (_backupToRestore is null) return;
+
+        try
+        {
+            _restoring = true;
+            var result = await BackupService.RestoreBackupAsync(_backupToRestore.Id);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to restore backup: {ex.Message}";
+        }
+        finally
+        {
+            _restoring = false;
+            _showRestoreConfirm = false;
+            _backupToRestore = null;
+        }
+    }
+
+    private void ConfirmDelete(BackupListItemDto backup)
+    {
+        _backupToDelete = backup;
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteConfirm = false;
+        _backupToDelete = null;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        if (_backupToDelete is null) return;
+
+        try
+        {
+            _deleting = true;
+            var result = await BackupService.DeleteBackupAsync(_backupToDelete.Id);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                _backups.Remove(_backupToDelete);
+                FilterBackups();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to delete backup: {ex.Message}";
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteConfirm = false;
+            _backupToDelete = null;
+        }
+    }
+
+    private static string GetScopeIcon(BackupScope scope) => scope switch
+    {
+        BackupScope.Full => "hard-drive",
+        BackupScope.Selective => "folder",
+        _ => "file"
+    };
+
+    private static string GetScopeColor(BackupScope scope) => scope switch
+    {
+        BackupScope.Full => "bg-nebula-accent/20 text-nebula-accent",
+        BackupScope.Selective => "bg-nebula-info/20 text-nebula-info",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static StatusBadge.StatusType GetTypeBadgeStatus(BackupType type) => type switch
+    {
+        BackupType.Manual => StatusBadge.StatusType.Info,
+        BackupType.Scheduled => StatusBadge.StatusType.Success,
+        BackupType.PreUpdate => StatusBadge.StatusType.Warning,
+        BackupType.PreRestore => StatusBadge.StatusType.Warning,
+        _ => StatusBadge.StatusType.Neutral
+    };
+
+    private static StatusBadge.StatusType GetStatusBadgeStatus(BackupStatus status) => status switch
+    {
+        BackupStatus.Completed => StatusBadge.StatusType.Success,
+        BackupStatus.InProgress => StatusBadge.StatusType.Warning,
+        BackupStatus.Failed => StatusBadge.StatusType.Error,
+        BackupStatus.Pending => StatusBadge.StatusType.Info,
+        _ => StatusBadge.StatusType.Neutral
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - dateTime;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+
+        return dateTime.ToLocalTime().ToString("MMM d, yyyy");
+    }
+}

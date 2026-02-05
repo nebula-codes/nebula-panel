@@ -1,0 +1,160 @@
+@inherits InputBase<string>
+
+<div class="@ContainerClasses">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@Id" class="label">
+            @Label
+            @if (Required)
+            {
+                <span class="text-nebula-error ml-1">*</span>
+            }
+        </label>
+    }
+
+    <div class="relative">
+        @if (LeadingIcon != null)
+        {
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-nebula-text-muted">
+                <Icon Name="@LeadingIcon" Size="IconSize.Small" />
+            </div>
+        }
+
+        <input @bind="CurrentValue"
+               @bind:event="@BindEvent"
+               type="@Type"
+               id="@Id"
+               class="@ComputedInputClasses"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               readonly="@Readonly"
+               autocomplete="@Autocomplete"
+               @attributes="AdditionalAttributes" />
+
+        @if (TrailingIcon != null || (Type == "password" && ShowPasswordToggle))
+        {
+            <div class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                @if (Type == "password" && ShowPasswordToggle)
+                {
+                    <button type="button"
+                            class="text-nebula-text-muted hover:text-nebula-text-secondary transition-colors"
+                            @onclick="TogglePasswordVisibility">
+                        <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="IconSize.Small" />
+                    </button>
+                }
+                else if (TrailingIcon != null)
+                {
+                    <Icon Name="@TrailingIcon" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                }
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(HelperText) && !HasValidationError)
+    {
+        <p class="text-xs text-nebula-text-muted mt-1">@HelperText</p>
+    }
+
+    @if (HasValidationError)
+    {
+        <p class="text-xs text-nebula-error mt-1">@string.Join(", ", ValidationErrors)</p>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Label { get; set; }
+
+    [Parameter]
+    public string Type { get; set; } = "text";
+
+    [Parameter]
+    public string? Placeholder { get; set; }
+
+    [Parameter]
+    public string? HelperText { get; set; }
+
+    [Parameter]
+    public string? LeadingIcon { get; set; }
+
+    [Parameter]
+    public string? TrailingIcon { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public bool Readonly { get; set; }
+
+    [Parameter]
+    public bool Required { get; set; }
+
+    [Parameter]
+    public bool ShowPasswordToggle { get; set; } = true;
+
+    [Parameter]
+    public string? Autocomplete { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string? ContainerClass { get; set; }
+
+    [Parameter]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter]
+    public string BindEvent { get; set; } = "onchange";
+
+    private bool _showPassword;
+    private string ActualType => Type == "password" && _showPassword ? "text" : Type;
+
+    private bool HasValidationError => EditContext?.GetValidationMessages(FieldIdentifier).Any() == true;
+    private IEnumerable<string> ValidationErrors => EditContext?.GetValidationMessages(FieldIdentifier) ?? Enumerable.Empty<string>();
+
+    private string ContainerClasses
+    {
+        get
+        {
+            var classes = new List<string> { "form-group" };
+            if (!string.IsNullOrEmpty(ContainerClass))
+                classes.Add(ContainerClass);
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string ComputedInputClasses
+    {
+        get
+        {
+            var classes = new List<string> { "input" };
+
+            if (LeadingIcon != null)
+                classes.Add("pl-10");
+
+            if (TrailingIcon != null || (Type == "password" && ShowPasswordToggle))
+                classes.Add("pr-10");
+
+            if (HasValidationError)
+                classes.Add("input-error");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        _showPassword = !_showPassword;
+    }
+
+    protected override bool TryParseValueFromString(string? value, out string result, out string validationErrorMessage)
+    {
+        result = value ?? string.Empty;
+        validationErrorMessage = string.Empty;
+        return true;
+    }
+}

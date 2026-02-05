@@ -1,0 +1,427 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@inject IUnifiedModpackService ModpackService
+@implements IDisposable
+
+<div class="modpack-browser">
+    @* Search Bar *@
+    <div class="mb-6">
+        <div class="relative">
+            <Icon Name="search" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+            <input type="text"
+                   class="input pl-10"
+                   placeholder="Search modpacks..."
+                   @bind="_searchQuery"
+                   @bind:after="OnSearchChanged" />
+            @if (!string.IsNullOrEmpty(_searchQuery))
+            {
+                <button type="button"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-nebula-text-muted hover:text-nebula-text-primary"
+                        @onclick="ClearSearch">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            }
+        </div>
+    </div>
+
+    @* Filters *@
+    <div class="flex flex-wrap items-center gap-4 mb-6">
+        @* Minecraft Version *@
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-nebula-text-muted">MC Version:</label>
+            <select class="input input-sm w-32" @bind="_selectedVersion" @bind:after="OnFilterChanged">
+                <option value="">All</option>
+                @foreach (var version in _minecraftVersions)
+                {
+                    <option value="@version">@version</option>
+                }
+            </select>
+        </div>
+
+        @* Loader Filter *@
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-nebula-text-muted">Loader:</label>
+            <FilterPills TValue="ModLoaderType?"
+                         Options="_loaderOptions"
+                         SelectedValue="_selectedLoader"
+                         SelectedValueChanged="OnLoaderChanged"
+                         ShowAllOption="true"
+                         AllLabel="All" />
+        </div>
+
+        @* Sort By *@
+        <div class="flex items-center gap-2 ml-auto">
+            <label class="text-sm text-nebula-text-muted">Sort:</label>
+            <select class="input input-sm w-40" @bind="_sortBy" @bind:after="OnFilterChanged">
+                <option value="@ModpackSearchSort.Popularity">Popularity</option>
+                <option value="@ModpackSearchSort.TotalDownloads">Downloads</option>
+                <option value="@ModpackSearchSort.RecentlyUpdated">Recently Updated</option>
+                <option value="@ModpackSearchSort.Name">Name</option>
+            </select>
+        </div>
+    </div>
+
+    @* Provider Pills *@
+    <div class="flex items-center gap-2 mb-6">
+        <span class="text-sm text-nebula-text-muted">Provider:</span>
+        <FilterPills TValue="ModpackProviderType?"
+                     Options="_providerOptions"
+                     SelectedValue="_selectedProvider"
+                     SelectedValueChanged="OnProviderChanged"
+                     ShowAllOption="true"
+                     AllLabel="All Providers" />
+    </div>
+
+    @* Error Display *@
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4 mb-6">
+            <div class="flex items-center gap-2">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                <span>@_error</span>
+                <button type="button" class="ml-auto hover:opacity-80" @onclick="() => _error = null">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            </div>
+        </div>
+    }
+
+    @* Featured Section (hidden when searching) *@
+    @if (string.IsNullOrEmpty(_searchQuery) && _featuredModpacks.Count > 0 && !_isLoading)
+    {
+        <div class="mb-8">
+            <h3 class="text-lg font-medium text-nebula-text-primary mb-4 flex items-center gap-2">
+                <Icon Name="star" Size="IconSize.Small" Class="text-nebula-warning" />
+                Featured Modpacks
+            </h3>
+            <div class="featured-grid">
+                @foreach (var modpack in _featuredModpacks.Take(4))
+                {
+                    <ModpackCard Modpack="@modpack"
+                                 OnViewDetails="() => HandleViewDetails(modpack)"
+                                 ShowProviderBadge="true" />
+                }
+            </div>
+        </div>
+    }
+
+    @* Results Section *@
+    <div>
+        @if (!string.IsNullOrEmpty(_searchQuery) || _selectedVersion != null || _selectedLoader != null || _selectedProvider != null)
+        {
+            <h3 class="text-lg font-medium text-nebula-text-primary mb-4">
+                @if (_searchResults.Count > 0)
+                {
+                    <span>@_totalResults results</span>
+                }
+                else if (!_isLoading)
+                {
+                    <span>No results found</span>
+                }
+            </h3>
+        }
+        else if (_featuredModpacks.Count > 0)
+        {
+            <h3 class="text-lg font-medium text-nebula-text-primary mb-4">All Modpacks</h3>
+        }
+
+        @if (_isLoading)
+        {
+            <div class="results-grid">
+                @for (int i = 0; i < 6; i++)
+                {
+                    <SkeletonCard />
+                }
+            </div>
+        }
+        else if (_searchResults.Count > 0)
+        {
+            <div class="results-grid">
+                @foreach (var modpack in _searchResults)
+                {
+                    <ModpackCard Modpack="@modpack"
+                                 OnViewDetails="() => HandleViewDetails(modpack)"
+                                 ShowProviderBadge="true" />
+                }
+            </div>
+
+            @* Load More *@
+            @if (_hasMore)
+            {
+                <div class="flex justify-center mt-6">
+                    <Button Variant="ButtonVariant.Secondary"
+                            Text="Load More"
+                            Loading="_isLoadingMore"
+                            OnClick="LoadMoreAsync" />
+                </div>
+            }
+        }
+        else if (string.IsNullOrEmpty(_searchQuery) && _featuredModpacks.Count > 0)
+        {
+            @* Show all modpacks (featured expanded) *@
+            <div class="results-grid">
+                @foreach (var modpack in _featuredModpacks.Skip(4))
+                {
+                    <ModpackCard Modpack="@modpack"
+                                 OnViewDetails="() => HandleViewDetails(modpack)"
+                                 ShowProviderBadge="true" />
+                }
+            </div>
+        }
+        else if (!_isLoading)
+        {
+            <EmptyState
+                IconName="package"
+                Heading="No modpacks found"
+                Description="@GetEmptyStateDescription()" />
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Callback when a modpack is selected for viewing details.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ModpackSearchItem> OnModpackSelected { get; set; }
+
+    /// <summary>
+    /// Initial Minecraft version filter.
+    /// </summary>
+    [Parameter]
+    public string? InitialMinecraftVersion { get; set; }
+
+    // Search state
+    private string _searchQuery = "";
+    private string? _selectedVersion;
+    private ModLoaderType? _selectedLoader;
+    private ModpackProviderType? _selectedProvider;
+    private ModpackSearchSort _sortBy = ModpackSearchSort.Popularity;
+
+    // Results
+    private List<ModpackSearchItem> _featuredModpacks = [];
+    private List<ModpackSearchItem> _searchResults = [];
+    private int _totalResults;
+    private int _currentPage = 1;
+    private bool _hasMore;
+
+    // Loading state
+    private bool _isLoading;
+    private bool _isLoadingMore;
+    private string? _error;
+
+    // Debounce
+    private Timer? _debounceTimer;
+    private const int DebounceMs = 300;
+
+    // Filter options
+    private readonly List<string> _minecraftVersions =
+    [
+        "1.21.4", "1.21.3", "1.21.1", "1.21",
+        "1.20.6", "1.20.4", "1.20.2", "1.20.1", "1.20",
+        "1.19.4", "1.19.3", "1.19.2", "1.19.1", "1.19",
+        "1.18.2", "1.18.1", "1.18",
+        "1.17.1", "1.17",
+        "1.16.5", "1.16.4", "1.16.3", "1.16.2", "1.16.1",
+        "1.12.2", "1.7.10"
+    ];
+
+    private readonly List<FilterPillOption<ModLoaderType?>> _loaderOptions =
+    [
+        new(ModLoaderType.Forge, "Forge"),
+        new(ModLoaderType.NeoForge, "NeoForge"),
+        new(ModLoaderType.Fabric, "Fabric"),
+        new(ModLoaderType.Quilt, "Quilt")
+    ];
+
+    private readonly List<FilterPillOption<ModpackProviderType?>> _providerOptions =
+    [
+        new(ModpackProviderType.CurseForge, "CurseForge"),
+        new(ModpackProviderType.Modrinth, "Modrinth"),
+        new(ModpackProviderType.FTB, "FTB")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedVersion = InitialMinecraftVersion;
+        await LoadFeaturedAsync();
+    }
+
+    private async Task LoadFeaturedAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _featuredModpacks = (await ModpackService.GetFeaturedAsync(10)).ToList();
+            _searchResults = _featuredModpacks;
+            _totalResults = _featuredModpacks.Count;
+            _hasMore = false;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load modpacks: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnSearchChanged()
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                _currentPage = 1;
+                await SearchAsync();
+            });
+        }, null, DebounceMs, Timeout.Infinite);
+    }
+
+    private async Task OnFilterChanged()
+    {
+        _currentPage = 1;
+        await SearchAsync();
+    }
+
+    private async Task OnLoaderChanged(ModLoaderType? loader)
+    {
+        _selectedLoader = loader;
+        await OnFilterChanged();
+    }
+
+    private async Task OnProviderChanged(ModpackProviderType? provider)
+    {
+        _selectedProvider = provider;
+        await OnFilterChanged();
+    }
+
+    private async Task SearchAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var query = new ModpackSearchQuery
+            {
+                Query = _searchQuery,
+                MinecraftVersion = _selectedVersion,
+                LoaderType = _selectedLoader,
+                Sort = _sortBy,
+                Page = _currentPage,
+                PageSize = 20
+            };
+
+            if (_selectedProvider.HasValue)
+            {
+                var result = await ModpackService.SearchProviderAsync(_selectedProvider.Value, query);
+                _searchResults = result.Modpacks.ToList();
+                _totalResults = result.TotalCount;
+                _hasMore = result.Page < result.TotalPages;
+            }
+            else
+            {
+                var result = await ModpackService.SearchAsync(query);
+                _searchResults = result.Modpacks.ToList();
+                _totalResults = result.TotalCount;
+                _hasMore = result.HasMoreResults;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Search failed: {ex.Message}";
+            _searchResults = [];
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadMoreAsync()
+    {
+        _isLoadingMore = true;
+        StateHasChanged();
+
+        try
+        {
+            _currentPage++;
+            var query = new ModpackSearchQuery
+            {
+                Query = _searchQuery,
+                MinecraftVersion = _selectedVersion,
+                LoaderType = _selectedLoader,
+                Sort = _sortBy,
+                Page = _currentPage,
+                PageSize = 20
+            };
+
+            if (_selectedProvider.HasValue)
+            {
+                var result = await ModpackService.SearchProviderAsync(_selectedProvider.Value, query);
+                _searchResults.AddRange(result.Modpacks);
+                _hasMore = result.Page < result.TotalPages;
+            }
+            else
+            {
+                var result = await ModpackService.SearchAsync(query);
+                _searchResults.AddRange(result.Modpacks);
+                _hasMore = result.HasMoreResults;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load more: {ex.Message}";
+            _currentPage--;
+        }
+        finally
+        {
+            _isLoadingMore = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSearch()
+    {
+        _searchQuery = "";
+        _currentPage = 1;
+        _searchResults = _featuredModpacks;
+        _totalResults = _featuredModpacks.Count;
+        _hasMore = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleViewDetails(ModpackSearchItem modpack)
+    {
+        await OnModpackSelected.InvokeAsync(modpack);
+    }
+
+    private string GetEmptyStateDescription()
+    {
+        if (!string.IsNullOrEmpty(_searchQuery))
+        {
+            return $"No modpacks found matching \"{_searchQuery}\". Try broadening your search.";
+        }
+        if (_selectedVersion != null || _selectedLoader != null)
+        {
+            return "No modpacks found with the selected filters. Try adjusting your filters.";
+        }
+        return "Unable to load modpacks. Please try again later.";
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

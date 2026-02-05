@@ -1,0 +1,123 @@
+@using NebulaPanel.Domain.Enums
+
+<div class="install-complete-container">
+    <div class="install-complete-content">
+        @* Success Icon *@
+        <div class="success-icon-wrapper">
+            <div class="success-icon">
+                <Icon Name="check" Size="IconSize.XLarge" />
+            </div>
+        </div>
+
+        @* Title *@
+        <h2 class="complete-title">Success!</h2>
+        <p class="complete-subtitle">@ModpackName has been installed</p>
+
+        @* Server Summary Card *@
+        <Card Class="summary-card">
+            <ChildContent>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <span class="summary-label">Server</span>
+                        <span class="summary-value">@ServerName</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Minecraft</span>
+                        <span class="summary-value">@MinecraftVersion</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Loader</span>
+                        <span class="summary-value">@LoaderName @LoaderVersion</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Mods</span>
+                        <span class="summary-value">@ModCount installed</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(InstallSize))
+                    {
+                        <div class="summary-item">
+                            <span class="summary-label">Size</span>
+                            <span class="summary-value">@InstallSize</span>
+                        </div>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        @* Quick Tips *@
+        <div class="quick-tips">
+            <div class="tips-header">
+                <Icon Name="zap" Size="IconSize.Small" />
+                <span>Quick Tips</span>
+            </div>
+            <ul class="tips-list">
+                <li>First start may take 5-10 minutes to generate world and load mods</li>
+                <li>Allocate at least @RecommendedRam RAM for best performance</li>
+                <li>Check the modpack wiki for configuration options</li>
+            </ul>
+        </div>
+
+        @* Action Buttons *@
+        <div class="action-buttons">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Go to Dashboard"
+                    IconName="home"
+                    Size="ButtonSize.Large"
+                    OnClick="HandleGoToDashboard" />
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Start Server Now"
+                    IconName="play"
+                    Size="ButtonSize.Large"
+                    OnClick="HandleStartServer" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid ServerId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string ServerName { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string ModpackName { get; set; } = "";
+
+    [Parameter]
+    public string MinecraftVersion { get; set; } = "";
+
+    [Parameter]
+    public string LoaderName { get; set; } = "";
+
+    [Parameter]
+    public string? LoaderVersion { get; set; }
+
+    [Parameter]
+    public int ModCount { get; set; }
+
+    [Parameter]
+    public string? InstallSize { get; set; }
+
+    [Parameter]
+    public int RecommendedRamMb { get; set; } = 8192;
+
+    [Parameter]
+    public EventCallback OnGoToDashboard { get; set; }
+
+    [Parameter]
+    public EventCallback OnStartServer { get; set; }
+
+    private string RecommendedRam => RecommendedRamMb >= 1024
+        ? $"{RecommendedRamMb / 1024}GB"
+        : $"{RecommendedRamMb}MB";
+
+    private async Task HandleGoToDashboard()
+    {
+        await OnGoToDashboard.InvokeAsync();
+    }
+
+    private async Task HandleStartServer()
+    {
+        await OnStartServer.InvokeAsync();
+    }
+}

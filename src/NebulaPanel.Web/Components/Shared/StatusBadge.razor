@@ -1,0 +1,119 @@
+<span class="@ComputedClasses">
+    @if (ShowDot)
+    {
+        <span class="@DotClasses"></span>
+    }
+    @if (!string.IsNullOrEmpty(IconName))
+    {
+        <Icon Name="@IconName" Size="IconSize.XSmall" Class="flex-shrink-0" />
+    }
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        @Text
+    }
+    else
+    {
+        @ChildContent
+    }
+</span>
+
+@code {
+    [Parameter]
+    public string? Text { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public StatusType Status { get; set; } = StatusType.Neutral;
+
+    [Parameter]
+    public bool ShowDot { get; set; }
+
+    [Parameter]
+    public BadgeSize Size { get; set; } = BadgeSize.Medium;
+
+    [Parameter]
+    public string? IconName { get; set; }
+
+    [Parameter]
+    public bool Pulse { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string ComputedClasses
+    {
+        get
+        {
+            var classes = new List<string>
+            {
+                GetStatusClass(),
+                GetSizeClass()
+            };
+
+            if (!string.IsNullOrEmpty(IconName))
+                classes.Add("badge-with-icon");
+
+            if (Pulse)
+                classes.Add("badge-pulse");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string GetStatusClass() => Status switch
+    {
+        StatusType.Success => "badge-success",
+        StatusType.Warning => "badge-warning",
+        StatusType.Error => "badge-error",
+        StatusType.Info => "badge-info",
+        StatusType.Neutral => "badge-neutral",
+        _ => "badge-neutral"
+    };
+
+    private string GetSizeClass() => Size switch
+    {
+        BadgeSize.Small => "text-[10px] px-1.5 py-0.5",
+        BadgeSize.Medium => "",
+        BadgeSize.Large => "text-sm px-3 py-1",
+        _ => ""
+    };
+
+    private string DotClasses
+    {
+        get
+        {
+            var baseClass = "w-1.5 h-1.5 rounded-full mr-1.5";
+            var colorClass = Status switch
+            {
+                StatusType.Success => "bg-nebula-success",
+                StatusType.Warning => "bg-nebula-warning animate-pulse",
+                StatusType.Error => "bg-nebula-error",
+                StatusType.Info => "bg-nebula-info",
+                StatusType.Neutral => "bg-nebula-text-muted",
+                _ => "bg-nebula-text-muted"
+            };
+            return $"{baseClass} {colorClass}";
+        }
+    }
+
+    public enum StatusType
+    {
+        Success,
+        Warning,
+        Error,
+        Info,
+        Neutral
+    }
+
+    public enum BadgeSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+}

@@ -1,0 +1,65 @@
+@using Markdig
+
+<Modal @bind-IsOpen="IsOpen"
+       Size="Modal.ModalSize.Large"
+       Title="@($"What's New in {Version}")"
+       OnClose="HandleClose">
+    <Body>
+        <div class="space-y-4">
+            @* Version badge *@
+            <div class="flex items-center gap-3">
+                <span class="px-3 py-1 bg-nebula-accent/20 text-nebula-accent rounded-full text-sm font-medium">
+                    v@(Version)
+                </span>
+                <span class="text-nebula-text-secondary text-sm">
+                    You're running the latest version
+                </span>
+            </div>
+
+            @* Release notes *@
+            <div class="prose prose-invert max-w-none">
+                @((MarkupString)RenderedMarkdown)
+            </div>
+        </div>
+    </Body>
+    <Footer>
+        <button class="btn-primary" @onclick="HandleDismiss">
+            <Icon Name="check" Size="IconSize.Small" class="mr-2" />
+            Got it!
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public string Version { get; set; } = string.Empty;
+
+    [Parameter]
+    public string ReleaseNotes { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback OnDismissed { get; set; }
+
+    private string RenderedMarkdown => string.IsNullOrEmpty(ReleaseNotes)
+        ? "<p>No release notes available.</p>"
+        : Markdown.ToHtml(ReleaseNotes, new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .Build());
+
+    private async Task HandleDismiss()
+    {
+        await IsOpenChanged.InvokeAsync(false);
+        await OnDismissed.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        await OnDismissed.InvokeAsync();
+    }
+}

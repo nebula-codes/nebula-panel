@@ -1,0 +1,257 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+
+<div class="file-explorer" @oncontextmenu="HandleBackgroundContextMenu" @oncontextmenu:preventDefault>
+    <!-- Toolbar -->
+    <FileExplorerToolbar
+        ViewMode="@_viewMode"
+        OnViewModeChanged="SetViewMode"
+        OnRefresh="RefreshAsync"
+        OnCreateFolder="ShowCreateFolderModal"
+        OnUpload="ShowUploadModal"
+        CanGoBack="@CanGoBack"
+        OnGoBack="NavigateBackAsync"
+        SelectedCount="@_selectedItems.Count"
+        OnDelete="DeleteSelectedAsync"
+        OnDownload="DownloadSelectedAsync"
+        SearchQuery="@_searchQuery"
+        OnSearchInput="OnSearchInput"
+        OnClearSearch="ClearSearch" />
+
+    <!-- Breadcrumb -->
+    <FileBreadcrumb
+        CurrentPath="@_currentPath"
+        OnNavigate="NavigateToAsync" />
+
+    <!-- Main Content Area -->
+    <div class="file-explorer-content relative @(_isDragging ? "dragging" : "")"
+         @ondragover="HandleDragOver"
+         @ondragover:preventDefault
+         @ondragleave="HandleDragLeave"
+         @ondrop="HandleDropAsync"
+         @ondrop:preventDefault>
+
+        @* Drag & Drop Overlay *@
+        @if (_isDragging)
+        {
+            <div class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-nebula-accent/5 border-2 border-dashed border-nebula-accent rounded-nebula-lg pointer-events-none">
+                <div class="p-4 rounded-full bg-nebula-accent/20 mb-3">
+                    <Icon Name="upload" Size="IconSize.Large" Class="text-nebula-accent" />
+                </div>
+                <p class="text-lg font-medium text-nebula-accent">Drop files here</p>
+                <p class="text-sm text-nebula-text-muted mt-1">Upload to @(string.IsNullOrEmpty(_currentPath) ? "/" : _currentPath)</p>
+            </div>
+        }
+
+        @* Upload Progress Inline *@
+        @if (_uploading && _uploadProgress.Count > 0)
+        {
+            <div class="px-4 py-2 border-b border-nebula-border bg-nebula-bg-secondary">
+                <div class="flex items-center gap-2 text-sm text-nebula-text-secondary">
+                    <span class="spinner w-4 h-4"></span>
+                    <span>Uploading @_uploadProgress.Count file(s)...</span>
+                </div>
+            </div>
+        }
+
+        @if (_loading)
+        {
+            <div class="file-explorer-loading">
+                <div class="animate-spin h-8 w-8 border-2 border-nebula-accent border-t-transparent rounded-full"></div>
+                <span class="mt-2 text-nebula-text-muted">Loading...</span>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="file-explorer-error">
+                <Icon Name="alert-circle" Size="IconSize.Large" Class="text-nebula-error" />
+                <span class="mt-2">@_error</span>
+                <Button Variant="ButtonVariant.Ghost" OnClick="RefreshAsync" Class="mt-4">
+                    <Icon Name="refresh-cw" Size="IconSize.Small" Class="mr-2" />
+                    Retry
+                </Button>
+            </div>
+        }
+        else if (!FilteredEntries.Any())
+        {
+            @if (string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                <div class="file-explorer-empty">
+                    <Icon Name="folder-open" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                    <p class="mt-4 text-lg font-medium">This folder is empty</p>
+                    <p class="text-sm text-nebula-text-muted mb-4">Drop files here or use the buttons below</p>
+                    <div class="flex gap-2">
+                        <Button IconName="folder-plus" OnClick="ShowCreateFolderModal">New Folder</Button>
+                        <Button IconName="upload" Variant="ButtonVariant.Secondary" OnClick="ShowUploadModal">Upload Files</Button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="file-explorer-empty">
+                    <Icon Name="search" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                    <p class="mt-4 text-lg font-medium">No matches found</p>
+                    <p class="text-sm text-nebula-text-muted mb-4">No files or folders match "@_searchQuery"</p>
+                    <Button Variant="ButtonVariant.Secondary" OnClick="ClearSearch">Clear Search</Button>
+                </div>
+            }
+        }
+        else
+        {
+            @if (_viewMode == FileViewMode.Grid)
+            {
+                <FileGridView
+                    Entries="@FilteredEntries.ToList()"
+                    SelectedItems="@_selectedItems"
+                    OnSelect="SelectItem"
+                    OnMultiSelect="MultiSelectItem"
+                    OnOpen="OpenItemAsync"
+                    OnContextMenu="ShowItemContextMenu" />
+            }
+            else
+            {
+                <FileListView
+                    Entries="@FilteredEntries.ToList()"
+                    SelectedItems="@_selectedItems"
+                    OnSelect="SelectItem"
+                    OnMultiSelect="MultiSelectItem"
+                    OnOpen="OpenItemAsync"
+                    OnContextMenu="ShowItemContextMenu" />
+            }
+        }
+
+        <!-- Drag overlay -->
+        @if (_isDragging)
+        {
+            <div class="file-explorer-drop-overlay">
+                <Icon Name="upload" Size="IconSize.XLarge" Class="text-nebula-accent" />
+                <span class="mt-2 text-lg font-medium">Drop files to upload</span>
+            </div>
+        }
+    </div>
+
+    <!-- Context Menu -->
+    <FileContextMenu
+        @ref="_contextMenu"
+        SelectedEntry="@_contextMenuEntry"
+        SelectedCount="@_selectedItems.Count"
+        HasClipboard="@_clipboard.Any()"
+        OnOpen="() => OpenItemAsync(_contextMenuEntry!)"
+        OnEdit="() => EditItemAsync(_contextMenuEntry!)"
+        OnRename="ShowRenameModal"
+        OnDelete="DeleteContextItemAsync"
+        OnDownload="DownloadContextItemAsync"
+        OnCopy="CopyItems"
+        OnCut="CutItems"
+        OnPaste="PasteAsync"
+        OnArchive="ArchiveContextItemAsync"
+        OnExtract="ExtractContextItemAsync"
+        OnNewFolder="ShowCreateFolderModal"
+        OnUpload="ShowUploadModal"
+        OnRefresh="RefreshAsync" />
+
+    <!-- Create Folder Modal -->
+    <Modal @bind-IsOpen="_showCreateFolderModal" Title="Create New Folder" Size="ModalSize.Small">
+        <Body>
+            <div class="space-y-4">
+                <Input @bind-Value="_newFolderName"
+                       Label="Folder Name"
+                       Placeholder="Enter folder name"
+                       @onkeydown="HandleCreateFolderKeyDown" />
+            </div>
+        </Body>
+        <Footer>
+            <Button Variant="ButtonVariant.Ghost" OnClick="() => _showCreateFolderModal = false">Cancel</Button>
+            <Button OnClick="CreateFolderAsync" Loading="@_creating" Disabled="@string.IsNullOrWhiteSpace(_newFolderName)">Create</Button>
+        </Footer>
+    </Modal>
+
+    <!-- Rename Modal -->
+    <Modal @bind-IsOpen="_showRenameModal" Title="Rename" Size="ModalSize.Small">
+        <Body>
+            <div class="space-y-4">
+                <Input @bind-Value="_newName"
+                       Label="New Name"
+                       Placeholder="Enter new name"
+                       @onkeydown="HandleRenameKeyDown" />
+            </div>
+        </Body>
+        <Footer>
+            <Button Variant="ButtonVariant.Ghost" OnClick="() => _showRenameModal = false">Cancel</Button>
+            <Button OnClick="RenameAsync" Loading="@_renaming" Disabled="@string.IsNullOrWhiteSpace(_newName)">Rename</Button>
+        </Footer>
+    </Modal>
+
+    <!-- Upload Modal -->
+    <Modal @bind-IsOpen="_showUploadModal" Title="Upload Files" Size="ModalSize.Large">
+        <Body>
+            <FileUploadDropzone
+                OnFilesSelected="HandleFilesSelectedAsync"
+                UploadProgress="@_uploadProgress"
+                IsUploading="@_uploading" />
+        </Body>
+        <Footer>
+            <Button Variant="ButtonVariant.Ghost" OnClick="CloseUploadModal" Disabled="@_uploading">Close</Button>
+        </Footer>
+    </Modal>
+
+    <!-- Delete Confirmation Modal -->
+    <Modal @bind-IsOpen="_showDeleteModal" Title="Confirm Delete" Size="ModalSize.Small">
+        <Body>
+            <div class="text-center">
+                <Icon Name="alert-triangle" Size="IconSize.XLarge" Class="text-nebula-warning mx-auto mb-4" />
+                <p class="text-lg mb-2">Are you sure you want to delete?</p>
+                <p class="text-nebula-text-muted">
+                    @if (_itemsToDelete.Count == 1)
+                    {
+                        <span class="font-medium">@_itemsToDelete.First()</span>
+                    }
+                    else
+                    {
+                        <span class="font-medium">@_itemsToDelete.Count items</span>
+                    }
+                </p>
+                <p class="text-sm text-nebula-error mt-2">This action cannot be undone.</p>
+            </div>
+        </Body>
+        <Footer>
+            <Button Variant="ButtonVariant.Ghost" OnClick="() => _showDeleteModal = false">Cancel</Button>
+            <Button Variant="ButtonVariant.Danger" OnClick="ConfirmDeleteAsync" Loading="@_deleting">Delete</Button>
+        </Footer>
+    </Modal>
+
+    <!-- Code Editor Modal -->
+    <Modal @bind-IsOpen="_showEditor" Title="@_editingFileName" Size="ModalSize.Full">
+        <Body>
+            <CodeEditor
+                @ref="_codeEditor"
+                Content="@_editingContent"
+                Language="@_editingLanguage"
+                ReadOnly="@_editorReadOnly" />
+        </Body>
+        <Footer>
+            <Button Variant="ButtonVariant.Ghost" OnClick="CloseEditor">
+                @(_editorReadOnly ? "Close" : "Cancel")
+            </Button>
+            @if (!_editorReadOnly)
+            {
+                <Button IconName="save" OnClick="SaveFileAsync" Loading="@_saving">Save</Button>
+            }
+        </Footer>
+    </Modal>
+
+    @* Image Preview Lightbox *@
+    <Modal @bind-IsOpen="_showImagePreview" Title="@_previewImageName" Size="ModalSize.Large">
+        <Body>
+            <div class="flex items-center justify-center p-4 min-h-[200px]">
+                <img src="@_previewImageUrl"
+                     alt="@_previewImageName"
+                     class="max-w-full max-h-[60vh] object-contain rounded-nebula" />
+            </div>
+        </Body>
+        <Footer>
+            <Button Variant="ButtonVariant.Ghost" OnClick="@(() => _showImagePreview = false)">Close</Button>
+            <Button Variant="ButtonVariant.Secondary" IconName="download" OnClick="@(() => DownloadItemAsync(_previewImageUrl))">Download</Button>
+        </Footer>
+    </Modal>
+</div>

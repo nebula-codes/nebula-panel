@@ -1,0 +1,173 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+
+<div class="space-y-6">
+    @* Snapshots toggle *@
+    <div class="flex items-center gap-2">
+        <input type="checkbox"
+               id="snapshots"
+               class="checkbox"
+               checked="@IncludeSnapshots"
+               @onchange="@HandleSnapshotsChanged" />
+        <label for="snapshots" class="text-sm text-nebula-text-secondary cursor-pointer">
+            Include snapshots and pre-releases
+        </label>
+    </div>
+
+    @if (Loading)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else
+    {
+        @* Minecraft Version Selection *@
+        <div class="form-group">
+            <label class="label">Minecraft Version <span class="text-nebula-error">*</span></label>
+            <select class="input"
+                    value="@SelectedMinecraftVersion"
+                    @onchange="@HandleMinecraftVersionChanged">
+                <option value="">Select a version...</option>
+                @foreach (var version in MinecraftVersions)
+                {
+                    var isLatest = version == MinecraftVersions.FirstOrDefault();
+                    <option value="@version">
+                        @version @(isLatest ? "(Latest)" : "")
+                    </option>
+                }
+            </select>
+        </div>
+
+        @* Loader/Build Version (for Paper, Purpur, etc.) *@
+        @if (ShowLoaderVersionSelect && !string.IsNullOrEmpty(SelectedMinecraftVersion))
+        {
+            <div class="form-group">
+                <label class="label">@GetLoaderVersionLabel()</label>
+                <select class="input"
+                        value="@SelectedLoaderVersion"
+                        @onchange="@HandleLoaderVersionChanged">
+                    <option value="">Latest</option>
+                    @foreach (var version in LoaderBuilds)
+                    {
+                        <option value="@version.Version">
+                            @GetBuildDisplayName(version)
+                        </option>
+                    }
+                </select>
+                <p class="text-xs text-nebula-text-muted mt-1">
+                    Leave as "Latest" for the most recent stable build.
+                </p>
+            </div>
+        }
+
+        @* Selected Version Summary *@
+        @if (!string.IsNullOrEmpty(SelectedMinecraftVersion))
+        {
+            <div class="version-summary">
+                <div class="flex items-center gap-2 text-sm">
+                    <Icon Name="info" Size="IconSize.Small" Class="text-nebula-info" />
+                    <span class="text-nebula-text-secondary">
+                        Will install: <strong class="text-nebula-text-primary">@GetVersionSummary()</strong>
+                    </span>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public MinecraftLoader Loader { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> MinecraftVersions { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<GameVersionDto> LoaderBuilds { get; set; } = [];
+
+    [Parameter]
+    public string? SelectedMinecraftVersion { get; set; }
+
+    [Parameter]
+    public string? SelectedLoaderVersion { get; set; }
+
+    [Parameter]
+    public bool IncludeSnapshots { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> OnMinecraftVersionChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> OnLoaderVersionChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> OnIncludeSnapshotsChanged { get; set; }
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    private bool ShowLoaderVersionSelect => Loader is
+        MinecraftLoader.Paper or
+        MinecraftLoader.Purpur or
+        MinecraftLoader.Spigot or
+        MinecraftLoader.Fabric or
+        MinecraftLoader.Forge;
+
+    private string GetLoaderVersionLabel() => Loader switch
+    {
+        MinecraftLoader.Paper => "Paper Build",
+        MinecraftLoader.Purpur => "Purpur Build",
+        MinecraftLoader.Spigot => "Spigot Build",
+        MinecraftLoader.Fabric => "Fabric Loader Version",
+        MinecraftLoader.Forge => "Forge Version",
+        _ => "Loader Version"
+    };
+
+    private string GetBuildDisplayName(GameVersionDto version)
+    {
+        var suffix = version.IsRecommended ? " (Recommended)" : "";
+        return Loader switch
+        {
+            MinecraftLoader.Paper or MinecraftLoader.Purpur or MinecraftLoader.Spigot
+                => $"Build {version.Version}{suffix}",
+            MinecraftLoader.Forge
+                => version.IsRecommended ? $"{version.Version} (Recommended)" : version.Version,
+            _ => version.DisplayName + suffix
+        };
+    }
+
+    private string GetVersionSummary()
+    {
+        var loaderName = Loader.ToString();
+        if (string.IsNullOrEmpty(SelectedLoaderVersion))
+        {
+            return $"{loaderName} {SelectedMinecraftVersion} (Latest Build)";
+        }
+
+        return Loader switch
+        {
+            MinecraftLoader.Paper or MinecraftLoader.Purpur or MinecraftLoader.Spigot
+                => $"{loaderName} {SelectedMinecraftVersion} Build {SelectedLoaderVersion}",
+            _ => $"{loaderName} {SelectedMinecraftVersion} ({SelectedLoaderVersion})"
+        };
+    }
+
+    private async Task HandleSnapshotsChanged(ChangeEventArgs e)
+    {
+        var value = (bool)(e.Value ?? false);
+        await OnIncludeSnapshotsChanged.InvokeAsync(value);
+    }
+
+    private async Task HandleMinecraftVersionChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        await OnMinecraftVersionChanged.InvokeAsync(value);
+    }
+
+    private async Task HandleLoaderVersionChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        await OnLoaderVersionChanged.InvokeAsync(value);
+    }
+}

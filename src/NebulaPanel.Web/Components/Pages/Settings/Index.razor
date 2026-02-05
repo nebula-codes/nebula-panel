@@ -1,0 +1,221 @@
+@page "/settings"
+@attribute [Authorize]
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Settings - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Settings</h1>
+            <p class="text-nebula-text-muted">Manage system configuration and preferences.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Import"
+                    IconName="upload"
+                    Size="ButtonSize.Small"
+                    OnClick="OpenImportModal" />
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Export"
+                    IconName="download"
+                    Size="ButtonSize.Small"
+                    OnClick="OpenExportModal" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_successMessage))
+    {
+        <div class="bg-nebula-success/10 border border-nebula-success text-nebula-success rounded-nebula p-4 mb-6">
+            <div class="flex items-center gap-2">
+                <Icon Name="check-circle" Size="IconSize.Small" />
+                <span>@_successMessage</span>
+            </div>
+        </div>
+    }
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/general"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="settings" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">General</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Application name, URL, and maintenance mode settings.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/database"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="database" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Database</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        View database information and create backups.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/updates"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="refresh-cw" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Updates</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Configure update channel and automatic checking.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/appearance"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="palette" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Appearance</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Customize theme, colors, and visual preferences.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/official-games"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="gamepad-2" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Official Games</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Manage built-in game definitions, version caches, and configuration schemas.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/mod-cache"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="package" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Mod Cache</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Configure mod metadata caching and sync schedules.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/logs"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="file-text" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">System Logs</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        View application logs, errors, and debug information.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/system-health"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="activity" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">System Health</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Monitor health checks, service status, and system diagnostics.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/integrations"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="link" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Integrations</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Connect external accounts like Hytale for server downloads.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="false" Class="opacity-60">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-bg-tertiary flex items-center justify-center">
+                    <Icon Name="bell" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Notifications</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Configure alerts, webhooks, and notification preferences.
+                    </p>
+                    <span class="text-xs text-nebula-text-muted mt-2 inline-block">Coming soon</span>
+                </div>
+            </div>
+        </Card>
+    </div>
+</div>
+
+<ImportExportModal IsOpen="_showModal"
+                   InitialMode="_modalMode"
+                   OnClose="CloseModal"
+                   OnImported="HandleImported" />
+
+@code {
+    private bool _showModal;
+    private ImportExportModal.Mode _modalMode = ImportExportModal.Mode.Export;
+    private string? _successMessage;
+
+    private void NavigateTo(string path)
+    {
+        Navigation.NavigateTo(path);
+    }
+
+    private void OpenExportModal()
+    {
+        _modalMode = ImportExportModal.Mode.Export;
+        _showModal = true;
+        _successMessage = null;
+    }
+
+    private void OpenImportModal()
+    {
+        _modalMode = ImportExportModal.Mode.Import;
+        _showModal = true;
+        _successMessage = null;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+    }
+
+    private void HandleImported()
+    {
+        _successMessage = "Settings imported successfully.";
+        _showModal = false;
+    }
+}

@@ -1,0 +1,461 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@inject ITerrariaModService ModService
+@inject IToastService ToastService
+@implements IDisposable
+
+<div class="terraria-mod-browser">
+    @* Search Bar *@
+    <div class="mb-4">
+        <div class="relative">
+            <Icon Name="search" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+            <input type="text"
+                   class="input pl-10"
+                   placeholder="Search Steam Workshop mods..."
+                   @bind="_searchQuery"
+                   @bind:after="OnSearchChanged" />
+            @if (!string.IsNullOrEmpty(_searchQuery))
+            {
+                <button type="button"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-nebula-text-muted hover:text-nebula-text-primary"
+                        @onclick="ClearSearch">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            }
+        </div>
+    </div>
+
+    @* Filters and View Toggle *@
+    <div class="flex flex-wrap items-center gap-4 mb-4">
+        @* Sort By *@
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-nebula-text-muted">Sort:</label>
+            <select class="input input-sm w-40" @bind="_sortBy" @bind:after="OnFilterChanged">
+                <option value="@ModSearchSort.Downloads">Most Popular</option>
+                <option value="@ModSearchSort.Updated">Recently Updated</option>
+                <option value="@ModSearchSort.Created">Newest</option>
+                <option value="@ModSearchSort.Name">Name</option>
+            </select>
+        </div>
+
+        @* View Toggle *@
+        <div class="ml-auto">
+            <ViewToggle Value="_viewMode" ValueChanged="OnViewModeChanged" StorageKey="terraria-mod-browser-view" />
+        </div>
+    </div>
+
+    @* Results Info *@
+    @if (!_isLoading && _totalResults > 0)
+    {
+        <div class="flex items-center gap-3 mb-4 text-sm">
+            <span class="text-nebula-text-secondary font-medium">
+                @_totalResults.ToString("N0") result@(_totalResults != 1 ? "s" : "")
+            </span>
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                Steam Workshop
+            </span>
+        </div>
+    }
+
+    @* Error Display *@
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4 mb-6">
+            <div class="flex items-center gap-2">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                <span>@_error</span>
+                <button type="button" class="ml-auto hover:opacity-80" @onclick="() => _error = null">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            </div>
+        </div>
+    }
+
+    @* Results Section *@
+    <div>
+        @if (_isLoading)
+        {
+            @if (_viewMode == ViewMode.Grid)
+            {
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    @for (int i = 0; i < 8; i++)
+                    {
+                        <SkeletonCard />
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="flex flex-col items-center justify-center py-12">
+                    <span class="spinner w-6 h-6"></span>
+                    <span class="mt-2 text-nebula-text-muted">Loading mods...</span>
+                </div>
+            }
+        }
+        else if (_mods.Count > 0)
+        {
+            @if (_viewMode == ViewMode.Grid)
+            {
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    @foreach (var mod in _mods)
+                    {
+                        <TerrariaModCard Mod="@mod"
+                                         OnClick="@(() => HandleViewDetails(mod))"
+                                         OnInstallClick="OpenInstallModal"
+                                         ShowInstallButton="true" />
+                    }
+                </div>
+            }
+            else
+            {
+                @* Table View *@
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-nebula-border text-left text-nebula-text-muted">
+                                <th class="pb-3 font-medium">Mod</th>
+                                <th class="pb-3 font-medium">Author</th>
+                                <th class="pb-3 font-medium text-right">Subscribers</th>
+                                <th class="pb-3 font-medium text-right">Updated</th>
+                                <th class="pb-3 font-medium text-right w-24">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-nebula-border-subtle">
+                            @foreach (var mod in _mods)
+                            {
+                                <tr class="hover:bg-nebula-bg-secondary cursor-pointer transition-colors"
+                                    @onclick="@(() => HandleViewDetails(mod))">
+                                    <td class="py-3">
+                                        <div class="flex items-center gap-3">
+                                            @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                            {
+                                                <img src="@mod.IconUrl" alt="@mod.Name" class="w-8 h-8 rounded object-cover" />
+                                            }
+                                            else
+                                            {
+                                                <div class="w-8 h-8 rounded bg-nebula-bg-tertiary flex items-center justify-center">
+                                                    <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                                </div>
+                                            }
+                                            <div>
+                                                <div class="font-medium text-nebula-text-primary">@mod.Name</div>
+                                                @if (!string.IsNullOrEmpty(mod.Summary))
+                                                {
+                                                    <div class="text-xs text-nebula-text-muted truncate max-w-xs">@mod.Summary</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 text-nebula-text-secondary">@mod.Author</td>
+                                    <td class="py-3 text-right text-nebula-text-secondary">@FormatNumber(mod.Downloads)</td>
+                                    <td class="py-3 text-right text-nebula-text-muted">@FormatRelativeTime(mod.UpdatedAt)</td>
+                                    <td class="py-3 text-right" @onclick:stopPropagation="true">
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Size="ButtonSize.Small"
+                                                Text="Install"
+                                                IconName="download"
+                                                OnClick="@(() => OpenInstallModal(mod))" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @* Pagination *@
+            @if (_viewMode == ViewMode.Grid)
+            {
+                @* Grid view: Load More button *@
+                @if (_hasMore)
+                {
+                    <div class="flex justify-center mt-6">
+                        <Button Variant="ButtonVariant.Secondary"
+                                Text="Load More"
+                                Loading="_loadingMore"
+                                OnClick="LoadMore" />
+                    </div>
+                }
+            }
+            else
+            {
+                @* Table view: Pagination controls *@
+                @if (_totalResults > _pageSize)
+                {
+                    <div class="flex items-center justify-between mt-6 pt-4 border-t border-nebula-border-subtle">
+                        <span class="text-sm text-nebula-text-muted">
+                            Showing @((_currentPage - 1) * _pageSize + 1)-@Math.Min(_currentPage * _pageSize, _totalResults) of @_totalResults
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="ButtonVariant.Secondary"
+                                    Size="ButtonSize.Small"
+                                    Text="Previous"
+                                    Disabled="@(_currentPage <= 1)"
+                                    OnClick="GoToPreviousPage" />
+                            <span class="text-sm text-nebula-text-secondary px-3">
+                                Page @_currentPage of @TotalPages
+                            </span>
+                            <Button Variant="ButtonVariant.Secondary"
+                                    Size="ButtonSize.Small"
+                                    Text="Next"
+                                    Disabled="@(_currentPage >= TotalPages)"
+                                    OnClick="GoToNextPage" />
+                        </div>
+                    </div>
+                }
+            }
+        }
+        else if (!_isLoading)
+        {
+            <EmptyState
+                IconName="package"
+                Heading="No mods found"
+                Description="@GetEmptyStateDescription()" />
+        }
+    </div>
+</div>
+
+@* Mod Details Modal *@
+<TerrariaModDetailsModal Mod="_selectedModForDetails"
+                          IsOpen="_showDetailModal"
+                          OnClose="CloseDetailModal"
+                          OnInstall="HandleInstallFromDetails" />
+
+@* Install Modal *@
+<TerrariaModInstallModal Mod="_modToInstall"
+                          ServerId="ServerId"
+                          IsOpen="_showInstallModal"
+                          OnClose="CloseInstallModal"
+                          OnInstalled="HandleModInstalled" />
+
+@code {
+    /// <summary>
+    /// The server ID to install mods to.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Callback when a mod has been installed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnModInstalled { get; set; }
+
+    // Search/filter state
+    private string _searchQuery = "";
+    private ModSearchSort _sortBy = ModSearchSort.Downloads;
+    private ViewMode _viewMode = ViewMode.Grid;
+
+    // Results
+    private List<ModSearchItem> _mods = [];
+    private int _totalResults;
+    private int _currentPage = 1;
+    private const int _pageSize = 20;
+    private const int _gridPageSize = 12;
+
+    // Loading state
+    private bool _isLoading;
+    private bool _loadingMore;
+    private string? _error;
+
+    // Debounce for search
+    private Timer? _debounceTimer;
+    private const int DebounceMs = 300;
+
+    // Detail modal state
+    private bool _showDetailModal;
+    private ModSearchItem? _selectedModForDetails;
+
+    // Install modal state
+    private bool _showInstallModal;
+    private ModSearchItem? _modToInstall;
+
+    // Computed properties
+    private int CurrentPageSize => _viewMode == ViewMode.Grid ? _gridPageSize : _pageSize;
+    private int TotalPages => _totalResults > 0 ? (int)Math.Ceiling((double)_totalResults / CurrentPageSize) : 1;
+    private bool _hasMore => _mods.Count < _totalResults;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadModsAsync();
+    }
+
+    private async Task LoadModsAsync(bool append = false)
+    {
+        if (append)
+        {
+            _loadingMore = true;
+        }
+        else
+        {
+            _isLoading = true;
+            _mods.Clear();
+        }
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var query = new ModSearchQuery(
+                Query: string.IsNullOrWhiteSpace(_searchQuery) ? null : _searchQuery,
+                GameSlug: "terraria",
+                GameVersion: null,
+                ModLoader: "tModLoader",
+                Sort: _sortBy,
+                Page: _currentPage,
+                PageSize: CurrentPageSize
+            );
+
+            var result = await ModService.SearchAsync(query);
+
+            if (append)
+            {
+                _mods.AddRange(result.Mods);
+            }
+            else
+            {
+                _mods = result.Mods.ToList();
+            }
+
+            _totalResults = result.TotalCount;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load mods: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            _loadingMore = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnSearchChanged()
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                _currentPage = 1;
+                await LoadModsAsync();
+            });
+        }, null, DebounceMs, Timeout.Infinite);
+    }
+
+    private async Task OnFilterChanged()
+    {
+        _currentPage = 1;
+        await LoadModsAsync();
+    }
+
+    private async Task OnViewModeChanged(ViewMode newMode)
+    {
+        _viewMode = newMode;
+        _currentPage = 1;
+        await LoadModsAsync();
+    }
+
+    private void ClearSearch()
+    {
+        _searchQuery = "";
+        _currentPage = 1;
+        _ = LoadModsAsync();
+    }
+
+    private async Task LoadMore()
+    {
+        _currentPage++;
+        await LoadModsAsync(append: true);
+    }
+
+    private async Task GoToPreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            await LoadModsAsync();
+        }
+    }
+
+    private async Task GoToNextPage()
+    {
+        if (_currentPage < TotalPages)
+        {
+            _currentPage++;
+            await LoadModsAsync();
+        }
+    }
+
+    private void HandleViewDetails(ModSearchItem mod)
+    {
+        _selectedModForDetails = mod;
+        _showDetailModal = true;
+    }
+
+    private void CloseDetailModal()
+    {
+        _showDetailModal = false;
+        _selectedModForDetails = null;
+    }
+
+    private void HandleInstallFromDetails(ModSearchItem mod)
+    {
+        CloseDetailModal();
+        OpenInstallModal(mod);
+    }
+
+    private void OpenInstallModal(ModSearchItem mod)
+    {
+        _modToInstall = mod;
+        _showInstallModal = true;
+    }
+
+    private void CloseInstallModal()
+    {
+        _showInstallModal = false;
+        _modToInstall = null;
+    }
+
+    private async Task HandleModInstalled()
+    {
+        CloseInstallModal();
+        ToastService.ShowSuccess("Mod installed successfully!");
+        await OnModInstalled.InvokeAsync();
+    }
+
+    private string GetEmptyStateDescription()
+    {
+        if (!string.IsNullOrEmpty(_searchQuery))
+        {
+            return $"No mods found matching \"{_searchQuery}\". Try broadening your search.";
+        }
+        return "Unable to load mods from Steam Workshop. Please try again later.";
+    }
+
+    private static string FormatNumber(long number) => number switch
+    {
+        >= 1_000_000 => $"{number / 1_000_000.0:0.#}M",
+        >= 1_000 => $"{number / 1_000.0:0.#}K",
+        _ => number.ToString("N0")
+    };
+
+    private static string FormatRelativeTime(DateTime? date)
+    {
+        if (!date.HasValue) return "Unknown";
+        var diff = DateTime.UtcNow - date.Value;
+        if (diff.TotalDays < 1) return diff.TotalHours < 1 ? "Just now" : $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

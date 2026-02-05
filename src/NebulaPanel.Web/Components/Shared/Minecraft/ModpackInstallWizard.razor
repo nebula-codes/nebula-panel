@@ -1,0 +1,345 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+
+<div class="modpack-install-wizard">
+    @* Selected Modpack Summary *@
+    <Card Class="mb-6">
+        <ChildContent>
+            <div class="flex items-center gap-4">
+                @if (!string.IsNullOrEmpty(ModpackIconUrl))
+                {
+                    <img src="@ModpackIconUrl" alt="@ModpackRequest.ModpackName" class="modpack-icon" />
+                }
+                else
+                {
+                    <div class="modpack-icon-placeholder">
+                        <Icon Name="package" Size="IconSize.Large" />
+                    </div>
+                }
+                <div class="flex-1">
+                    <h3 class="text-lg font-semibold text-nebula-text-primary">@ModpackRequest.ModpackName</h3>
+                    <p class="text-sm text-nebula-text-secondary">
+                        @ModpackRequest.VersionName
+                        <span class="mx-2 text-nebula-text-muted">|</span>
+                        Minecraft @ModpackRequest.MinecraftVersion
+                        <span class="mx-2 text-nebula-text-muted">|</span>
+                        @ModpackRequest.Loader
+                    </p>
+                </div>
+                @if (ModpackRequest.ModCount.HasValue)
+                {
+                    <div class="text-right">
+                        <div class="text-sm font-medium text-nebula-text-primary">@ModpackRequest.ModCount mods</div>
+                    </div>
+                }
+            </div>
+        </ChildContent>
+    </Card>
+
+    @* Configuration Form *@
+    <div class="space-y-6">
+        @* Server Name *@
+        <div class="form-group">
+            <label class="label">Server Name</label>
+            <input type="text"
+                   class="input @(string.IsNullOrWhiteSpace(ServerName) ? "input-error" : "")"
+                   @bind="ServerName"
+                   @bind:event="oninput"
+                   placeholder="Enter server name" />
+            @if (string.IsNullOrWhiteSpace(ServerName))
+            {
+                <p class="text-xs text-nebula-error mt-1">Server name is required</p>
+            }
+        </div>
+
+        @* Memory Allocation *@
+        <div class="form-group">
+            <label class="label">Memory Allocation</label>
+            @if (ModpackRequest.RecommendedRamMb.HasValue && ModpackRequest.RecommendedRamMb.Value > 0)
+            {
+                <p class="text-sm text-nebula-accent mb-2">
+                    <Icon Name="info" Size="IconSize.Small" Class="inline-block mr-1" />
+                    Recommended: @FormatMemory(ModpackRequest.RecommendedRamMb.Value) for this modpack
+                </p>
+            }
+            <div class="memory-slider-container">
+                <input type="range"
+                       class="memory-slider"
+                       min="@MinMemoryMb"
+                       max="@MaxMemoryMb"
+                       step="512"
+                       @bind="MaxMemory"
+                       @bind:event="oninput" />
+                <div class="memory-labels">
+                    <span class="text-nebula-text-muted">Min: @FormatMemory(MinMemoryMb)</span>
+                    <span class="memory-current">@FormatMemory(MaxMemory)</span>
+                    <span class="text-nebula-text-muted">Max: @FormatMemory(MaxMemoryMb)</span>
+                </div>
+            </div>
+        </div>
+
+        @* Port Configuration *@
+        <div class="form-group">
+            <label class="label">Port</label>
+            <div class="relative">
+                <input type="number"
+                       class="input @(PortError != null ? "input-error" : "")"
+                       min="1"
+                       max="65535"
+                       @bind="Port"
+                       @bind:event="oninput"
+                       @onfocusout="CheckPortAvailability" />
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    @if (_isCheckingPort)
+                    {
+                        <span class="spinner text-nebula-accent"></span>
+                    }
+                    else if (_portAvailable == true)
+                    {
+                        <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                    }
+                    else if (_portAvailable == false)
+                    {
+                        <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-error" />
+                    }
+                </div>
+            </div>
+            @if (PortError != null)
+            {
+                <p class="text-xs text-nebula-error mt-1">@PortError</p>
+            }
+            else if (_portAvailable == true)
+            {
+                <p class="text-xs text-nebula-success mt-1">Port is available</p>
+            }
+            else if (_portAvailable == false)
+            {
+                <p class="text-xs text-nebula-error mt-1">Port is already in use</p>
+            }
+        </div>
+
+        @* Deployment Type *@
+        <div class="form-group">
+            <label class="label">Deployment</label>
+            <div class="deployment-options">
+                <div class="deployment-option @(DeploymentType == ServerDeploymentType.Docker ? "selected" : "")"
+                     @onclick="@(() => DeploymentType = ServerDeploymentType.Docker)">
+                    <Radio TValue="ServerDeploymentType"
+                           Value="ServerDeploymentType.Docker"
+                           GroupValue="DeploymentType"
+                           GroupValueChanged="@(v => DeploymentType = v)" />
+                    <div class="ml-3">
+                        <div class="font-medium text-nebula-text-primary">Docker</div>
+                        <div class="text-sm text-nebula-text-muted">Isolated container environment (Recommended)</div>
+                    </div>
+                </div>
+                <div class="deployment-option @(DeploymentType == ServerDeploymentType.Native ? "selected" : "")"
+                     @onclick="@(() => DeploymentType = ServerDeploymentType.Native)">
+                    <Radio TValue="ServerDeploymentType"
+                           Value="ServerDeploymentType.Native"
+                           GroupValue="DeploymentType"
+                           GroupValueChanged="@(v => DeploymentType = v)" />
+                    <div class="ml-3">
+                        <div class="font-medium text-nebula-text-primary">Native Process</div>
+                        <div class="text-sm text-nebula-text-muted">Direct execution on host system</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* RCON Configuration *@
+        <div class="form-group">
+            <label class="label">RCON (Remote Console)</label>
+            <div class="space-y-4">
+                <Toggle @bind-Value="EnableRcon" Label="Enable RCON" />
+
+                @if (EnableRcon)
+                {
+                    <div class="rcon-config">
+                        <div class="flex gap-4">
+                            <div class="flex-1">
+                                <label class="label text-sm">Password</label>
+                                <div class="relative">
+                                    <input type="@(_showPassword ? "text" : "password")"
+                                           class="input pr-20"
+                                           @bind="RconPassword"
+                                           readonly />
+                                    <div class="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                                        <button type="button"
+                                                class="btn-icon-sm"
+                                                title="Toggle visibility"
+                                                @onclick="@(() => _showPassword = !_showPassword)">
+                                            <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="IconSize.Small" />
+                                        </button>
+                                        <button type="button"
+                                                class="btn-icon-sm"
+                                                title="Regenerate password"
+                                                @onclick="RegeneratePassword">
+                                            <Icon Name="refresh-cw" Size="IconSize.Small" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="w-32">
+                                <label class="label text-sm">Port</label>
+                                <input type="number"
+                                       class="input"
+                                       min="1"
+                                       max="65535"
+                                       @bind="RconPort" />
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* Action Buttons *@
+    <div class="wizard-actions">
+        <Button Variant="ButtonVariant.Secondary"
+                Text="Back"
+                IconName="arrow-left"
+                OnClick="HandleBack" />
+        <Button Variant="ButtonVariant.Primary"
+                Text="Install Server"
+                IconName="download"
+                Disabled="@(!IsValid)"
+                OnClick="HandleInstall" />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ModpackInstallRequest ModpackRequest { get; set; } = default!;
+
+    [Parameter]
+    public string? ModpackIconUrl { get; set; }
+
+    [Parameter]
+    public EventCallback<MinecraftServerWizardData> OnInstallRequested { get; set; }
+
+    [Parameter]
+    public EventCallback OnBack { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    // Configuration state
+    private string ServerName { get; set; } = "";
+    private int MaxMemory { get; set; } = 4096;
+    private int Port { get; set; } = 25565;
+    private ServerDeploymentType DeploymentType { get; set; } = ServerDeploymentType.Native;
+    private bool EnableRcon { get; set; } = true;
+    private string RconPassword { get; set; } = "";
+    private int RconPort { get; set; } = 25575;
+
+    // Memory bounds
+    private int MinMemoryMb => 2048;
+    private int MaxMemoryMb => 16384;
+
+    // Port validation state
+    private bool _isCheckingPort;
+    private bool? _portAvailable;
+    private bool _showPassword;
+
+    private string? PortError
+    {
+        get
+        {
+            if (Port < 1 || Port > 65535)
+                return "Port must be between 1 and 65535";
+            return null;
+        }
+    }
+
+    private bool IsValid =>
+        !string.IsNullOrWhiteSpace(ServerName) &&
+        PortError == null &&
+        _portAvailable != false &&
+        MaxMemory >= MinMemoryMb &&
+        MaxMemory <= MaxMemoryMb;
+
+    protected override void OnInitialized()
+    {
+        // Initialize with modpack name
+        if (ModpackRequest != null)
+        {
+            ServerName = ModpackRequest.ModpackName;
+
+            // Set recommended memory if available
+            if (ModpackRequest.RecommendedRamMb.HasValue && ModpackRequest.RecommendedRamMb.Value > 0)
+            {
+                MaxMemory = (int)Math.Clamp(ModpackRequest.RecommendedRamMb.Value, MinMemoryMb, MaxMemoryMb);
+            }
+        }
+
+        // Generate initial RCON password
+        RegeneratePassword();
+    }
+
+    private void RegeneratePassword()
+    {
+        RconPassword = GenerateSecurePassword();
+    }
+
+    private static string GenerateSecurePassword()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+        var random = new Random();
+        return new string(Enumerable.Range(0, 16).Select(_ => chars[random.Next(chars.Length)]).ToArray());
+    }
+
+    private async Task CheckPortAvailability()
+    {
+        if (PortError != null)
+        {
+            _portAvailable = null;
+            return;
+        }
+
+        _isCheckingPort = true;
+        StateHasChanged();
+
+        // Simulate port check - in real implementation, call a service
+        await Task.Delay(300);
+
+        // For now, assume port is available unless it's a common one
+        _portAvailable = Port != 80 && Port != 443 && Port != 8080;
+        _isCheckingPort = false;
+        StateHasChanged();
+    }
+
+    private static string FormatMemory(long mb)
+    {
+        if (mb >= 1024)
+            return $"{mb / 1024.0:F1} GB";
+        return $"{mb} MB";
+    }
+
+    private async Task HandleBack()
+    {
+        await OnBack.InvokeAsync();
+    }
+
+    private async Task HandleInstall()
+    {
+        if (!IsValid) return;
+
+        var wizardData = new MinecraftServerWizardData
+        {
+            SetupType = MinecraftSetupType.Modpack,
+            SelectedModpack = ModpackRequest,
+            ServerName = ServerName,
+            Port = Port,
+            MinMemoryMb = MaxMemory / 2,
+            MaxMemoryMb = MaxMemory,
+            DeploymentType = DeploymentType,
+            EnableRcon = EnableRcon,
+            RconPort = RconPort,
+            RconPassword = EnableRcon ? RconPassword : null
+        };
+
+        await OnInstallRequested.InvokeAsync(wizardData);
+    }
+}

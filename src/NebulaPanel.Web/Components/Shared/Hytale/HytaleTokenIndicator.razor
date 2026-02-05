@@ -1,0 +1,142 @@
+@using NebulaPanel.Domain.Entities
+
+@if (Credentials != null && Credentials.IsValid)
+{
+    <div class="@ContainerClass">
+        <div class="@BadgeClass" title="@TooltipText">
+            <Icon Name="lock" Size="Icon.IconSize.Small" Class="@IconClass" />
+            <span class="@TextClass">@DisplayText</span>
+        </div>
+
+        @if (ShowDisconnect && !Compact)
+        {
+            <button class="btn-ghost btn-icon btn-sm ml-1" @onclick="HandleDisconnect" title="Disconnect Hytale account">
+                <Icon Name="x" Size="Icon.IconSize.Small" />
+            </button>
+        }
+    </div>
+}
+else if (ShowWhenDisconnected)
+{
+    <div class="@ContainerClass">
+        <div class="hytale-token-badge disconnected" title="Hytale account not connected">
+            <Icon Name="unlock" Size="Icon.IconSize.Small" Class="text-nebula-text-muted" />
+            <span class="text-nebula-text-muted text-sm">Not connected</span>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The Hytale credentials to display status for.
+    /// </summary>
+    [Parameter]
+    public HytaleUserCredentials? Credentials { get; set; }
+
+    /// <summary>
+    /// Event callback when user clicks disconnect.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnDisconnect { get; set; }
+
+    /// <summary>
+    /// Whether to show the disconnect button.
+    /// </summary>
+    [Parameter]
+    public bool ShowDisconnect { get; set; } = true;
+
+    /// <summary>
+    /// Whether to use compact display mode (for topbar).
+    /// </summary>
+    [Parameter]
+    public bool Compact { get; set; }
+
+    /// <summary>
+    /// Whether to show a "Not connected" indicator when no credentials.
+    /// </summary>
+    [Parameter]
+    public bool ShowWhenDisconnected { get; set; }
+
+    /// <summary>
+    /// Additional CSS class for the container.
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string ContainerClass => $"hytale-token-indicator {(Compact ? "compact" : "")} {Class}".Trim();
+
+    private string BadgeClass => $"hytale-token-badge {StatusClass}";
+
+    private string StatusClass
+    {
+        get
+        {
+            if (Credentials == null || !Credentials.IsValid) return "expired";
+
+            var remaining = Credentials.TimeRemaining;
+            if (remaining.TotalDays >= 7) return "healthy";
+            if (remaining.TotalDays >= 1) return "warning";
+            return "critical";
+        }
+    }
+
+    private string IconClass => StatusClass switch
+    {
+        "healthy" => "text-nebula-success",
+        "warning" => "text-nebula-warning",
+        "critical" => "text-nebula-error",
+        _ => "text-nebula-text-muted"
+    };
+
+    private string TextClass => $"text-sm {(Compact ? "" : "font-medium")}";
+
+    private string DisplayText
+    {
+        get
+        {
+            if (Credentials == null || !Credentials.IsValid) return "Expired";
+
+            var remaining = Credentials.TimeRemaining;
+
+            if (Compact)
+            {
+                // Short format for topbar
+                if (remaining.TotalDays >= 1)
+                    return $"Hytale: {(int)remaining.TotalDays}d";
+                if (remaining.TotalHours >= 1)
+                    return $"Hytale: {(int)remaining.TotalHours}h";
+                return $"Hytale: {(int)remaining.TotalMinutes}m";
+            }
+
+            // Full format
+            if (remaining.TotalDays >= 1)
+                return $"Hytale: {(int)remaining.TotalDays} days remaining";
+            if (remaining.TotalHours >= 1)
+                return $"Hytale: {(int)remaining.TotalHours} hours remaining";
+            return $"Hytale: {(int)remaining.TotalMinutes} minutes remaining";
+        }
+    }
+
+    private string TooltipText
+    {
+        get
+        {
+            if (Credentials == null) return "No Hytale credentials";
+            if (!Credentials.IsValid) return "Token expired";
+
+            var parts = new List<string>();
+
+            if (!string.IsNullOrEmpty(Credentials.HytaleUsername))
+                parts.Add($"Account: {Credentials.HytaleUsername}");
+
+            parts.Add($"Expires: {Credentials.ExpiresAt:g}");
+
+            return string.Join("\n", parts);
+        }
+    }
+
+    private async Task HandleDisconnect()
+    {
+        await OnDisconnect.InvokeAsync();
+    }
+}

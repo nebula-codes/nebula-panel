@@ -1,0 +1,381 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+
+<div class="mod-browser-gridview">
+    @if (Loading)
+    {
+        <div class="mods-grid">
+            @for (var i = 0; i < 12; i++)
+            {
+                <div class="mod-card skeleton">
+                    <div class="skeleton-header">
+                        <div class="skeleton-icon"></div>
+                        <div class="skeleton-badges"></div>
+                    </div>
+                    <div class="skeleton-body">
+                        <div class="skeleton-title"></div>
+                        <div class="skeleton-author"></div>
+                        <div class="skeleton-text"></div>
+                        <div class="skeleton-tags"></div>
+                    </div>
+                    <div class="skeleton-footer">
+                        <div class="skeleton-stat"></div>
+                        <div class="skeleton-button"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else if (!Mods.Any())
+    {
+        <EmptyState IconName="search"
+                    Heading="No mods found"
+                    Description="Try adjusting your search or filters." />
+    }
+    else
+    {
+        <div class="mods-grid">
+            @foreach (var mod in Mods)
+            {
+                var isInstalled = InstalledModIds.Contains(mod.Id);
+                var isBusy = BusyMods.Contains(mod.Id);
+                var classification = GetPrimaryCategory(mod.Categories ?? []);
+
+                <div class="mod-card @(isInstalled ? "installed" : "") @(isBusy ? "busy" : "")"
+                     @onclick="() => HandleViewDetails(mod)">
+
+                    @* Installed overlay *@
+                    @if (isInstalled)
+                    {
+                        <div class="installed-overlay">
+                            <Icon Name="check" Size="Icon.IconSize.XSmall" />
+                            Installed
+                        </div>
+                    }
+
+                    @* Card header *@
+                    <div class="card-header">
+                        <div class="mod-icon-container">
+                            @if (!string.IsNullOrEmpty(mod.IconUrl))
+                            {
+                                <img src="@mod.IconUrl" alt="@mod.Name" class="mod-icon" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="mod-icon-placeholder">
+                                    <span class="placeholder-icon">@GetClassificationIcon(classification)</span>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="card-badges">
+                            <span class="classification-badge @GetCategoryBadgeClass(classification)">
+                                @GetClassificationIcon(classification) @classification
+                            </span>
+                            <span class="provider-badge provider-@mod.Provider.ToString().ToLowerInvariant()"
+                                  title="@GetProviderDisplayName(mod.Provider)">
+                                @GetProviderDisplayName(mod.Provider)
+                            </span>
+                        </div>
+                    </div>
+
+                    @* Card body *@
+                    <div class="card-body">
+                        <h4 class="mod-name" title="@mod.Name">@mod.Name</h4>
+                        <p class="mod-author">by @(mod.Author ?? "Unknown")</p>
+                        @if (!string.IsNullOrEmpty(mod.Summary))
+                        {
+                            <p class="mod-summary">@TruncateSummary(mod.Summary, 100)</p>
+                        }
+
+                        @* Tags *@
+                        @if (mod.Categories?.Count > 0)
+                        {
+                            <div class="mod-tags">
+                                @foreach (var tag in mod.Categories.Skip(1).Take(3))
+                                {
+                                    <span class="tag">@tag</span>
+                                }
+                                @if (mod.Categories.Count > 4)
+                                {
+                                    <span class="tag more">+@(mod.Categories.Count - 4)</span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* Card footer *@
+                    <div class="card-footer">
+                        <div class="stats">
+                            <span class="stat downloads" title="@mod.Downloads.ToString("N0") downloads">
+                                <Icon Name="download" Size="Icon.IconSize.XSmall" />
+                                @FormatDownloads(mod.Downloads)
+                            </span>
+                            @if (mod.UpdatedAt.HasValue)
+                            {
+                                <span class="stat updated" title="@mod.UpdatedAt.Value.ToString("F")">
+                                    <Icon Name="clock" Size="Icon.IconSize.XSmall" />
+                                    @FormatRelativeDate(mod.UpdatedAt)
+                                </span>
+                            }
+                        </div>
+
+                        <div class="actions" @onclick:stopPropagation="true">
+                            @if (isInstalled)
+                            {
+                                <Button Text="Installed"
+                                        IconName="check"
+                                        Variant="Button.ButtonVariant.Ghost"
+                                        Size="Button.ButtonSize.Small"
+                                        Disabled="true"
+                                        Class="btn-installed" />
+                            }
+                            else
+                            {
+                                <Button Text="Install"
+                                        IconName="download"
+                                        Variant="Button.ButtonVariant.Primary"
+                                        Size="Button.ButtonSize.Small"
+                                        Loading="@isBusy"
+                                        OnClick="@(() => HandleInstall(mod))" />
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* Pagination *@
+        @if (TotalPages > 1)
+        {
+            <div class="gridview-footer">
+                <div class="gridview-pagination-info">
+                    Showing @StartIndex to @EndIndex of @TotalCount
+                </div>
+                <div class="gridview-pagination">
+                    <Button IconName="chevron-left"
+                            IconOnly="true"
+                            Variant="Button.ButtonVariant.Ghost"
+                            Size="Button.ButtonSize.Small"
+                            Disabled="@(CurrentPage <= 1)"
+                            OnClick="@(() => HandlePageChange(CurrentPage - 1))"
+                            title="Previous page" />
+
+                    @foreach (var pageNum in GetPageNumbers())
+                    {
+                        <button class="page-btn @(pageNum == CurrentPage ? "active" : "")"
+                                @onclick="@(() => HandlePageChange(pageNum))">
+                            @pageNum
+                        </button>
+                    }
+
+                    <Button IconName="chevron-right"
+                            IconOnly="true"
+                            Variant="Button.ButtonVariant.Ghost"
+                            Size="Button.ButtonSize.Small"
+                            Disabled="@(CurrentPage >= TotalPages)"
+                            OnClick="@(() => HandlePageChange(CurrentPage + 1))"
+                            title="Next page" />
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The list of mods to display from search results.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<ModSearchItem> Mods { get; set; } = [];
+
+    /// <summary>
+    /// Set of mod IDs that are already installed.
+    /// </summary>
+    [Parameter]
+    public HashSet<string> InstalledModIds { get; set; } = [];
+
+    /// <summary>
+    /// Whether the data is currently loading.
+    /// </summary>
+    [Parameter]
+    public bool Loading { get; set; }
+
+    /// <summary>
+    /// Set of mod IDs currently being operated on (installing, etc.).
+    /// </summary>
+    [Parameter]
+    public HashSet<string> BusyMods { get; set; } = [];
+
+    /// <summary>
+    /// Total number of results across all pages.
+    /// </summary>
+    [Parameter]
+    public int TotalCount { get; set; }
+
+    /// <summary>
+    /// Current page number (1-indexed).
+    /// </summary>
+    [Parameter]
+    public int CurrentPage { get; set; } = 1;
+
+    /// <summary>
+    /// Number of items per page.
+    /// </summary>
+    [Parameter]
+    public int PageSize { get; set; } = 20;
+
+    /// <summary>
+    /// Callback when user clicks install on a mod.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ModSearchItem> OnInstall { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks to view mod details.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ModSearchItem> OnViewDetails { get; set; }
+
+    /// <summary>
+    /// Callback when page changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<int> OnPageChanged { get; set; }
+
+    // Computed properties
+    private int TotalPages => PageSize > 0 ? (int)Math.Ceiling(TotalCount / (double)PageSize) : 1;
+    private int StartIndex => TotalCount == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
+    private int EndIndex => Math.Min(CurrentPage * PageSize, TotalCount);
+
+    private async Task HandleInstall(ModSearchItem mod)
+    {
+        await OnInstall.InvokeAsync(mod);
+    }
+
+    private async Task HandleViewDetails(ModSearchItem mod)
+    {
+        await OnViewDetails.InvokeAsync(mod);
+    }
+
+    private async Task HandlePageChange(int page)
+    {
+        if (page >= 1 && page <= TotalPages && page != CurrentPage)
+        {
+            await OnPageChanged.InvokeAsync(page);
+        }
+    }
+
+    private IEnumerable<int> GetPageNumbers()
+    {
+        const int maxVisible = 5;
+        var total = TotalPages;
+
+        if (total <= maxVisible)
+        {
+            return Enumerable.Range(1, total);
+        }
+
+        var half = maxVisible / 2;
+        var start = Math.Max(1, CurrentPage - half);
+        var end = Math.Min(total, start + maxVisible - 1);
+
+        if (end - start + 1 < maxVisible)
+        {
+            start = Math.Max(1, end - maxVisible + 1);
+        }
+
+        return Enumerable.Range(start, end - start + 1);
+    }
+
+    private static string GetPrimaryCategory(List<string> categories)
+    {
+        if (categories == null || categories.Count == 0)
+            return "Mod";
+
+        var category = categories[0];
+        return string.IsNullOrEmpty(category) ? "Mod" : char.ToUpper(category[0]) + category[1..].ToLower();
+    }
+
+    private static string GetCategoryBadgeClass(string category)
+    {
+        return category.ToLowerInvariant() switch
+        {
+            "plugin" => "classification-plugin",
+            "mod" => "classification-mod",
+            "mods" => "classification-mod",
+            "data" => "classification-data",
+            "datapack" => "classification-data",
+            "art" => "classification-art",
+            "resourcepack" => "classification-art",
+            "texture" => "classification-art",
+            "shader" => "classification-art",
+            "save" => "classification-save",
+            "world" => "classification-save",
+            "map" => "classification-save",
+            "modpack" => "classification-modpack",
+            _ => "classification-mod"
+        };
+    }
+
+    private static string GetClassificationIcon(string category)
+    {
+        return category.ToLowerInvariant() switch
+        {
+            "plugin" => "\ud83d\udd0c",
+            "data" or "datapack" => "\ud83d\udcca",
+            "art" or "resourcepack" or "texture" or "shader" => "\ud83c\udfa8",
+            "save" or "world" or "map" => "\ud83d\uddfa\ufe0f",
+            "modpack" => "\ud83d\udce6",
+            _ => "\ud83d\udce6"
+        };
+    }
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Thunderstore => "Thunderstore",
+        ModProviderType.SpigotMC => "SpigotMC",
+        ModProviderType.Hangar => "Hangar",
+        ModProviderType.NexusMods => "Nexus",
+        ModProviderType.SteamWorkshop => "Steam",
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string FormatDownloads(long downloads)
+    {
+        if (downloads >= 1_000_000_000)
+            return $"{downloads / 1_000_000_000.0:F1}B";
+        if (downloads >= 1_000_000)
+            return $"{downloads / 1_000_000.0:F1}M";
+        if (downloads >= 1_000)
+            return $"{downloads / 1_000.0:F1}K";
+        return downloads.ToString("N0");
+    }
+
+    private static string FormatRelativeDate(DateTime? date)
+    {
+        if (!date.HasValue) return "Unknown";
+
+        var now = DateTime.UtcNow;
+        var diff = now - date.Value.ToUniversalTime();
+
+        if (diff.TotalSeconds < 60) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+
+    private static string TruncateSummary(string? summary, int maxLength)
+    {
+        if (string.IsNullOrEmpty(summary)) return string.Empty;
+        if (summary.Length <= maxLength) return summary;
+        return summary[..maxLength].TrimEnd() + "...";
+    }
+}

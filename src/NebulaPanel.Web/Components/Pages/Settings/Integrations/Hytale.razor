@@ -1,0 +1,468 @@
+@page "/settings/integrations/hytale"
+@attribute [Authorize]
+@using System.Security.Claims
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Web.Components.Shared.Hytale
+@inject NavigationManager Navigation
+@inject IHytaleAuthService HytaleAuthService
+@inject IHytalePreferencesService PreferencesService
+@inject IGameServerService GameServerService
+@inject AuthenticationStateProvider AuthStateProvider
+@rendermode InteractiveServer
+
+<PageTitle>Hytale Account - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    @* Breadcrumb *@
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <NavLink href="/settings/integrations" class="hover:text-nebula-text-secondary">Integrations</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Hytale</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Hytale Account</h1>
+    <p class="text-nebula-text-muted mb-6">Manage your Hytale account connection for server downloads and updates.</p>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-6">
+            @* Connection Status Card *@
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Connection Status</h2>
+                </Header>
+                <ChildContent>
+                    @if (_credentials?.IsValid == true)
+                    {
+                        @* Connected State *@
+                        <div class="space-y-4">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full bg-nebula-success/20 flex items-center justify-center">
+                                    <Icon Name="check-circle" Size="IconSize.Medium" Class="text-nebula-success" />
+                                </div>
+                                <div>
+                                    <p class="font-medium text-nebula-text-primary">Connected</p>
+                                    <p class="text-sm text-nebula-text-muted">Your Hytale account is linked</p>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-nebula-bg-tertiary rounded-nebula">
+                                @if (!string.IsNullOrEmpty(_credentials.HytaleUsername))
+                                {
+                                    <div>
+                                        <p class="text-sm text-nebula-text-muted">Account</p>
+                                        <p class="font-medium text-nebula-text-primary">@_credentials.HytaleUsername</p>
+                                    </div>
+                                }
+                                <div>
+                                    <p class="text-sm text-nebula-text-muted">Connected</p>
+                                    <p class="font-medium text-nebula-text-primary">@_credentials.CreatedAt.ToString("MMMM d, yyyy")</p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-nebula-text-muted">Expires</p>
+                                    <p class="font-medium text-nebula-text-primary">@_credentials.ExpiresAt.ToString("MMMM d, yyyy") (@FormatTimeRemaining(_credentials.TimeRemaining))</p>
+                                </div>
+                                @if (_credentials.LastRefreshedAt.HasValue)
+                                {
+                                    <div>
+                                        <p class="text-sm text-nebula-text-muted">Last Refreshed</p>
+                                        <p class="font-medium text-nebula-text-primary">@_credentials.LastRefreshedAt.Value.ToString("g")</p>
+                                    </div>
+                                }
+                            </div>
+
+                            @* Token Progress Bar *@
+                            <div>
+                                <div class="flex justify-between text-sm mb-1">
+                                    <span class="text-nebula-text-muted">Token Validity</span>
+                                    <span class="@TokenTimeClass">@FormatTimeRemaining(_credentials.TimeRemaining) remaining</span>
+                                </div>
+                                <div class="h-2 bg-nebula-bg-tertiary rounded-full overflow-hidden">
+                                    <div class="h-full @TokenProgressClass transition-all duration-300"
+                                         style="width: @TokenProgressPercent%"></div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-3 pt-2">
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Text="Refresh Token"
+                                        IconName="refresh-cw"
+                                        Loading="_refreshing"
+                                        OnClick="RefreshToken" />
+                                <Button Variant="ButtonVariant.Ghost"
+                                        Text="Disconnect Account"
+                                        IconName="unlink"
+                                        Class="text-nebula-error hover:bg-nebula-error/10"
+                                        OnClick="ShowDisconnectModal" />
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* Disconnected State *@
+                        <div class="text-center py-6">
+                            <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mx-auto mb-4">
+                                <Icon Name="unlink" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                            </div>
+                            <h3 class="text-lg font-medium text-nebula-text-primary mb-2">Not Connected</h3>
+                            <p class="text-nebula-text-muted mb-6 max-w-md mx-auto">
+                                Connect your Hytale account to create and manage Hytale servers.
+                                This enables server downloads and automatic updates.
+                            </p>
+                            <Button Variant="ButtonVariant.Primary"
+                                    Text="Connect Hytale Account"
+                                    IconName="link"
+                                    OnClick="ShowAuthModal" />
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            @* Servers Using This Account *@
+            @if (_credentials?.IsValid == true && _hytaleServers.Count > 0)
+            {
+                <Card>
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Servers Using This Account</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="divide-y divide-nebula-border">
+                            @foreach (var server in _hytaleServers)
+                            {
+                                <div class="flex items-center justify-between py-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-8 h-8 rounded-nebula bg-nebula-bg-tertiary flex items-center justify-center">
+                                            <Icon Name="server" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                        </div>
+                                        <div>
+                                            <p class="font-medium text-nebula-text-primary">@server.Name</p>
+                                            <p class="text-xs text-nebula-text-muted">Port @server.PrimaryPort</p>
+                                        </div>
+                                    </div>
+                                    <StatusBadge Status="@GetServerStatus(server.Status)"
+                                                 Text="@server.Status.ToString()"
+                                                 ShowDot="true"
+                                                 Size="BadgeSize.Small" />
+                                </div>
+                            }
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            @* Preferences *@
+            @if (_credentials?.IsValid == true)
+            {
+                <Card>
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Preferences</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="font-medium text-nebula-text-primary">Auto-refresh token before expiry</p>
+                                    <p class="text-sm text-nebula-text-muted">Automatically refresh your token to prevent disconnection</p>
+                                </div>
+                                <Toggle Value="_preferences.AutoRefreshToken"
+                                        ValueChanged="@(async (v) => await UpdatePreference(p => p with { AutoRefreshToken = v }))" />
+                            </div>
+
+                            <div class="border-t border-nebula-border pt-4">
+                                <p class="text-sm font-medium text-nebula-text-primary mb-3">Notifications</p>
+
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <p class="text-nebula-text-secondary">Notify when token expires in &lt; 24 hours</p>
+                                        <Toggle Value="_preferences.NotifyAt24Hours"
+                                                ValueChanged="@(async (v) => await UpdatePreference(p => p with { NotifyAt24Hours = v }))" />
+                                    </div>
+
+                                    <div class="flex items-center justify-between">
+                                        <p class="text-nebula-text-secondary">Notify when token expires in &lt; 1 hour</p>
+                                        <Toggle Value="_preferences.NotifyAt1Hour"
+                                                ValueChanged="@(async (v) => await UpdatePreference(p => p with { NotifyAt1Hour = v }))" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+        </div>
+    }
+</div>
+
+@* Auth Modal *@
+<HytaleAuthModal @bind-IsOpen="_showAuthModal"
+                 OnAuthSuccess="HandleAuthSuccess" />
+
+@* Disconnect Confirmation Modal *@
+@if (_showDisconnectModal)
+{
+    <Modal IsOpen="true" OnClose="HideDisconnectModal" Size="Modal.ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Disconnect Hytale Account?</h3>
+        </Header>
+        <Body>
+            @if (_hytaleServers.Count > 0)
+            {
+                <div class="bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula p-4 mb-4">
+                    <div class="flex items-start gap-2">
+                        <Icon Name="alert-triangle" Size="IconSize.Small" Class="mt-0.5 flex-shrink-0" />
+                        <div>
+                            <p class="font-medium">Warning: You have @_hytaleServers.Count Hytale server@(_hytaleServers.Count > 1 ? "s" : "") using this account.</p>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <p class="text-nebula-text-secondary mb-4">After disconnecting:</p>
+            <ul class="space-y-2 text-nebula-text-muted text-sm mb-4">
+                <li class="flex items-center gap-2">
+                    <Icon Name="x" Size="IconSize.Small" Class="text-nebula-error" />
+                    <span>Server updates will not work</span>
+                </li>
+                <li class="flex items-center gap-2">
+                    <Icon Name="x" Size="IconSize.Small" Class="text-nebula-error" />
+                    <span>New server installs will not work</span>
+                </li>
+                <li class="flex items-center gap-2">
+                    <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                    <span>Running servers will continue to run</span>
+                </li>
+            </ul>
+            <p class="text-nebula-text-muted text-sm">You can reconnect at any time.</p>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="HideDisconnectModal" />
+                <Button Variant="ButtonVariant.Danger" Text="Disconnect" Loading="_disconnecting" OnClick="DisconnectAccount" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _refreshing;
+    private bool _disconnecting;
+    private bool _showAuthModal;
+    private bool _showDisconnectModal;
+    private string? _error;
+    private string? _success;
+    private Guid _userId;
+    private HytaleUserCredentials? _credentials;
+    private HytaleUserPreferencesDto _preferences = new(true, true, true, false);
+    private List<GameServerListItemDto> _hytaleServers = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadDataAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+
+            if (userIdClaim == null || !Guid.TryParse(userIdClaim.Value, out _userId))
+            {
+                _error = "Unable to determine current user.";
+                return;
+            }
+
+            // Load credentials
+            _credentials = await HytaleAuthService.GetCredentialsAsync(_userId);
+
+            // Load preferences
+            _preferences = await PreferencesService.GetPreferencesAsync(_userId);
+
+            // Load Hytale servers
+            var allServers = await GameServerService.GetAllServersAsync();
+            _hytaleServers = allServers
+                .Where(s => s.GameName.Equals("Hytale", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load data: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshToken()
+    {
+        try
+        {
+            _refreshing = true;
+            _error = null;
+            _success = null;
+            StateHasChanged();
+
+            var result = await HytaleAuthService.RefreshCredentialsAsync(_userId);
+
+            if (result)
+            {
+                _credentials = await HytaleAuthService.GetCredentialsAsync(_userId);
+                _success = "Token refreshed successfully.";
+            }
+            else
+            {
+                _error = "Failed to refresh token. You may need to reconnect your account.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to refresh token: {ex.Message}";
+        }
+        finally
+        {
+            _refreshing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisconnectAccount()
+    {
+        try
+        {
+            _disconnecting = true;
+            StateHasChanged();
+
+            var result = await HytaleAuthService.RevokeCredentialsAsync(_userId);
+
+            if (result)
+            {
+                _credentials = null;
+                _success = "Hytale account disconnected.";
+                HideDisconnectModal();
+            }
+            else
+            {
+                _error = "Failed to disconnect account.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to disconnect: {ex.Message}";
+        }
+        finally
+        {
+            _disconnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UpdatePreference(Func<HytaleUserPreferencesDto, HytaleUserPreferencesDto> update)
+    {
+        try
+        {
+            var newPreferences = update(_preferences);
+            var request = new UpdateHytalePreferencesRequest(
+                newPreferences.AutoRefreshToken,
+                newPreferences.NotifyAt24Hours,
+                newPreferences.NotifyAt1Hour,
+                newPreferences.EmailOnExpiry);
+
+            await PreferencesService.UpdatePreferencesAsync(_userId, request);
+            _preferences = newPreferences;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to save preference: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleAuthSuccess(HytaleUserCredentials credentials)
+    {
+        _credentials = credentials;
+        _success = "Hytale account connected successfully.";
+        StateHasChanged();
+    }
+
+    private void ShowAuthModal() => _showAuthModal = true;
+    private void ShowDisconnectModal() => _showDisconnectModal = true;
+    private void HideDisconnectModal() => _showDisconnectModal = false;
+
+    private static string FormatTimeRemaining(TimeSpan remaining)
+    {
+        if (remaining.TotalDays >= 1)
+            return $"{(int)remaining.TotalDays}d {remaining.Hours}h";
+        if (remaining.TotalHours >= 1)
+            return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
+        return $"{(int)remaining.TotalMinutes}m";
+    }
+
+    private string TokenTimeClass
+    {
+        get
+        {
+            if (_credentials == null) return "text-nebula-text-muted";
+            var days = _credentials.TimeRemaining.TotalDays;
+            if (days >= 7) return "text-nebula-success";
+            if (days >= 1) return "text-nebula-warning";
+            return "text-nebula-error";
+        }
+    }
+
+    private string TokenProgressClass
+    {
+        get
+        {
+            if (_credentials == null) return "bg-nebula-text-muted";
+            var days = _credentials.TimeRemaining.TotalDays;
+            if (days >= 7) return "bg-nebula-success";
+            if (days >= 1) return "bg-nebula-warning";
+            return "bg-nebula-error";
+        }
+    }
+
+    private double TokenProgressPercent
+    {
+        get
+        {
+            if (_credentials == null) return 0;
+            // Assume 30-day token validity
+            const double totalDays = 30;
+            var remainingDays = _credentials.TimeRemaining.TotalDays;
+            return Math.Clamp(remainingDays / totalDays * 100, 0, 100);
+        }
+    }
+
+    private static StatusType GetServerStatus(Domain.Enums.ServerStatus status) => status switch
+    {
+        Domain.Enums.ServerStatus.Running => StatusType.Success,
+        Domain.Enums.ServerStatus.Starting => StatusType.Warning,
+        Domain.Enums.ServerStatus.Stopping => StatusType.Warning,
+        Domain.Enums.ServerStatus.Stopped => StatusType.Neutral,
+        Domain.Enums.ServerStatus.Crashed => StatusType.Error,
+        _ => StatusType.Neutral
+    };
+}

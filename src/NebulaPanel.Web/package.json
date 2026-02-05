@@ -1,0 +1,17 @@
+{
+  "name": "nebula-panel-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nebula Panel - Game Server Management UI",
+  "scripts": {
+    "css:build": "npx tailwindcss -i ./wwwroot/css/tailwind.css -o ./wwwroot/css/tailwind.output.css --minify",
+    "css:watch": "npx tailwindcss -i ./wwwroot/css/tailwind.css -o ./wwwroot/css/tailwind.output.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "@tailwindcss/forms": "^0.5.7",
+    "@tailwindcss/typography": "^0.5.10"
+  }
+}

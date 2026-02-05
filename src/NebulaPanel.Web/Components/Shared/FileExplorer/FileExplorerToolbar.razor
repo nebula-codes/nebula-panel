@@ -1,0 +1,114 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+
+<div class="file-explorer-toolbar">
+    <div class="flex items-center gap-2">
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="arrow-left"
+                IconOnly="true"
+                Disabled="@(!CanGoBack)"
+                OnClick="OnGoBack"
+                Title="Go back" />
+
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="refresh-cw"
+                IconOnly="true"
+                OnClick="OnRefresh"
+                Title="Refresh" />
+
+        <div class="h-6 w-px bg-nebula-border mx-1"></div>
+
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="folder-plus"
+                IconOnly="true"
+                OnClick="OnCreateFolder"
+                Title="New folder" />
+
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="upload"
+                IconOnly="true"
+                OnClick="OnUpload"
+                Title="Upload files" />
+    </div>
+
+    <div class="flex-1 max-w-xs">
+        <div class="relative">
+            <Icon Name="search" Size="IconSize.Small"
+                  Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted pointer-events-none" />
+            <input type="text"
+                   value="@SearchQuery"
+                   @oninput="OnSearchInput"
+                   placeholder="Search files..."
+                   class="w-full pl-9 pr-8 py-1.5 text-sm bg-nebula-bg-tertiary border border-nebula-border rounded-md
+                          text-nebula-text-primary placeholder:text-nebula-text-muted
+                          focus:outline-none focus:border-nebula-accent focus:ring-1 focus:ring-nebula-accent/50" />
+            @if (!string.IsNullOrEmpty(SearchQuery))
+            {
+                <button type="button"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 text-nebula-text-muted hover:text-nebula-text-primary transition-colors"
+                        @onclick="OnClearSearch"
+                        title="Clear search">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="flex items-center gap-2">
+        @if (SelectedCount > 0)
+        {
+            <span class="text-sm text-nebula-text-muted">@SelectedCount selected</span>
+
+            <Button Variant="ButtonVariant.Ghost"
+                    IconName="download"
+                    IconOnly="true"
+                    OnClick="OnDownload"
+                    Title="Download selected" />
+
+            <Button Variant="ButtonVariant.Ghost"
+                    IconName="trash"
+                    IconOnly="true"
+                    OnClick="OnDelete"
+                    Title="Delete selected"
+                    Class="text-nebula-error hover:text-nebula-error" />
+
+            <div class="h-6 w-px bg-nebula-border mx-1"></div>
+        }
+
+        <div class="flex items-center gap-1 p-1 rounded-md bg-nebula-bg-tertiary">
+            <button class="@GetViewButtonClass(FileExplorer.FileViewMode.Grid)"
+                    @onclick="() => OnViewModeChanged.InvokeAsync(FileExplorer.FileViewMode.Grid)"
+                    title="Grid view">
+                <Icon Name="grid" Size="IconSize.Small" />
+            </button>
+            <button class="@GetViewButtonClass(FileExplorer.FileViewMode.List)"
+                    @onclick="() => OnViewModeChanged.InvokeAsync(FileExplorer.FileViewMode.List)"
+                    title="List view">
+                <Icon Name="list" Size="IconSize.Small" />
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public FileExplorer.FileViewMode ViewMode { get; set; }
+    [Parameter] public EventCallback<FileExplorer.FileViewMode> OnViewModeChanged { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    [Parameter] public EventCallback OnCreateFolder { get; set; }
+    [Parameter] public EventCallback OnUpload { get; set; }
+    [Parameter] public bool CanGoBack { get; set; }
+    [Parameter] public EventCallback OnGoBack { get; set; }
+    [Parameter] public int SelectedCount { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnDownload { get; set; }
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public EventCallback<ChangeEventArgs> OnSearchInput { get; set; }
+    [Parameter] public EventCallback OnClearSearch { get; set; }
+
+    private string GetViewButtonClass(FileExplorer.FileViewMode mode)
+    {
+        var baseClass = "p-1.5 rounded transition-colors";
+        return mode == ViewMode
+            ? $"{baseClass} bg-nebula-bg-secondary text-nebula-text-primary"
+            : $"{baseClass} text-nebula-text-muted hover:text-nebula-text-primary";
+    }
+}

@@ -1,0 +1,3105 @@
+@page "/servers/{ServerId:guid}"
+@attribute [Authorize]
+@using NebulaPanel.Application.Common
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.ValueObjects
+@using NebulaPanel.Web.Components.Shared.FileExplorer
+@using NebulaPanel.Web.Components.Shared.Minecraft
+@using NebulaPanel.Web.Components.Shared.Hytale
+@using NebulaPanel.Web.Components.Shared.Terraria
+@using NebulaPanel.Domain.Repositories
+@using NebulaPanel.Web.Services
+@inject IGameServerService ServerService
+@inject IUnifiedModService ModService
+@inject IScheduledTaskService TaskService
+@inject IBackupService BackupService
+@inject IModpackUpdateService ModpackUpdateService
+@inject IDashboardService DashboardService
+@inject IGameServerRepository ServerRepository
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IToastService ToastService
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>@(_server?.Name ?? "Server") - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @if (_loading)
+    {
+        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.DetailHeader" />
+        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.TabContent" />
+    }
+    else if (_error != null)
+    {
+        <ErrorAlert Message="@_error" />
+        <Button Variant="ButtonVariant.Secondary"
+                Text="Back to Servers"
+                Class="mt-4"
+                OnClick="@(() => Navigation.NavigateTo("/servers"))" />
+    }
+    else if (_server != null)
+    {
+        @* Header *@
+        <div class="flex items-start justify-between gap-4 mb-6">
+            <div class="flex items-center gap-4">
+                <Button Variant="ButtonVariant.Ghost"
+                        IconName="arrow-left"
+                        IconOnly="true"
+                        OnClick="@(() => Navigation.NavigateTo("/servers"))" />
+
+                @if (!string.IsNullOrEmpty(_server.EffectiveIcon))
+                {
+                    <img src="@_server.EffectiveIcon" alt="@_server.GameName" class="w-12 h-12 object-contain rounded-lg" />
+                }
+                else
+                {
+                    <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                        <Icon Name="server" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                    </div>
+                }
+
+                <div>
+                    <div class="flex items-center gap-3">
+                        <h1 class="text-2xl font-semibold text-nebula-text-primary">@_server.Name</h1>
+                        <StatusBadge Status="@GetStatusType(_server.Status)"
+                                     Text="@_server.Status.ToString()"
+                                     ShowDot="true"
+                                     Size="BadgeSize.Large" />
+                    </div>
+                    <div class="flex items-center gap-4 mt-1 text-sm text-nebula-text-muted">
+                        <span>@_server.GameName</span>
+                        <span class="flex items-center gap-1">
+                            <Icon Name="@(_server.DeploymentType == ServerDeploymentType.Docker ? "box" : "terminal")" Size="IconSize.Small" />
+                            @_server.DeploymentType
+                        </span>
+                        <code class="bg-nebula-bg-tertiary px-2 py-0.5 rounded">@_server.BindAddress:@_server.PrimaryPort</code>
+                    </div>
+                </div>
+            </div>
+
+            @* Control Buttons *@
+            <div class="flex items-center gap-2">
+                @if (_server.Status == ServerStatus.Running)
+                {
+                    <Button Variant="ButtonVariant.Secondary"
+                            Text="Stop"
+                            IconName="square"
+                            Loading="_stopping"
+                            Disabled="_actionInProgress"
+                            OnClick="StopServer" />
+                    <Button Variant="ButtonVariant.Secondary"
+                            Text="Restart"
+                            IconName="refresh-cw"
+                            Loading="_restarting"
+                            Disabled="_actionInProgress"
+                            OnClick="RestartServer" />
+                }
+                else if (_server.Status == ServerStatus.Stopped || _server.Status == ServerStatus.Unknown || _server.Status == ServerStatus.Crashed)
+                {
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="Start"
+                            IconName="play"
+                            Loading="_starting"
+                            Disabled="_actionInProgress"
+                            OnClick="StartServer" />
+                    @if (_server.DeploymentType == ServerDeploymentType.Docker)
+                    {
+                        <Button Variant="ButtonVariant.Secondary"
+                                Text="Recreate Container"
+                                IconName="refresh-cw"
+                                Loading="_recreatingContainer"
+                                Disabled="_actionInProgress"
+                                OnClick="RecreateContainer" />
+                    }
+                }
+                else if (_server.Status == ServerStatus.Starting || _server.Status == ServerStatus.Stopping)
+                {
+                    <Button Variant="ButtonVariant.Danger"
+                            Text="Kill"
+                            IconName="x"
+                            Loading="_killing"
+                            Disabled="_actionInProgress"
+                            OnClick="KillServer" />
+                }
+                else if (_server.Status == ServerStatus.Installing || _server.Status == ServerStatus.Updating)
+                {
+                    <div class="flex items-center gap-2 text-nebula-text-muted px-3">
+                        <span class="spinner"></span>
+                        <span>@(_server.Status == ServerStatus.Installing ? "Installing..." : "Updating...")</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (_actionError != null)
+        {
+            <div class="mb-4 p-3 bg-nebula-error/10 border border-nebula-error/30 rounded-lg text-sm text-nebula-error flex items-center gap-2">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                @_actionError
+                <button class="ml-auto hover:text-nebula-error/80" @onclick="@(() => _actionError = null)">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            </div>
+        }
+
+        @* Modpack Update Banner *@
+        @if (_modpackUpdateInfo is not null && !_showUpdateProgressModal)
+        {
+            <ModpackUpdateBanner UpdateInfo="_modpackUpdateInfo"
+                                 OnViewDetails="@(() => _showUpdateModal = true)"
+                                 OnDismiss="DismissModpackUpdate" />
+        }
+
+        @* Tab Navigation *@
+        <TabNav TValue="string"
+                Tabs="@_tabs"
+                @bind-Value="_activeTab"
+                @bind-Value:after="OnTabChanged"
+                LabelSelector="@(t => t)"
+                IconSelector="@GetTabIcon" />
+
+        @* Tab Content *@
+        <div class="mt-6">
+            @switch (_activeTab)
+            {
+                case "Overview":
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        @* Server Info *@
+                        <Card>
+                            <Header>
+                                <h2 class="text-base font-medium text-nebula-text-primary">Server Details</h2>
+                            </Header>
+                            <ChildContent>
+                                <div class="space-y-3 text-sm">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-nebula-text-muted">Install Path</span>
+                                        <code class="text-nebula-text-secondary bg-nebula-bg-tertiary px-2 py-0.5 rounded text-xs truncate max-w-[200px]" title="@_server.InstallPath">
+                                            @TruncatePath(_server.InstallPath)
+                                        </code>
+                                    </div>
+                                    @if (_server.ProcessId.HasValue)
+                                    {
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Process ID</span>
+                                            <span class="text-nebula-text-secondary font-mono">@_server.ProcessId</span>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_server.DockerContainerId))
+                                    {
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Container</span>
+                                            <code class="text-nebula-text-secondary bg-nebula-bg-tertiary px-2 py-0.5 rounded text-xs">
+                                                @_server.DockerContainerId[..Math.Min(12, _server.DockerContainerId.Length)]
+                                            </code>
+                                        </div>
+                                    }
+                                    @if (_server.LastStarted.HasValue)
+                                    {
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Last Started</span>
+                                            <span class="text-nebula-text-secondary" title="@_server.LastStarted.Value.ToString("f")">
+                                                @FormatRelativeTime(_server.LastStarted.Value)
+                                            </span>
+                                        </div>
+                                    }
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-nebula-text-muted">Owner</span>
+                                        <span class="text-nebula-text-secondary">@_server.OwnerUsername</span>
+                                    </div>
+                                </div>
+                            </ChildContent>
+                        </Card>
+
+                        @* Resource Usage - Enhanced with Chart *@
+                        <Card Class="lg:col-span-2">
+                            <Header>
+                                <div class="flex items-center justify-between w-full">
+                                    <h2 class="text-base font-medium text-nebula-text-primary">Resources</h2>
+                                    <div class="flex gap-1">
+                                        <button @onclick="@(() => OnResourceTimeRangeChanged(TimeSpan.FromHours(1)))"
+                                                class="@GetResourceTimeRangeButtonClass(TimeSpan.FromHours(1))">
+                                            1h
+                                        </button>
+                                        <button @onclick="@(() => OnResourceTimeRangeChanged(TimeSpan.FromHours(6)))"
+                                                class="@GetResourceTimeRangeButtonClass(TimeSpan.FromHours(6))">
+                                            6h
+                                        </button>
+                                        <button @onclick="@(() => OnResourceTimeRangeChanged(TimeSpan.FromHours(24)))"
+                                                class="@GetResourceTimeRangeButtonClass(TimeSpan.FromHours(24))">
+                                            24h
+                                        </button>
+                                        <button @onclick="@(() => OnResourceTimeRangeChanged(TimeSpan.FromDays(7)))"
+                                                class="@GetResourceTimeRangeButtonClass(TimeSpan.FromDays(7))">
+                                            7d
+                                        </button>
+                                    </div>
+                                </div>
+                            </Header>
+                            <ChildContent>
+                                @if (_server.Status == ServerStatus.Running && _resourceUsage != null)
+                                {
+                                    <div class="grid grid-cols-3 gap-4 mb-4">
+                                        <div class="text-center p-3 bg-nebula-bg-tertiary rounded-lg">
+                                            <div class="text-2xl font-bold text-nebula-accent">@_resourceUsage.CpuPercent.ToString("F1")%</div>
+                                            <span class="text-xs text-nebula-text-muted">CPU</span>
+                                        </div>
+                                        <div class="text-center p-3 bg-nebula-bg-tertiary rounded-lg">
+                                            <div class="text-2xl font-bold text-nebula-success">@FormatBytes(_resourceUsage.MemoryBytes)</div>
+                                            <span class="text-xs text-nebula-text-muted">Memory</span>
+                                        </div>
+                                        <div class="text-center p-3 bg-nebula-bg-tertiary rounded-lg">
+                                            <div class="text-2xl font-bold text-nebula-text-primary">@FormatUptime(_resourceUsage.Uptime)</div>
+                                            <span class="text-xs text-nebula-text-muted">Uptime</span>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="grid grid-cols-3 gap-4 mb-4">
+                                        <div class="text-center p-3 bg-nebula-bg-tertiary rounded-lg">
+                                            <div class="text-2xl font-bold text-nebula-text-muted">--%</div>
+                                            <span class="text-xs text-nebula-text-muted">CPU</span>
+                                        </div>
+                                        <div class="text-center p-3 bg-nebula-bg-tertiary rounded-lg">
+                                            <div class="text-2xl font-bold text-nebula-text-muted">--</div>
+                                            <span class="text-xs text-nebula-text-muted">Memory</span>
+                                        </div>
+                                        <div class="text-center p-3 bg-nebula-bg-tertiary rounded-lg">
+                                            <div class="text-2xl font-bold text-nebula-text-muted">--</div>
+                                            <span class="text-xs text-nebula-text-muted">Uptime</span>
+                                        </div>
+                                    </div>
+                                }
+
+                                @* Resource History Chart *@
+                                @if (_loadingResourceHistory)
+                                {
+                                    <div class="flex items-center justify-center h-[200px]">
+                                        <span class="spinner"></span>
+                                    </div>
+                                }
+                                else if (_serverResourceHistory.Count == 0)
+                                {
+                                    <div class="flex items-center justify-center h-[200px] text-nebula-text-muted">
+                                        <div class="text-center">
+                                            <Icon Name="bar-chart-2" Size="IconSize.Large" Class="mb-2 opacity-40" />
+                                            <p class="text-sm">No historical data available</p>
+                                            <p class="text-xs mt-1">Data is collected every minute while the server is running</p>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <ResourceHistoryChart DataPoints="_serverResourceHistory" />
+                                }
+                            </ChildContent>
+                        </Card>
+
+                        @* Network *@
+                        <Card>
+                            <Header>
+                                <h2 class="text-base font-medium text-nebula-text-primary">Network</h2>
+                            </Header>
+                            <ChildContent>
+                                <div class="space-y-3 text-sm">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-nebula-text-muted">Primary Port</span>
+                                        <code class="text-nebula-text-secondary bg-nebula-bg-tertiary px-2 py-0.5 rounded text-xs">
+                                            @_server.BindAddress:@_server.PrimaryPort
+                                        </code>
+                                    </div>
+                                    @foreach (var port in _server.AdditionalPorts)
+                                    {
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted capitalize">@port.Key</span>
+                                            <code class="text-nebula-text-secondary bg-nebula-bg-tertiary px-2 py-0.5 rounded text-xs">
+                                                @_server.BindAddress:@port.Value
+                                            </code>
+                                        </div>
+                                    }
+                                </div>
+                            </ChildContent>
+                        </Card>
+
+                        @* Installed Modpack (only if modpack installed) *@
+                        @if (_server.InstalledModpack is not null)
+                        {
+                            <Card>
+                                <Header>
+                                    <div class="flex items-center justify-between">
+                                        <h2 class="text-base font-medium text-nebula-text-primary">Installed Modpack</h2>
+                                        <Button Variant="ButtonVariant.Ghost"
+                                                Size="ButtonSize.Small"
+                                                IconName="refresh-cw"
+                                                Text="Check Updates"
+                                                Loading="_checkingModpackUpdates"
+                                                OnClick="CheckForModpackUpdates" />
+                                    </div>
+                                </Header>
+                                <ChildContent>
+                                    <div class="space-y-3 text-sm">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Modpack</span>
+                                            <span class="text-nebula-text-primary font-medium">@_server.InstalledModpack.ModpackName</span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Version</span>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-nebula-text-secondary">@(_server.InstalledModpack.VersionName ?? _server.InstalledModpack.VersionId)</span>
+                                                @if (_server.InstalledModpack.UpdateAvailable)
+                                                {
+                                                    <StatusBadge Status="StatusType.Info" Text="Update" ShowDot="true" Size="BadgeSize.Small" />
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Minecraft</span>
+                                            <span class="text-nebula-text-secondary">@_server.InstalledModpack.MinecraftVersion</span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Mod Loader</span>
+                                            <StatusBadge Status="StatusType.Info"
+                                                         Text="@($"{_server.InstalledModpack.LoaderType} {_server.InstalledModpack.LoaderVersion}")"
+                                                         Size="BadgeSize.Small" />
+                                        </div>
+                                        @if (_server.InstalledModpack.ModCount.HasValue)
+                                        {
+                                            <div class="flex items-center justify-between">
+                                                <span class="text-nebula-text-muted">Mods</span>
+                                                <span class="text-nebula-text-secondary">@_server.InstalledModpack.ModCount mods</span>
+                                            </div>
+                                        }
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-nebula-text-muted">Installed</span>
+                                            <span class="text-nebula-text-secondary">@FormatRelativeTime(_server.InstalledModpack.InstalledAt)</span>
+                                        </div>
+                                        @if (_server.InstalledModpack.LastUpdateCheckAt.HasValue)
+                                        {
+                                            <div class="flex items-center justify-between text-xs text-nebula-text-muted">
+                                                <span>Last checked</span>
+                                                <span>@FormatRelativeTime(_server.InstalledModpack.LastUpdateCheckAt.Value)</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </ChildContent>
+                            </Card>
+                        }
+                    </div>
+                    break;
+
+                case "Console":
+                    <Card NoPadding="true" Class="overflow-hidden">
+                        <ChildContent>
+                            @* Console toolbar *@
+                            <div class="flex items-center justify-between px-4 py-2 bg-nebula-bg-tertiary border-b border-nebula-border">
+                                <span class="text-sm font-medium text-nebula-text-secondary">Server Console</span>
+                                <div class="flex items-center gap-3">
+                                    @* Search toggle *@
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="search"
+                                            IconOnly="true"
+                                            OnClick="@(() => { _showConsoleSearch = !_showConsoleSearch; if (!_showConsoleSearch) _consoleSearchQuery = ""; })"
+                                            title="Search console"
+                                            Class="@(_showConsoleSearch ? "text-nebula-accent" : "")" />
+                                    <label class="flex items-center gap-2 text-sm text-nebula-text-secondary cursor-pointer select-none">
+                                        <input type="checkbox" @bind="_autoScroll" class="w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                                        Auto-scroll
+                                    </label>
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="download"
+                                            IconOnly="true"
+                                            OnClick="DownloadConsoleLog"
+                                            Disabled="@(_consoleLines.Count == 0)"
+                                            title="Download log" />
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="copy"
+                                            IconOnly="true"
+                                            OnClick="CopyConsoleLog"
+                                            Disabled="@(_consoleLines.Count == 0)"
+                                            title="Copy to clipboard" />
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="trash-2"
+                                            IconOnly="true"
+                                            OnClick="ClearConsole"
+                                            title="Clear" />
+                                </div>
+                            </div>
+
+                            @* Search bar *@
+                            @if (_showConsoleSearch)
+                            {
+                                <div class="flex items-center gap-2 px-4 py-2 bg-nebula-bg-secondary border-b border-nebula-border">
+                                    <Icon Name="search" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    <input type="text"
+                                           @bind="_consoleSearchQuery"
+                                           @bind:event="oninput"
+                                           placeholder="Search console output..."
+                                           class="flex-1 bg-transparent text-nebula-text-primary text-sm outline-none placeholder:text-nebula-text-muted" />
+                                    @if (!string.IsNullOrEmpty(_consoleSearchQuery))
+                                    {
+                                        <span class="text-xs text-nebula-text-muted">@ConsoleSearchMatchCount match(es)</span>
+                                        <Button Variant="ButtonVariant.Ghost"
+                                                Size="ButtonSize.Small"
+                                                IconName="x"
+                                                IconOnly="true"
+                                                OnClick="@(() => _consoleSearchQuery = "")" />
+                                    }
+                                </div>
+                            }
+
+                            @* Console output *@
+                            <div class="h-[500px] overflow-y-auto p-4 font-mono text-xs leading-relaxed bg-[#0d1117] relative" @ref="_consoleOutput">
+                                @if (_consoleLines.Count == 0)
+                                {
+                                    <div class="text-gray-500 text-center py-8">
+                                        @if (_server.Status == ServerStatus.Running)
+                                        {
+                                            <span>Waiting for output...</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Server is not running. Start the server to see console output.</span>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var line in FilteredConsoleLines)
+                                    {
+                                        <div class="@GetConsoleLineClass(line) whitespace-pre-wrap break-all hover:bg-white/5 px-1 -mx-1">@line</div>
+                                    }
+                                }
+                            </div>
+
+                            @* Command input *@
+                            <div class="flex items-center gap-2 px-4 py-3 bg-nebula-bg-tertiary border-t border-nebula-border">
+                                <span class="text-nebula-accent font-mono">&gt;</span>
+                                <input type="text"
+                                       @bind="_commandInput"
+                                       @bind:event="oninput"
+                                       @onkeydown="HandleCommandKeyDown"
+                                       placeholder="@(_server.Status == ServerStatus.Running ? "Type a command..." : "Server is not running")"
+                                       disabled="@(_server.Status != ServerStatus.Running)"
+                                       class="flex-1 bg-transparent text-nebula-text-primary text-sm outline-none placeholder:text-nebula-text-muted font-mono" />
+                                <Button Variant="ButtonVariant.Primary"
+                                        Size="ButtonSize.Small"
+                                        Text="Send"
+                                        Loading="_sendingCommand"
+                                        Disabled="@(_server.Status != ServerStatus.Running || string.IsNullOrWhiteSpace(_commandInput))"
+                                        OnClick="SendCommand" />
+                            </div>
+                        </ChildContent>
+                    </Card>
+                    break;
+
+                case "Files":
+                    <FileExplorer ServerId="@ServerId" InitialPath="@_fileExplorerPath" />
+                    break;
+
+                case "Worlds":
+                    @if (_server?.HytaleInfo != null)
+                    {
+                        <HytaleWorldsTab ServerId="@ServerId" OnNavigateToFiles="NavigateToFilesTab" />
+                    }
+                    break;
+
+                case "Updates":
+                    @if (_server?.HytaleInfo != null)
+                    {
+                        <HytaleUpdateTab Server="@_server" UserId="@_server.OwnerId" OnUpdateStateChanged="OnHytaleUpdateStateChanged" />
+                    }
+                    break;
+
+                case "Mods":
+                    @* Check for Terraria servers - show specialized mods tab *@
+                    @if (IsTerrariaServer())
+                    {
+                        <TerrariaModsTab ServerId="@ServerId" />
+                    }
+                    else
+                    {
+                    <div class="space-y-4">
+                        @* Sub-tabs for Mods *@
+                        <div class="flex items-center gap-1 border-b border-nebula-border-subtle">
+                            <button type="button"
+                                    class="px-4 py-2 text-sm font-medium transition-colors @(_modsSubTab == "installed" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
+                                    @onclick="@(() => _modsSubTab = "installed")">
+                                Installed
+                                @if (_installedMods.Count > 0)
+                                {
+                                    <span class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary">@_installedMods.Count</span>
+                                }
+                            </button>
+                            <button type="button"
+                                    class="px-4 py-2 text-sm font-medium transition-colors @(_modsSubTab == "browse" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
+                                    @onclick="@(() => _modsSubTab = "browse")">
+                                Browse
+                            </button>
+                            @if (_availableUpdates.Count > 0)
+                            {
+                                <button type="button"
+                                        class="px-4 py-2 text-sm font-medium transition-colors @(_modsSubTab == "updates" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
+                                        @onclick="@(() => _modsSubTab = "updates")">
+                                    Updates
+                                    <span class="ml-1.5 px-1.5 py-0.5 text-xs rounded-full bg-nebula-warning/20 text-nebula-warning">@_availableUpdates.Count</span>
+                                </button>
+                            }
+                        </div>
+
+                        @* Sub-tab Content *@
+                        @switch (_modsSubTab)
+                        {
+                            case "installed":
+                                @* Installed mods list *@
+                                @if (_loadingMods)
+                                {
+                                    <div class="flex items-center justify-center py-8">
+                                        <span class="spinner w-6 h-6"></span>
+                                        <span class="ml-2 text-nebula-text-muted">Loading mods...</span>
+                                    </div>
+                                }
+                                else if (_installedMods.Count == 0)
+                                {
+                                    <div class="text-center py-12">
+                                        <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-4 opacity-50" />
+                                        <h3 class="text-base font-medium text-nebula-text-primary mb-2">No mods installed</h3>
+                                        <p class="text-sm text-nebula-text-muted mb-4">
+                                            Browse and install mods to enhance your server.
+                                        </p>
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Browse Mods"
+                                                IconName="search"
+                                                OnClick="@(() => _modsSubTab = "browse")" />
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="grid gap-3">
+                                        @foreach (var mod in _installedMods)
+                                        {
+                                            var hasUpdate = _availableUpdates.Any(u => u.InstalledModId == mod.Id);
+                                            <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4 hover:border-nebula-border-subtle transition-colors">
+                                                <div class="flex items-center gap-4">
+                                                    @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                                    {
+                                                        <img src="@mod.IconUrl" alt="@mod.Name" class="w-10 h-10 object-cover rounded-lg flex-shrink-0" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="w-10 h-10 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                                        </div>
+                                                    }
+                                                    <div class="flex-1 min-w-0">
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="font-medium text-nebula-text-primary truncate">@mod.Name</span>
+                                                            @if (hasUpdate)
+                                                            {
+                                                                <StatusBadge Status="StatusType.Warning" Text="Update" ShowDot="true" Size="BadgeSize.Small" />
+                                                            }
+                                                        </div>
+                                                        <div class="flex items-center gap-3 mt-1 text-xs text-nebula-text-muted">
+                                                            <span class="bg-nebula-bg-tertiary px-2 py-0.5 rounded">@mod.Version</span>
+                                                            <span class="bg-nebula-bg-tertiary px-2 py-0.5 rounded">@mod.Provider</span>
+                                                            <span>Installed @FormatRelativeTime(mod.InstalledAt)</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="flex items-center gap-1">
+                                                        @* Enable/Disable toggle *@
+                                                        <Button Variant="ButtonVariant.Ghost"
+                                                                Size="ButtonSize.Small"
+                                                                IconName="@(mod.IsEnabled ? "toggle-right" : "toggle-left")"
+                                                                IconOnly="true"
+                                                                Class="@(mod.IsEnabled ? "text-nebula-success" : "text-nebula-text-muted")"
+                                                                title="@(mod.IsEnabled ? "Enabled - Click to disable" : "Disabled - Click to enable")"
+                                                                OnClick="@(() => ToggleModEnabled(mod))" />
+                                                        @* View details *@
+                                                        <Button Variant="ButtonVariant.Ghost"
+                                                                Size="ButtonSize.Small"
+                                                                IconName="eye"
+                                                                IconOnly="true"
+                                                                title="View details"
+                                                                OnClick="@(() => ViewModDetails(mod))" />
+                                                        @* Delete *@
+                                                        <Button Variant="ButtonVariant.Ghost"
+                                                                Size="ButtonSize.Small"
+                                                                IconName="trash-2"
+                                                                IconOnly="true"
+                                                                Class="hover:text-nebula-error"
+                                                                title="Delete mod"
+                                                                OnClick="@(() => ConfirmDeleteMod(mod))" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                break;
+
+                            case "browse":
+                                @* Mod Browser - reuse HytaleModBrowser for Hytale, or generic for others *@
+                                @if (_server?.HytaleInfo != null)
+                                {
+                                    <HytaleModBrowser ServerId="_server.Id" OnModInstalled="RefreshServerAsync" />
+                                }
+                                else
+                                {
+                                    <div class="text-center py-12">
+                                        <Icon Name="search" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-4 opacity-50" />
+                                        <h3 class="text-base font-medium text-nebula-text-primary mb-2">Mod Browser</h3>
+                                        <p class="text-sm text-nebula-text-muted">
+                                            Search and install mods from CurseForge, Modrinth, and other providers.
+                                        </p>
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Open Full Browser"
+                                                IconName="external-link"
+                                                Class="mt-4"
+                                                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}/mods"))" />
+                                    </div>
+                                }
+                                break;
+
+                            case "updates":
+                                @* Available Updates *@
+                                @if (_availableUpdates.Count == 0)
+                                {
+                                    <div class="text-center py-12">
+                                        <Icon Name="check-circle" Size="IconSize.Large" Class="text-nebula-success mx-auto mb-4" />
+                                        <h3 class="text-base font-medium text-nebula-text-primary mb-2">All mods up to date</h3>
+                                        <p class="text-sm text-nebula-text-muted">
+                                            No updates available for your installed mods.
+                                        </p>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="space-y-4">
+                                        <div class="flex items-center justify-between">
+                                            <p class="text-sm text-nebula-text-muted">
+                                                @_availableUpdates.Count update(s) available
+                                            </p>
+                                            <Button Variant="ButtonVariant.Primary"
+                                                    Text="Update All"
+                                                    IconName="refresh-cw"
+                                                    Size="ButtonSize.Small" />
+                                        </div>
+                                        <div class="grid gap-3">
+                                            @foreach (var update in _availableUpdates)
+                                            {
+                                                var mod = _installedMods.FirstOrDefault(m => m.Id == update.InstalledModId);
+                                                <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4">
+                                                    <div class="flex items-center gap-4">
+                                                        <div class="w-10 h-10 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center flex-shrink-0">
+                                                            <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                                        </div>
+                                                        <div class="flex-1 min-w-0">
+                                                            <span class="font-medium text-nebula-text-primary">@update.ModName</span>
+                                                            <div class="flex items-center gap-2 mt-1 text-xs text-nebula-text-muted">
+                                                                <span>@(mod?.Version ?? "Unknown")</span>
+                                                                <Icon Name="arrow-right" Size="IconSize.XSmall" />
+                                                                <span class="text-nebula-success">@update.LatestVersion</span>
+                                                            </div>
+                                                        </div>
+                                                        <Button Variant="ButtonVariant.Secondary"
+                                                                Text="Update"
+                                                                IconName="download"
+                                                                Size="ButtonSize.Small" />
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                break;
+                        }
+                    </div>
+                    }
+                    break;
+
+                case "Config":
+                    <ServerConfigPanel ServerId="@ServerId" />
+                    break;
+
+                case "Schedule":
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h2 class="text-lg font-medium text-nebula-text-primary">Scheduled Tasks</h2>
+                                <p class="text-sm text-nebula-text-muted mt-1">
+                                    Automate server operations like restarts, backups, and commands.
+                                </p>
+                            </div>
+                            <Button Variant="ButtonVariant.Primary"
+                                    Text="Manage Tasks"
+                                    IconName="settings"
+                                    Size="ButtonSize.Small"
+                                    OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}/schedule"))" />
+                        </div>
+
+                        @if (_loadingTasks)
+                        {
+                            <div class="flex items-center justify-center py-8">
+                                <span class="spinner w-6 h-6"></span>
+                                <span class="ml-2 text-nebula-text-muted">Loading tasks...</span>
+                            </div>
+                        }
+                        else if (_scheduledTasks.Count == 0)
+                        {
+                            <Card>
+                                <ChildContent>
+                                    <div class="text-center py-6">
+                                        <Icon Name="clock" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-3" />
+                                        <p class="text-nebula-text-muted">No scheduled tasks configured yet.</p>
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Create Task"
+                                                IconName="plus"
+                                                Size="ButtonSize.Small"
+                                                Class="mt-4"
+                                                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}/schedule"))" />
+                                    </div>
+                                </ChildContent>
+                            </Card>
+                        }
+                        else
+                        {
+                            <div class="grid gap-3">
+                                @foreach (var task in _scheduledTasks)
+                                {
+                                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4 hover:border-nebula-border-subtle transition-colors">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-10 h-10 rounded-lg flex items-center justify-center @GetTaskTypeColor(task.TaskType)">
+                                                    <Icon Name="@GetTaskTypeIcon(task.TaskType)" Size="IconSize.Small" />
+                                                </div>
+                                                <div>
+                                                    <div class="font-medium text-nebula-text-primary">@task.Name</div>
+                                                    <div class="text-sm text-nebula-text-muted flex items-center gap-2">
+                                                        <span>@task.TaskType</span>
+                                                        @if (!string.IsNullOrEmpty(task.CronExpression))
+                                                        {
+                                                            <span class="text-nebula-text-muted">•</span>
+                                                            <code class="text-xs bg-nebula-bg-tertiary px-1.5 py-0.5 rounded">@task.CronExpression</code>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-4">
+                                                <div class="text-right text-sm">
+                                                    @if (task.NextRunAt.HasValue)
+                                                    {
+                                                        <div class="text-nebula-text-secondary">Next: @FormatTaskTime(task.NextRunAt.Value)</div>
+                                                    }
+                                                    @if (task.LastRunAt.HasValue)
+                                                    {
+                                                        <div class="text-nebula-text-muted text-xs">Last: @FormatTaskTime(task.LastRunAt.Value)</div>
+                                                    }
+                                                </div>
+                                                <StatusBadge Status="@(task.IsEnabled ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Neutral)"
+                                                             Text="@(task.IsEnabled ? "Enabled" : "Disabled")"
+                                                             ShowDot="true"
+                                                             Size="StatusBadge.BadgeSize.Small" />
+                                                <div class="flex items-center gap-1">
+                                                    <Button Variant="ButtonVariant.Ghost"
+                                                            Size="ButtonSize.Small"
+                                                            IconName="play"
+                                                            IconOnly="true"
+                                                            OnClick="@(() => RunTaskNow(task))"
+                                                            title="Run Now" />
+                                                    <Button Variant="ButtonVariant.Ghost"
+                                                            Size="ButtonSize.Small"
+                                                            IconName="@(task.IsEnabled ? "pause" : "play-circle")"
+                                                            IconOnly="true"
+                                                            OnClick="@(() => ToggleTaskEnabled(task))"
+                                                            title="@(task.IsEnabled ? "Disable" : "Enable")" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    break;
+
+                case "Backups":
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h2 class="text-lg font-medium text-nebula-text-primary">Server Backups</h2>
+                                <p class="text-sm text-nebula-text-muted mt-1">
+                                    Create and manage backups for this server.
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                @if (_backupSummary != null)
+                                {
+                                    <div class="text-right text-sm">
+                                        <div class="text-nebula-text-secondary">@_backupSummary.TotalCount backups (@FormatBytes(_backupSummary.TotalSizeBytes))</div>
+                                        @if (_backupSummary.LastBackupAt.HasValue)
+                                        {
+                                            <div class="text-nebula-text-muted text-xs">Last: @FormatRelativeTime(_backupSummary.LastBackupAt.Value)</div>
+                                        }
+                                    </div>
+                                }
+                                <Button Variant="ButtonVariant.Primary"
+                                        Text="Create Backup"
+                                        IconName="plus"
+                                        Size="ButtonSize.Small"
+                                        OnClick="@(() => _showCreateBackupModal = true)" />
+                            </div>
+                        </div>
+
+                        @if (_loadingBackups)
+                        {
+                            <div class="flex items-center justify-center py-8">
+                                <span class="spinner w-6 h-6"></span>
+                                <span class="ml-2 text-nebula-text-muted">Loading backups...</span>
+                            </div>
+                        }
+                        else if (_backups.Count == 0)
+                        {
+                            <Card>
+                                <ChildContent>
+                                    <div class="text-center py-6">
+                                        <Icon Name="archive" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-3" />
+                                        <p class="text-nebula-text-muted">No backups created yet.</p>
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Create Backup"
+                                                IconName="plus"
+                                                Size="ButtonSize.Small"
+                                                Class="mt-4"
+                                                OnClick="@(() => _showCreateBackupModal = true)" />
+                                    </div>
+                                </ChildContent>
+                            </Card>
+                        }
+                        else
+                        {
+                            @if (_server.Status != ServerStatus.Stopped && _server.Status != ServerStatus.Unknown)
+                            {
+                                <div class="mb-4 p-3 bg-nebula-warning/10 border border-nebula-warning/30 rounded-lg text-sm text-nebula-warning flex items-center gap-2">
+                                    <Icon Name="alert-triangle" Size="IconSize.Small" />
+                                    Stop the server before restoring a backup.
+                                </div>
+                            }
+
+                            <div class="grid gap-3">
+                                @foreach (var backup in _backups)
+                                {
+                                    var isRestoring = _restoringBackupId == backup.Id;
+                                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4 hover:border-nebula-border-subtle transition-colors @(isRestoring ? "opacity-75" : "")">
+                                        <div class="flex items-center justify-between">
+                                            <div class="flex items-center gap-3">
+                                                @if (isRestoring)
+                                                {
+                                                    <div class="w-10 h-10 rounded-lg flex items-center justify-center bg-nebula-warning/20">
+                                                        <span class="spinner w-5 h-5"></span>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="w-10 h-10 rounded-lg flex items-center justify-center @(backup.Scope == BackupScope.Full ? "bg-nebula-accent/20 text-nebula-accent" : "bg-nebula-info/20 text-nebula-info")">
+                                                        <Icon Name="@(backup.Scope == BackupScope.Full ? "hard-drive" : "database")" Size="IconSize.Small" />
+                                                    </div>
+                                                }
+                                                <div>
+                                                    <div class="font-medium text-nebula-text-primary flex items-center gap-2">
+                                                        @backup.Name
+                                                        @if (isRestoring)
+                                                        {
+                                                            <span class="text-sm text-nebula-warning">Restoring...</span>
+                                                        }
+                                                    </div>
+                                                    <div class="text-sm text-nebula-text-muted flex items-center gap-2">
+                                                        <span>@FormatBytes(backup.FileSizeBytes)</span>
+                                                        <span class="text-nebula-text-muted">•</span>
+                                                        <span>@backup.Scope backup</span>
+                                                        <span class="text-nebula-text-muted">•</span>
+                                                        <span>@FormatRelativeTime(backup.CreatedAt)</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <StatusBadge Status="@GetBackupStatusType(backup.Status)"
+                                                             Text="@backup.Status.ToString()"
+                                                             ShowDot="true"
+                                                             Size="StatusBadge.BadgeSize.Small" />
+                                                <Button Variant="ButtonVariant.Ghost"
+                                                        Size="ButtonSize.Small"
+                                                        IconName="download"
+                                                        IconOnly="true"
+                                                        Disabled="@(backup.Status != BackupStatus.Completed || isRestoring)"
+                                                        OnClick="@(() => DownloadBackup(backup))"
+                                                        title="Download" />
+                                                <Button Variant="ButtonVariant.Ghost"
+                                                        Size="ButtonSize.Small"
+                                                        IconName="rotate-ccw"
+                                                        IconOnly="true"
+                                                        Disabled="@(backup.Status != BackupStatus.Completed || _server.Status != ServerStatus.Stopped && _server.Status != ServerStatus.Unknown || _restoringBackupId.HasValue)"
+                                                        OnClick="@(() => ShowRestoreConfirm(backup))"
+                                                        title="@(_server.Status != ServerStatus.Stopped && _server.Status != ServerStatus.Unknown ? "Stop server to restore" : "Restore")" />
+                                                <Button Variant="ButtonVariant.Ghost"
+                                                        Size="ButtonSize.Small"
+                                                        IconName="trash-2"
+                                                        IconOnly="true"
+                                                        Disabled="@isRestoring"
+                                                        OnClick="@(() => DeleteBackup(backup))"
+                                                        title="Delete" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    break;
+
+                case "Settings":
+                    <div class="space-y-6">
+                        <Card>
+                            <Header>
+                                <h2 class="text-base font-medium text-nebula-text-primary">Server Configuration</h2>
+                            </Header>
+                            <ChildContent>
+                                <div class="text-nebula-text-muted text-sm">
+                                    <p>Edit server configuration, ports, and deployment settings.</p>
+                                    <Button Variant="ButtonVariant.Secondary"
+                                            Text="Edit Server"
+                                            IconName="pencil"
+                                            Class="mt-4"
+                                            OnClick="EditSettings" />
+                                </div>
+                            </ChildContent>
+                        </Card>
+
+                        @* Docker Container Management *@
+                        @if (_server.DeploymentType == ServerDeploymentType.Docker)
+                        {
+                            <Card>
+                                <Header>
+                                    <h2 class="text-base font-medium text-nebula-text-primary">Docker Container</h2>
+                                </Header>
+                                <ChildContent>
+                                    <div class="space-y-4">
+                                        <div class="flex items-center justify-between">
+                                            <div>
+                                                <p class="text-nebula-text-primary font-medium">Recreate Container</p>
+                                                <p class="text-sm text-nebula-text-muted mt-0.5">
+                                                    Delete and recreate the Docker container. Useful if container settings need to be updated.
+                                                    Server files are preserved.
+                                                </p>
+                                            </div>
+                                            <Button Variant="ButtonVariant.Secondary"
+                                                    Text="Recreate"
+                                                    IconName="refresh-cw"
+                                                    Loading="_recreatingContainer"
+                                                    Disabled="@(_server.Status == ServerStatus.Running || _server.Status == ServerStatus.Starting)"
+                                                    OnClick="RecreateContainer" />
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(_server.DockerContainerId))
+                                        {
+                                            <div class="text-xs text-nebula-text-muted pt-2 border-t border-nebula-border-subtle">
+                                                <span>Container ID: </span>
+                                                <code class="bg-nebula-bg-tertiary px-1.5 py-0.5 rounded">@_server.DockerContainerId[..Math.Min(12, _server.DockerContainerId.Length)]</code>
+                                            </div>
+                                        }
+                                    </div>
+                                </ChildContent>
+                            </Card>
+                        }
+
+                        @* Startup Script Configuration (Minecraft only - both Native and Docker) *@
+                        @if (_server.GameName == "Minecraft: Java Edition" && (_server.NativeConfig != null || _server.DeploymentType == ServerDeploymentType.Docker))
+                        {
+                            <Card>
+                                <Header>
+                                    <h2 class="text-base font-medium text-nebula-text-primary">Startup Method</h2>
+                                </Header>
+                                <ChildContent>
+                                    <div class="space-y-4">
+                                        <p class="text-sm text-nebula-text-muted">
+                                            @if (_server.DeploymentType == ServerDeploymentType.Docker)
+                                            {
+                                                <text>Choose a startup script. The script will be parsed and the Java command will be extracted for the Docker container.</text>
+                                            }
+                                            else
+                                            {
+                                                <text>Choose how to start this server. Modpacks often include custom startup scripts with optimized JVM settings.</text>
+                                            }
+                                        </p>
+
+                                        <div class="flex items-center gap-3">
+                                            <Toggle Value="_useStartupScript"
+                                                    ValueChanged="HandleStartupScriptToggle" />
+                                            <span class="text-sm text-nebula-text-secondary">
+                                                @if (_server.DeploymentType == ServerDeploymentType.Docker)
+                                                {
+                                                    <text>Use startup script (parsed for Docker)</text>
+                                                }
+                                                else
+                                                {
+                                                    <text>Use startup script instead of jar file</text>
+                                                }
+                                            </span>
+                                        </div>
+
+                                        @if (_useStartupScript)
+                                        {
+                                            <div class="space-y-3">
+                                                @if (_detectedScripts.Count > 0)
+                                                {
+                                                    <div>
+                                                        <label class="block text-sm font-medium text-nebula-text-secondary mb-2">Detected Scripts</label>
+                                                        <div class="grid grid-cols-2 gap-2">
+                                                            @foreach (var script in _detectedScripts)
+                                                            {
+                                                                <button type="button"
+                                                                        class="@($"p-3 rounded-nebula border text-left transition-colors {(_startupScriptPath == script ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-secondary hover:border-nebula-border-subtle")}")"
+                                                                        @onclick="@(() => SelectStartupScript(script))">
+                                                                    <div class="flex items-center gap-2">
+                                                                        <Icon Name="file-code" Size="IconSize.Small" Class="@(_startupScriptPath == script ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                                                                        <span class="text-sm text-nebula-text-primary">@script</span>
+                                                                    </div>
+                                                                </button>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div class="flex items-center gap-2 text-sm text-nebula-warning">
+                                                        <Icon Name="alert-triangle" Size="IconSize.Small" />
+                                                        <span>No startup scripts detected in the server directory.</span>
+                                                    </div>
+                                                }
+
+                                                <div>
+                                                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Custom Script Path</label>
+                                                    <input type="text"
+                                                           @bind="_startupScriptPath"
+                                                           placeholder="e.g., start.bat or run.sh"
+                                                           class="input" />
+                                                    <p class="text-xs text-nebula-text-muted mt-1">Enter a custom path if your script has a different name.</p>
+                                                </div>
+
+                                                @if (_server.DeploymentType == ServerDeploymentType.Docker)
+                                                {
+                                                    <div class="bg-nebula-bg-tertiary rounded-nebula p-3 text-xs text-nebula-text-muted">
+                                                        <Icon Name="info" Size="IconSize.Small" Class="inline mr-1" />
+                                                        Docker will parse the script and extract the Java command. Windows .bat files are automatically converted for Linux containers.
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+
+                                        <div class="flex items-center gap-2 pt-2">
+                                            <Button Variant="ButtonVariant.Primary"
+                                                    Text="Save Startup Settings"
+                                                    Loading="_savingStartupSettings"
+                                                    OnClick="SaveStartupSettings" />
+                                            @if (_startupSettingsSaved)
+                                            {
+                                                <span class="text-sm text-nebula-success flex items-center gap-1">
+                                                    <Icon Name="check" Size="IconSize.Small" />
+                                                    Saved
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                </ChildContent>
+                            </Card>
+                        }
+
+                        @* RCON Configuration *@
+                        <Card>
+                            <Header>
+                                <div class="flex items-center gap-2">
+                                    <Icon Name="terminal" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    <h2 class="text-base font-medium text-nebula-text-primary">RCON Configuration</h2>
+                                </div>
+                            </Header>
+                            <ChildContent>
+                                <div class="space-y-4">
+                                    <p class="text-sm text-nebula-text-muted">
+                                        RCON (Remote Console) allows sending commands to the server. For Docker servers, RCON is the recommended method for command execution.
+                                    </p>
+
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="text-nebula-text-primary font-medium">Enable RCON</p>
+                                            <p class="text-xs text-nebula-text-muted">Use RCON protocol for sending commands</p>
+                                        </div>
+                                        <Toggle Value="_rconEnabled" ValueChanged="OnRconEnabledChanged" />
+                                    </div>
+
+                                    @if (_rconEnabled)
+                                    {
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Host</label>
+                                                <input type="text"
+                                                       class="w-full px-3 py-2 bg-nebula-bg-secondary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:border-nebula-accent"
+                                                       placeholder="127.0.0.1"
+                                                       @bind="_rconHost"
+                                                       @bind:event="oninput" />
+                                            </div>
+                                            <div>
+                                                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Port</label>
+                                                <input type="number"
+                                                       class="w-full px-3 py-2 bg-nebula-bg-secondary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:border-nebula-accent"
+                                                       placeholder="25575"
+                                                       @bind="_rconPort" />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Password</label>
+                                            <input type="password"
+                                                   class="w-full px-3 py-2 bg-nebula-bg-secondary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:border-nebula-accent"
+                                                   placeholder="Enter RCON password"
+                                                   @bind="_rconPassword"
+                                                   @bind:event="oninput" />
+                                            <p class="text-xs text-nebula-text-muted mt-1">Must match the rcon.password in your server.properties file</p>
+                                        </div>
+                                    }
+
+                                    <div class="flex items-center gap-2 pt-2">
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Save RCON Settings"
+                                                Loading="_savingRconSettings"
+                                                OnClick="SaveRconSettings" />
+                                        @if (_rconSettingsSaved)
+                                        {
+                                            <span class="text-sm text-nebula-success flex items-center gap-1">
+                                                <Icon Name="check" Size="IconSize.Small" />
+                                                Saved
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            </ChildContent>
+                        </Card>
+
+                        <Card Class="border-nebula-error/30">
+                            <Header>
+                                <h2 class="text-base font-medium text-nebula-error">Danger Zone</h2>
+                            </Header>
+                            <ChildContent>
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-nebula-text-primary font-medium">Delete Server</p>
+                                        <p class="text-sm text-nebula-text-muted mt-0.5">Permanently remove this server configuration. Files on disk will not be deleted.</p>
+                                    </div>
+                                    <Button Variant="ButtonVariant.Danger"
+                                            Text="Delete"
+                                            Disabled="@(_server.Status != ServerStatus.Stopped && _server.Status != ServerStatus.Unknown && _server.Status != ServerStatus.Crashed)"
+                                            OnClick="@(() => _showDeleteConfirm = true)" />
+                                </div>
+                            </ChildContent>
+                        </Card>
+                    </div>
+                    break;
+            }
+        </div>
+    }
+</div>
+
+@* Delete Confirmation Modal *@
+@if (_showDeleteConfirm && _server != null)
+{
+    <Modal IsOpen="true" OnClose="@(() => _showDeleteConfirm = false)" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete Server</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_server.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone.</p>
+
+            <div class="mt-4 space-y-3">
+                @if (_server.DeploymentType == ServerDeploymentType.Docker && !string.IsNullOrEmpty(_server.DockerContainerId))
+                {
+                    <label class="flex items-center gap-3 p-3 rounded-nebula bg-nebula-bg-secondary border border-nebula-border cursor-pointer hover:border-nebula-border-subtle transition-colors">
+                        <input type="checkbox" @bind="_deleteContainer" class="w-4 h-4 rounded border-nebula-border text-nebula-accent focus:ring-nebula-accent" />
+                        <div>
+                            <div class="text-sm font-medium text-nebula-text-primary">Remove Docker container</div>
+                            <div class="text-xs text-nebula-text-muted">Delete the Docker container associated with this server</div>
+                        </div>
+                    </label>
+                }
+
+                <label class="flex items-center gap-3 p-3 rounded-nebula bg-nebula-bg-secondary border border-nebula-border cursor-pointer hover:border-nebula-border-subtle transition-colors">
+                    <input type="checkbox" @bind="_deleteFiles" class="w-4 h-4 rounded border-nebula-border text-nebula-accent focus:ring-nebula-accent" />
+                    <div>
+                        <div class="text-sm font-medium text-nebula-text-primary">Delete server files</div>
+                        <div class="text-xs text-nebula-text-muted">Permanently delete all files at: @_server.InstallPath</div>
+                    </div>
+                </label>
+
+                @if (_deleteFiles)
+                {
+                    <div class="p-3 rounded-nebula bg-red-500/10 border border-red-500/30">
+                        <p class="text-sm text-red-400 flex items-center gap-2">
+                            <Icon Name="alert-triangle" Size="IconSize.Small" />
+                            Warning: This will permanently delete all server files including worlds, configs, and mods.
+                        </p>
+                    </div>
+                }
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => { _showDeleteConfirm = false; _deleteFiles = false; _deleteContainer = false; })" />
+                <Button Variant="ButtonVariant.Danger" Text="Delete Server" Loading="_deleting" OnClick="DeleteServer" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Create Backup Modal *@
+@if (_showCreateBackupModal && _server != null)
+{
+    <Modal IsOpen="true" OnClose="CloseCreateBackupModal" Size="ModalSize.Medium">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Create Backup</h3>
+        </Header>
+        <Body>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Backup Type</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button"
+                                class="@($"p-4 rounded-nebula border text-left transition-colors {(_createBackupScope == BackupScope.Full ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-secondary hover:border-nebula-border-subtle")}")"
+                                @onclick="@(() => _createBackupScope = BackupScope.Full)">
+                            <div class="flex items-center gap-3">
+                                <Icon Name="hard-drive" Size="IconSize.Medium" Class="@(_createBackupScope == BackupScope.Full ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                                <div>
+                                    <div class="font-medium text-nebula-text-primary">Full Backup</div>
+                                    <div class="text-xs text-nebula-text-muted">Entire server directory</div>
+                                </div>
+                            </div>
+                        </button>
+                        <button type="button"
+                                class="@($"p-4 rounded-nebula border text-left transition-colors {(_createBackupScope == BackupScope.Selective ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-secondary hover:border-nebula-border-subtle")}")"
+                                @onclick="@(() => _createBackupScope = BackupScope.Selective)">
+                            <div class="flex items-center gap-3">
+                                <Icon Name="database" Size="IconSize.Medium" Class="@(_createBackupScope == BackupScope.Selective ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                                <div>
+                                    <div class="font-medium text-nebula-text-primary">Selective Backup</div>
+                                    <div class="text-xs text-nebula-text-muted">World, saves, and config only</div>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="backupName" class="block text-sm font-medium text-nebula-text-secondary mb-1">Name (optional)</label>
+                    <input type="text"
+                           id="backupName"
+                           @bind="_createBackupName"
+                           placeholder="Leave blank for auto-generated name"
+                           class="input" />
+                </div>
+
+                <div>
+                    <label for="backupNotes" class="block text-sm font-medium text-nebula-text-secondary mb-1">Notes (optional)</label>
+                    <textarea id="backupNotes"
+                              @bind="_createBackupNotes"
+                              rows="2"
+                              placeholder="Add any notes about this backup..."
+                              class="input resize-none"></textarea>
+                </div>
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CloseCreateBackupModal" />
+                <Button Variant="ButtonVariant.Primary" Text="Create Backup" Loading="_creatingBackup" OnClick="CreateBackup" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Restore Backup Confirmation Modal *@
+@if (_showRestoreConfirmModal && _backupToRestore != null && _server != null)
+{
+    <Modal IsOpen="true" OnClose="CloseRestoreConfirmModal" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Restore Backup</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to restore the backup <strong class="text-nebula-text-primary">@_backupToRestore.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted mt-2">
+                This will overwrite the current server files. A pre-restore backup will be created automatically.
+            </p>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CloseRestoreConfirmModal" />
+                <Button Variant="ButtonVariant.Danger" Text="Restore Backup" Loading="@(_restoringBackupId.HasValue)" OnClick="ConfirmRestoreBackup" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Modpack Update Modal *@
+@if (_showUpdateModal && _modpackUpdateInfo != null && _server != null)
+{
+    <ModpackUpdateModal IsOpen="true"
+                        OnClose="@(() => _showUpdateModal = false)"
+                        ModpackName="@(_server.InstalledModpack?.ModpackName ?? "Modpack")"
+                        UpdateInfo="_modpackUpdateInfo"
+                        Updating="_updatingModpack"
+                        OnUpdate="ExecuteModpackUpdate" />
+}
+
+@* Modpack Update Progress Modal *@
+@if (_showUpdateProgressModal && _server != null)
+{
+    <Modal IsOpen="true" OnClose="CloseUpdateProgressModal" Size="ModalSize.Medium" CloseOnBackdropClick="false" CloseOnEsc="false">
+        <Body>
+            <ModpackUpdateProgress ModpackName="@(_server.InstalledModpack?.ModpackName ?? "Modpack")"
+                                   Progress="_modpackUpdateProgress"
+                                   OnCancel="CancelModpackUpdate"
+                                   OnClose="CloseUpdateProgressModal"
+                                   OnViewServer="CloseUpdateProgressModal"
+                                   OnRetry="RetryModpackUpdate" />
+        </Body>
+    </Modal>
+}
+
+@* Mod Details Modal *@
+<Modal IsOpen="@(_selectedModForDetails != null)" Size="ModalSize.Medium" OnClose="CloseModDetailsModal">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Mod Details</span>
+    </Header>
+    <Body>
+        @if (_selectedModForDetails != null)
+        {
+            <div class="space-y-4">
+                @* Header with icon *@
+                <div class="flex items-start gap-4">
+                    @if (!string.IsNullOrEmpty(_selectedModForDetails.IconUrl))
+                    {
+                        <img src="@_selectedModForDetails.IconUrl" alt="@_selectedModForDetails.Name" class="w-16 h-16 object-cover rounded-lg" />
+                    }
+                    else
+                    {
+                        <div class="w-16 h-16 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                            <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <div>
+                        <h3 class="text-xl font-semibold text-nebula-text-primary">@_selectedModForDetails.Name</h3>
+                        <p class="text-sm text-nebula-text-muted">ID: @_selectedModForDetails.ModId</p>
+                    </div>
+                </div>
+
+                @* Info grid *@
+                <div class="grid grid-cols-2 gap-4 p-4 bg-nebula-bg-tertiary rounded-nebula">
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Version</span>
+                        <p class="text-sm text-nebula-text-primary font-medium">@_selectedModForDetails.Version</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Provider</span>
+                        <p class="text-sm text-nebula-text-primary font-medium">@_selectedModForDetails.Provider</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Installed</span>
+                        <p class="text-sm text-nebula-text-primary font-medium">@_selectedModForDetails.InstalledAt.ToString("MMM d, yyyy")</p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">Status</span>
+                        <p class="text-sm font-medium @(_selectedModForDetails.IsEnabled ? "text-nebula-success" : "text-nebula-text-muted")">
+                            @(_selectedModForDetails.IsEnabled ? "Enabled" : "Disabled")
+                        </p>
+                    </div>
+                    @if (_selectedModForDetails.FileSizeBytes.HasValue)
+                    {
+                        <div>
+                            <span class="text-xs text-nebula-text-muted uppercase">File Size</span>
+                            <p class="text-sm text-nebula-text-primary font-medium">@FormatBytes(_selectedModForDetails.FileSizeBytes.Value)</p>
+                        </div>
+                    }
+                </div>
+
+                @* File path *@
+                @if (!string.IsNullOrEmpty(_selectedModForDetails.LocalPath))
+                {
+                    <div>
+                        <span class="text-xs text-nebula-text-muted uppercase">File Path</span>
+                        <p class="text-sm text-nebula-text-secondary font-mono break-all">@_selectedModForDetails.LocalPath</p>
+                    </div>
+                }
+            </div>
+        }
+    </Body>
+    <Footer>
+        <div class="flex justify-end gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="CloseModDetailsModal" />
+        </div>
+    </Footer>
+</Modal>
+
+@* Delete Mod Confirmation Modal *@
+<Modal IsOpen="@(_modToDelete != null)" Size="ModalSize.Small" OnClose="CancelDeleteMod">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Delete Mod</span>
+    </Header>
+    <Body>
+        <div class="space-y-3">
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_modToDelete?.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted">
+                This will permanently remove the mod file from your server.
+            </p>
+        </div>
+    </Body>
+    <Footer>
+        <div class="flex justify-end gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDeleteMod" />
+            <Button Variant="ButtonVariant.Danger"
+                    Text="Delete"
+                    IconName="trash-2"
+                    Loading="@_deletingMod"
+                    OnClick="DeleteModConfirmed" />
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    private string[] _tabs => GetTabs();
+    private string _activeTab = "Overview";
+
+    private string[] GetTabs() => _server?.HytaleInfo != null
+        ? ["Overview", "Console", "Files", "Mods", "Worlds", "Updates", "Config", "Schedule", "Backups", "Settings"]
+        : ["Overview", "Console", "Files", "Mods", "Config", "Schedule", "Backups", "Settings"];
+
+    /// <summary>
+    /// Returns true if this server is a Terraria/tModLoader server.
+    /// </summary>
+    private bool IsTerrariaServer() =>
+        _server?.GameName?.Contains("Terraria", StringComparison.OrdinalIgnoreCase) == true ||
+        _server?.GameName?.Contains("tModLoader", StringComparison.OrdinalIgnoreCase) == true;
+
+    private GameServerDto? _server;
+    private bool _loading = true;
+    private string? _error;
+    private string? _actionError;
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private bool _deleteFiles;
+    private bool _deleteContainer;
+
+    private bool _starting;
+    private bool _stopping;
+    private bool _restarting;
+    private bool _killing;
+    private bool _recreatingContainer;
+    private bool _hytaleUpdating;
+    private bool _actionInProgress => _starting || _stopping || _restarting || _killing || _recreatingContainer || _hytaleUpdating;
+
+    private List<string> _consoleLines = [];
+    private string _commandInput = "";
+    private bool _sendingCommand;
+    private ElementReference _consoleOutput;
+    private CancellationTokenSource? _consoleCts;
+    private bool _autoScroll = true;
+    private bool _showConsoleSearch;
+    private string _consoleSearchQuery = "";
+
+    private ResourceUsage? _resourceUsage;
+    private Timer? _resourceTimer;
+    private bool _resourceMonitoringInProgress;
+
+    // Resource History
+    private IReadOnlyList<ResourceDataPointDto> _serverResourceHistory = [];
+    private bool _loadingResourceHistory;
+    private bool _resourceHistoryLoaded;
+    private TimeSpan _resourceTimeRange = TimeSpan.FromHours(1);
+
+    // Mods
+    private List<ServerModDto> _installedMods = [];
+    private List<ModUpdateInfo> _availableUpdates = [];
+    private bool _loadingMods;
+    private bool _modsLoaded;
+    private string _modsSubTab = "installed";
+    private ServerModDto? _selectedModForDetails;
+    private ServerModDto? _modToDelete;
+    private bool _deletingMod;
+
+    // Scheduled Tasks
+    private List<ScheduledTaskListItemDto> _scheduledTasks = [];
+    private bool _loadingTasks;
+    private bool _tasksLoaded;
+
+    // Backups
+    private List<BackupListItemDto> _backups = [];
+    private BackupSummaryDto? _backupSummary;
+    private bool _loadingBackups;
+    private bool _backupsLoaded;
+    private string? _fileExplorerPath;
+    private bool _creatingBackup;
+    private bool _showCreateBackupModal;
+    private BackupScope _createBackupScope = BackupScope.Full;
+    private string? _createBackupName;
+    private string? _createBackupNotes;
+    private Guid? _restoringBackupId;
+    private bool _showRestoreConfirmModal;
+    private BackupListItemDto? _backupToRestore;
+
+    // Modpack Updates
+    private ModpackUpdateInfo? _modpackUpdateInfo;
+    private bool _checkingModpackUpdates;
+    private bool _showUpdateModal;
+    private bool _showUpdateProgressModal;
+    private bool _updatingModpack;
+    private ModpackUpdateProgressDto? _modpackUpdateProgress;
+    private CancellationTokenSource? _updateCts;
+
+    // Startup Script Settings
+    private bool _useStartupScript;
+    private string? _startupScriptPath;
+    private List<string> _detectedScripts = [];
+    private bool _savingStartupSettings;
+    private bool _startupSettingsSaved;
+
+    // RCON Settings
+    private bool _rconEnabled;
+    private string _rconHost = "127.0.0.1";
+    private int _rconPort = 25575;
+    private string _rconPassword = "";
+    private bool _savingRconSettings;
+    private bool _rconSettingsSaved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadServerAsync();
+
+        // Load resource history for Overview chart
+        _ = LoadResourceHistoryAsync();
+
+        // Check for modpack updates if a modpack is installed
+        if (_server?.InstalledModpack is not null)
+        {
+            // Check if we have cached update info or if it's stale (> 1 hour)
+            var needsCheck = !_server.InstalledModpack.LastUpdateCheckAt.HasValue ||
+                             DateTime.UtcNow - _server.InstalledModpack.LastUpdateCheckAt.Value > TimeSpan.FromHours(1);
+
+            if (needsCheck)
+            {
+                // Check in background (don't await)
+                _ = CheckForModpackUpdates();
+            }
+            else if (_server.InstalledModpack.UpdateAvailable &&
+                     _server.InstalledModpack.DismissedVersionId != _server.InstalledModpack.LatestVersionId)
+            {
+                // Use cached update info to build ModpackUpdateInfo for display
+                _modpackUpdateInfo = new ModpackUpdateInfo
+                {
+                    CurrentVersionId = _server.InstalledModpack.VersionId,
+                    CurrentVersionName = _server.InstalledModpack.VersionName ?? _server.InstalledModpack.VersionId,
+                    LatestVersionId = _server.InstalledModpack.LatestVersionId!,
+                    LatestVersionName = _server.InstalledModpack.LatestVersionName!,
+                    ReleasedAt = _server.InstalledModpack.LatestVersionReleasedAt ?? DateTime.UtcNow,
+                    CurrentMinecraftVersion = _server.InstalledModpack.MinecraftVersion
+                };
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _server?.Status == ServerStatus.Running)
+        {
+            StartConsoleStream();
+            StartResourceMonitoring();
+        }
+        await Task.CompletedTask;
+    }
+
+    private static string? GetTabIcon(string tab) => tab switch
+    {
+        "Overview" => "layout-dashboard",
+        "Console" => "terminal",
+        "Files" => "folder",
+        "Worlds" => "globe",
+        "Mods" => "package",
+        "Updates" => "download",
+        "Config" => "sliders",
+        "Schedule" => "clock",
+        "Backups" => "archive",
+        "Settings" => "settings",
+        _ => null
+    };
+
+    private async Task OnTabChanged()
+    {
+        if (_activeTab == "Mods" && !_modsLoaded)
+        {
+            await LoadModsAsync();
+        }
+        else if (_activeTab == "Schedule" && !_tasksLoaded)
+        {
+            await LoadTasksAsync();
+        }
+        else if (_activeTab == "Backups" && !_backupsLoaded)
+        {
+            await LoadBackupsAsync();
+        }
+    }
+
+    private void NavigateToFilesTab(string? path)
+    {
+        _fileExplorerPath = path;
+        _activeTab = "Files";
+        StateHasChanged();
+    }
+
+    private async Task LoadModsAsync()
+    {
+        if (_server is null) return;
+
+        try
+        {
+            _loadingMods = true;
+            StateHasChanged();
+
+            // Get server with game details for mod service
+            var serverEntity = await ServerRepository.GetByIdWithGameAsync(ServerId);
+            if (serverEntity is null) return;
+
+            var installedMods = await ModService.GetInstalledAsync(serverEntity);
+            _installedMods = installedMods.ToList();
+
+            var updates = await ModService.CheckAllUpdatesAsync(serverEntity);
+            _availableUpdates = updates.ToList();
+
+            _modsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load mods: {ex.Message}");
+            ToastService.ShowError("Failed to load mods");
+        }
+        finally
+        {
+            _loadingMods = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleModSelected(ModSearchItem mod)
+    {
+        // TODO: Show mod details modal or install dialog
+        ToastService.ShowInfo($"Selected: {mod.Name}");
+        await Task.CompletedTask;
+    }
+
+    private void ViewModDetails(ServerModDto mod)
+    {
+        _selectedModForDetails = mod;
+    }
+
+    private void CloseModDetailsModal()
+    {
+        _selectedModForDetails = null;
+    }
+
+    private void ConfirmDeleteMod(ServerModDto mod)
+    {
+        _modToDelete = mod;
+    }
+
+    private void CancelDeleteMod()
+    {
+        _modToDelete = null;
+        _deletingMod = false;
+    }
+
+    private async Task DeleteModConfirmed()
+    {
+        if (_modToDelete == null || _server == null) return;
+
+        _deletingMod = true;
+        StateHasChanged();
+
+        try
+        {
+            var serverEntity = await ServerRepository.GetByIdAsync(ServerId);
+            if (serverEntity != null)
+            {
+                var result = await ModService.UninstallAsync(serverEntity, _modToDelete.Id);
+                if (result.IsSuccess)
+                {
+                    _installedMods.RemoveAll(m => m.Id == _modToDelete.Id);
+                    ToastService.ShowSuccess($"Deleted {_modToDelete.Name}");
+                }
+                else
+                {
+                    ToastService.ShowError($"Failed to delete mod: {result.Error}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete mod: {ex.Message}");
+        }
+        finally
+        {
+            _modToDelete = null;
+            _deletingMod = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleModEnabled(ServerModDto mod)
+    {
+        // Toggle mod enabled state (not yet implemented in service)
+        ToastService.ShowInfo("Toggle mod enabled is not yet implemented");
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadTasksAsync()
+    {
+        if (_server is null) return;
+
+        try
+        {
+            _loadingTasks = true;
+            StateHasChanged();
+
+            var tasks = await TaskService.GetTasksByServerIdAsync(ServerId);
+            _scheduledTasks = tasks.ToList();
+            _tasksLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load scheduled tasks: {ex.Message}");
+            ToastService.ShowError("Failed to load scheduled tasks");
+        }
+        finally
+        {
+            _loadingTasks = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleTaskEnabled(ScheduledTaskListItemDto task)
+    {
+        var result = task.IsEnabled
+            ? await TaskService.DisableTaskAsync(task.Id)
+            : await TaskService.EnableTaskAsync(task.Id);
+
+        if (result.IsSuccess)
+        {
+            await LoadTasksAsync();
+        }
+    }
+
+    private async Task RunTaskNow(ScheduledTaskListItemDto task)
+    {
+        await TaskService.RunTaskNowAsync(task.Id);
+    }
+
+    private async Task LoadBackupsAsync()
+    {
+        if (_server is null) return;
+
+        try
+        {
+            _loadingBackups = true;
+            StateHasChanged();
+
+            var backups = await BackupService.GetBackupsByServerIdAsync(ServerId);
+            _backups = backups.ToList();
+
+            _backupSummary = await BackupService.GetServerBackupSummaryAsync(ServerId);
+
+            _backupsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load backups: {ex.Message}");
+            ToastService.ShowError("Failed to load backups");
+        }
+        finally
+        {
+            _loadingBackups = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseCreateBackupModal()
+    {
+        _showCreateBackupModal = false;
+        _createBackupScope = BackupScope.Full;
+        _createBackupName = null;
+        _createBackupNotes = null;
+    }
+
+    private async Task CreateBackup()
+    {
+        if (_server is null) return;
+
+        _creatingBackup = true;
+        try
+        {
+            Result<BackupDto> result;
+            if (_createBackupScope == BackupScope.Full)
+            {
+                result = await BackupService.CreateFullBackupAsync(ServerId, _createBackupName, _createBackupNotes);
+            }
+            else
+            {
+                result = await BackupService.CreateSelectiveBackupAsync(ServerId, null, _createBackupName, _createBackupNotes);
+            }
+
+            if (result.IsSuccess)
+            {
+                CloseCreateBackupModal();
+                await LoadBackupsAsync();
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+        }
+        finally
+        {
+            _creatingBackup = false;
+        }
+    }
+
+    private async Task DownloadBackup(BackupListItemDto backup)
+    {
+        var url = $"/api/servers/{ServerId}/backups/{backup.Id}/download";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private void ShowRestoreConfirm(BackupListItemDto backup)
+    {
+        _backupToRestore = backup;
+        _showRestoreConfirmModal = true;
+    }
+
+    private void CloseRestoreConfirmModal()
+    {
+        _showRestoreConfirmModal = false;
+        _backupToRestore = null;
+    }
+
+    private async Task ConfirmRestoreBackup()
+    {
+        if (_backupToRestore is null) return;
+
+        _restoringBackupId = _backupToRestore.Id;
+        _showRestoreConfirmModal = false;
+        StateHasChanged();
+
+        try
+        {
+            var result = await BackupService.RestoreBackupAsync(_backupToRestore.Id);
+            if (!result.IsSuccess)
+            {
+                _actionError = result.Error;
+            }
+            else
+            {
+                await LoadBackupsAsync();
+                await RefreshServerAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+        }
+        finally
+        {
+            _restoringBackupId = null;
+            _backupToRestore = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteBackup(BackupListItemDto backup)
+    {
+        var result = await BackupService.DeleteBackupAsync(backup.Id);
+        if (result.IsSuccess)
+        {
+            await LoadBackupsAsync();
+        }
+        else
+        {
+            _actionError = result.Error;
+        }
+    }
+
+    private static StatusType GetBackupStatusType(BackupStatus status) => status switch
+    {
+        BackupStatus.Completed => StatusType.Success,
+        BackupStatus.InProgress => StatusType.Warning,
+        BackupStatus.Pending => StatusType.Info,
+        BackupStatus.Failed => StatusType.Error,
+        BackupStatus.Deleted => StatusType.Neutral,
+        _ => StatusType.Neutral
+    };
+
+    // Modpack Update Methods
+    private async Task CheckForModpackUpdates()
+    {
+        if (_server is null || _checkingModpackUpdates) return;
+
+        _checkingModpackUpdates = true;
+        StateHasChanged();
+
+        try
+        {
+            var serverEntity = await ServerRepository.GetByIdWithGameAsync(ServerId);
+            if (serverEntity is null) return;
+
+            _modpackUpdateInfo = await ModpackUpdateService.CheckForUpdateAsync(serverEntity);
+
+            // Refresh server to get updated cache info
+            await RefreshServerAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to check for modpack updates: {ex.Message}");
+            ToastService.ShowError("Failed to check for modpack updates");
+        }
+        finally
+        {
+            _checkingModpackUpdates = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DismissModpackUpdate()
+    {
+        if (_modpackUpdateInfo is null) return;
+
+        await ModpackUpdateService.DismissUpdateAsync(ServerId, _modpackUpdateInfo.LatestVersionId);
+        _modpackUpdateInfo = null;
+        await RefreshServerAsync();
+    }
+
+    private async Task ExecuteModpackUpdate(ModpackUpdateOptions options)
+    {
+        if (_server is null || _modpackUpdateInfo is null) return;
+
+        _showUpdateModal = false;
+        _showUpdateProgressModal = true;
+        _updatingModpack = true;
+        _updateCts = new CancellationTokenSource();
+
+        try
+        {
+            var serverEntity = await ServerRepository.GetByIdWithGameAsync(ServerId);
+            if (serverEntity is null)
+            {
+                _modpackUpdateProgress = ModpackUpdateProgressDto.Failed("Server not found");
+                return;
+            }
+
+            var progress = new Progress<ModpackUpdateProgressDto>(p =>
+            {
+                _modpackUpdateProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            var result = await ModpackUpdateService.UpdateModpackAsync(
+                serverEntity,
+                _modpackUpdateInfo.LatestVersionId,
+                options,
+                progress,
+                _updateCts.Token);
+
+            if (result.Success)
+            {
+                _modpackUpdateProgress = ModpackUpdateProgressDto.Completed();
+                _modpackUpdateInfo = null;
+                await RefreshServerAsync();
+            }
+            else
+            {
+                _modpackUpdateProgress = ModpackUpdateProgressDto.Failed(result.Error ?? "Unknown error");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _modpackUpdateProgress = ModpackUpdateProgressDto.Failed("Update cancelled");
+        }
+        catch (Exception ex)
+        {
+            _modpackUpdateProgress = ModpackUpdateProgressDto.Failed(ex.Message);
+        }
+        finally
+        {
+            _updatingModpack = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelModpackUpdate()
+    {
+        _updateCts?.Cancel();
+    }
+
+    private void CloseUpdateProgressModal()
+    {
+        _showUpdateProgressModal = false;
+        _modpackUpdateProgress = null;
+    }
+
+    private async Task RetryModpackUpdate()
+    {
+        // Close progress modal and reopen update modal
+        _showUpdateProgressModal = false;
+        _modpackUpdateProgress = null;
+
+        // Re-check for updates
+        await CheckForModpackUpdates();
+
+        if (_modpackUpdateInfo != null)
+        {
+            _showUpdateModal = true;
+        }
+    }
+
+    private static string GetTaskTypeIcon(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "refresh-cw",
+        ScheduledTaskType.Stop => "square",
+        ScheduledTaskType.Start => "play",
+        ScheduledTaskType.Backup => "archive",
+        ScheduledTaskType.Command => "terminal",
+        ScheduledTaskType.Update => "download",
+        _ => "clock"
+    };
+
+    private static string GetTaskTypeColor(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "bg-nebula-warning/20 text-nebula-warning",
+        ScheduledTaskType.Stop => "bg-nebula-error/20 text-nebula-error",
+        ScheduledTaskType.Start => "bg-nebula-success/20 text-nebula-success",
+        ScheduledTaskType.Backup => "bg-nebula-accent/20 text-nebula-accent",
+        ScheduledTaskType.Command => "bg-nebula-text-muted/20 text-nebula-text-muted",
+        ScheduledTaskType.Update => "bg-nebula-info/20 text-nebula-info",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static string FormatTaskTime(DateTime dateTime)
+    {
+        var diff = dateTime - DateTime.UtcNow;
+
+        if (diff.TotalSeconds < 0)
+        {
+            diff = -diff;
+            if (diff.TotalMinutes < 1) return "Just now";
+            if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+            if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+            return dateTime.ToLocalTime().ToString("MMM d");
+        }
+        else
+        {
+            if (diff.TotalMinutes < 1) return "< 1m";
+            if (diff.TotalMinutes < 60) return $"in {(int)diff.TotalMinutes}m";
+            if (diff.TotalHours < 24) return $"in {(int)diff.TotalHours}h";
+            return dateTime.ToLocalTime().ToString("MMM d");
+        }
+    }
+
+    private async Task LoadServerAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            var result = await ServerService.GetServerByIdAsync(ServerId);
+
+            if (result.IsSuccess)
+            {
+                _server = result.Value;
+
+                // Initialize startup script settings from server config
+                if (_server.NativeConfig is not null)
+                {
+                    _useStartupScript = _server.NativeConfig.UseStartupScript;
+                    _startupScriptPath = _server.NativeConfig.StartupScriptPath;
+                }
+
+                // Detect available scripts in server directory (for both Native and Docker)
+                if (_server.GameName == "Minecraft: Java Edition" &&
+                    !string.IsNullOrEmpty(_server.InstallPath) && Directory.Exists(_server.InstallPath))
+                {
+                    _detectedScripts = DetectStartupScripts(_server.InstallPath);
+
+                    // For Docker servers without NativeConfig, auto-select first script if available
+                    if (_server.DeploymentType == ServerDeploymentType.Docker &&
+                        _server.NativeConfig is null &&
+                        _detectedScripts.Count > 0 &&
+                        string.IsNullOrEmpty(_startupScriptPath))
+                    {
+                        // Check if any script was previously configured (stored in DockerConfig or elsewhere)
+                        // For now, we'll rely on the toggle to enable script mode
+                    }
+                }
+
+                // Initialize RCON settings from server config or server.properties
+                if (_server.RconConfig is not null && !string.IsNullOrEmpty(_server.RconConfig.Password))
+                {
+                    _rconEnabled = _server.RconConfig.Enabled;
+                    _rconHost = _server.RconConfig.Host;
+                    _rconPort = _server.RconConfig.Port;
+                    _rconPassword = _server.RconConfig.Password;
+                }
+                else
+                {
+                    // Try to read from server.properties if it exists
+                    var serverPropertiesPath = Path.Combine(_server.InstallPath, "server.properties");
+                    if (File.Exists(serverPropertiesPath))
+                    {
+                        try
+                        {
+                            var props = await File.ReadAllLinesAsync(serverPropertiesPath);
+                            foreach (var line in props)
+                            {
+                                var trimmed = line.Trim();
+                                if (trimmed.StartsWith("rcon.password="))
+                                {
+                                    _rconPassword = trimmed["rcon.password=".Length..];
+                                }
+                                else if (trimmed.StartsWith("rcon.port=") && int.TryParse(trimmed["rcon.port=".Length..], out var port))
+                                {
+                                    _rconPort = port;
+                                }
+                                else if (trimmed.StartsWith("enable-rcon="))
+                                {
+                                    _rconEnabled = trimmed["enable-rcon=".Length..].Equals("true", StringComparison.OrdinalIgnoreCase);
+                                }
+                            }
+
+                            // Use existing host from config or default
+                            _rconHost = _server.RconConfig?.Host ?? "127.0.0.1";
+                        }
+                        catch
+                        {
+                            // Failed to read server.properties, use defaults
+                            _rconEnabled = false;
+                            _rconHost = "127.0.0.1";
+                            _rconPort = 25575;
+                            _rconPassword = "";
+                        }
+                    }
+                    else
+                    {
+                        // Set defaults
+                        _rconEnabled = false;
+                        _rconHost = "127.0.0.1";
+                        _rconPort = 25575;
+                        _rconPassword = "";
+                    }
+                }
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshServerAsync()
+    {
+        var result = await ServerService.GetServerByIdAsync(ServerId);
+        if (result.IsSuccess)
+        {
+            _server = result.Value;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartServer()
+    {
+        _starting = true;
+        _actionError = null;
+        ToastService.ShowInfo($"Starting {_server?.Name}...", "Server");
+        try
+        {
+            var result = await ServerService.StartServerAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _actionError = result.Error;
+                ToastService.ShowError(result.Error ?? "Failed to start server", "Server Error");
+            }
+            else
+            {
+                ToastService.ShowSuccess($"{_server?.Name} started successfully", "Server");
+                await RefreshServerAsync();
+                StartConsoleStream();
+                StartResourceMonitoring();
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            ToastService.ShowError(ex.Message, "Server Error");
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    private void OnHytaleUpdateStateChanged(bool isUpdating)
+    {
+        _hytaleUpdating = isUpdating;
+        StateHasChanged();
+    }
+
+    private async Task StopServer()
+    {
+        _stopping = true;
+        _actionError = null;
+        ToastService.ShowInfo($"Stopping {_server?.Name}...", "Server");
+        try
+        {
+            StopConsoleStream();
+            StopResourceMonitoring();
+
+            var result = await ServerService.StopServerAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _actionError = result.Error;
+                ToastService.ShowError(result.Error ?? "Failed to stop server", "Server Error");
+            }
+            else
+            {
+                ToastService.ShowSuccess($"{_server?.Name} stopped successfully", "Server");
+            }
+            await RefreshServerAsync();
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            ToastService.ShowError(ex.Message, "Server Error");
+        }
+        finally
+        {
+            _stopping = false;
+        }
+    }
+
+    private async Task RestartServer()
+    {
+        _restarting = true;
+        _actionError = null;
+        ToastService.ShowInfo($"Restarting {_server?.Name}...", "Server");
+        try
+        {
+            var result = await ServerService.RestartServerAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _actionError = result.Error;
+                ToastService.ShowError(result.Error ?? "Failed to restart server", "Server Error");
+            }
+            else
+            {
+                ToastService.ShowSuccess($"{_server?.Name} restarted successfully", "Server");
+                await RefreshServerAsync();
+                StartConsoleStream();  // Reconnect to the new container's logs after refresh completes
+                return;
+            }
+            await RefreshServerAsync();
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            ToastService.ShowError(ex.Message, "Server Error");
+        }
+        finally
+        {
+            _restarting = false;
+        }
+    }
+
+    private async Task KillServer()
+    {
+        _killing = true;
+        _actionError = null;
+        ToastService.ShowWarning($"Force stopping {_server?.Name}...", "Server");
+        try
+        {
+            StopConsoleStream();
+            StopResourceMonitoring();
+
+            var result = await ServerService.KillServerAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _actionError = result.Error;
+                ToastService.ShowError(result.Error ?? "Failed to kill server", "Server Error");
+            }
+            else
+            {
+                ToastService.ShowSuccess($"{_server?.Name} stopped", "Server");
+            }
+            await RefreshServerAsync();
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            ToastService.ShowError(ex.Message, "Server Error");
+        }
+        finally
+        {
+            _killing = false;
+        }
+    }
+
+    private async Task RecreateContainer()
+    {
+        if (_server is null) return;
+
+        _recreatingContainer = true;
+        _actionError = null;
+        ToastService.ShowInfo($"Recreating container for {_server.Name}...", "Docker");
+
+        try
+        {
+            var result = await ServerService.RecreateContainerAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _actionError = result.Error;
+                ToastService.ShowError(result.Error ?? "Failed to recreate container", "Docker Error");
+            }
+            else
+            {
+                ToastService.ShowSuccess($"Container recreated for {_server.Name}", "Docker");
+            }
+            await RefreshServerAsync();
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            ToastService.ShowError(ex.Message, "Docker Error");
+        }
+        finally
+        {
+            _recreatingContainer = false;
+        }
+    }
+
+    private async Task HandleCommandKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await SendCommand();
+        }
+    }
+
+    private async Task SendCommand()
+    {
+        if (string.IsNullOrWhiteSpace(_commandInput) || _server?.Status != ServerStatus.Running)
+            return;
+
+        _sendingCommand = true;
+        try
+        {
+            var command = _commandInput;
+            _commandInput = "";
+
+            _consoleLines.Add($"> {command}");
+
+            var result = await ServerService.SendCommandAsync(ServerId, command);
+            if (!result.IsSuccess)
+            {
+                _consoleLines.Add($"[Error] {result.Error}");
+            }
+            else if (!string.IsNullOrEmpty(result.Value))
+            {
+                // Display RCON response - split by newlines for multi-line responses
+                foreach (var line in result.Value.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    _consoleLines.Add(line.TrimEnd('\r'));
+                }
+            }
+
+            StateHasChanged();
+
+            if (_autoScroll)
+            {
+                await ScrollConsoleToBottomAsync();
+            }
+        }
+        finally
+        {
+            _sendingCommand = false;
+        }
+    }
+
+    private void ClearConsole()
+    {
+        _consoleLines.Clear();
+    }
+
+    private IEnumerable<string> FilteredConsoleLines =>
+        string.IsNullOrEmpty(_consoleSearchQuery)
+            ? _consoleLines
+            : _consoleLines.Where(l => l.Contains(_consoleSearchQuery, StringComparison.OrdinalIgnoreCase));
+
+    private int ConsoleSearchMatchCount =>
+        string.IsNullOrEmpty(_consoleSearchQuery)
+            ? 0
+            : _consoleLines.Count(l => l.Contains(_consoleSearchQuery, StringComparison.OrdinalIgnoreCase));
+
+    private static string GetConsoleLineClass(string line)
+    {
+        if (line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("FATAL", StringComparison.OrdinalIgnoreCase) ||
+            line.Contains("Exception", StringComparison.Ordinal))
+            return "text-red-400";
+        if (line.Contains("WARN", StringComparison.OrdinalIgnoreCase))
+            return "text-yellow-400";
+        if (line.Contains("INFO", StringComparison.OrdinalIgnoreCase))
+            return "text-gray-300";
+        if (line.StartsWith("> ", StringComparison.Ordinal))
+            return "text-nebula-accent";
+        return "text-gray-300";
+    }
+
+    private async Task CopyConsoleLog()
+    {
+        var logContent = string.Join("\n", _consoleLines);
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", logContent);
+    }
+
+    private async Task DownloadConsoleLog()
+    {
+        var logContent = string.Join("\n", _consoleLines);
+        var fileName = $"{_server!.Name}-console-{DateTime.Now:yyyyMMdd-HHmmss}.log";
+        await JS.InvokeVoidAsync("downloadTextFile", fileName, logContent);
+    }
+
+    private void StartConsoleStream()
+    {
+        _consoleCts?.Cancel();
+        _consoleCts = new CancellationTokenSource();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var line in ServerService.StreamConsoleAsync(ServerId, _consoleCts.Token))
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        _consoleLines.Add(line);
+                        if (_consoleLines.Count > 1000)
+                        {
+                            _consoleLines.RemoveAt(0);
+                        }
+                        StateHasChanged();
+
+                        if (_autoScroll)
+                        {
+                            await ScrollConsoleToBottomAsync();
+                        }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when stopping
+            }
+        });
+    }
+
+    private async Task ScrollConsoleToBottomAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollToBottom", _consoleOutput);
+        }
+        catch
+        {
+            // Ignore JS interop errors (e.g., during prerendering)
+        }
+    }
+
+    private void StopConsoleStream()
+    {
+        _consoleCts?.Cancel();
+        _consoleCts = null;
+    }
+
+    private void StartResourceMonitoring()
+    {
+        _resourceTimer?.Dispose();
+        _resourceTimer = new Timer(async _ =>
+        {
+            // Prevent concurrent DbContext access
+            if (_resourceMonitoringInProgress) return;
+            _resourceMonitoringInProgress = true;
+
+            try
+            {
+                if (_server?.Status == ServerStatus.Running)
+                {
+                    var result = await ServerService.GetResourceUsageAsync(ServerId);
+                    if (result.IsSuccess)
+                    {
+                        _resourceUsage = result.Value;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Resource monitoring error: {ex.Message}");
+            }
+            finally
+            {
+                _resourceMonitoringInProgress = false;
+            }
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2));
+    }
+
+    private void StopResourceMonitoring()
+    {
+        _resourceTimer?.Dispose();
+        _resourceTimer = null;
+        _resourceUsage = null;
+    }
+
+    private async Task DeleteServer()
+    {
+        if (_server is null) return;
+
+        _deleting = true;
+        try
+        {
+            var result = await ServerService.DeleteServerAsync(ServerId, _deleteFiles, _deleteContainer);
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo("/servers");
+            }
+            else
+            {
+                _actionError = result.Error;
+                _showDeleteConfirm = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            _showDeleteConfirm = false;
+        }
+        finally
+        {
+            _deleting = false;
+            _deleteFiles = false;
+            _deleteContainer = false;
+        }
+    }
+
+    private void EditSettings()
+    {
+        Navigation.NavigateTo($"/servers/{ServerId}/edit");
+    }
+
+    // Startup Script Methods
+    private static List<string> DetectStartupScripts(string serverPath)
+    {
+        if (string.IsNullOrEmpty(serverPath) || !Directory.Exists(serverPath))
+        {
+            return [];
+        }
+
+        var scripts = OperatingSystem.IsWindows()
+            ? new[] { "start.bat", "run.bat", "ServerStart.bat", "start-server.bat", "launch.bat", "startserver.bat" }
+            : new[] { "start.sh", "run.sh", "ServerStart.sh", "start-server.sh", "launch.sh", "startserver.sh" };
+
+        return scripts.Where(s => File.Exists(Path.Combine(serverPath, s))).ToList();
+    }
+
+    private void HandleStartupScriptToggle(bool value)
+    {
+        _useStartupScript = value;
+        _startupSettingsSaved = false;
+
+        // Auto-select first detected script if enabling and none selected
+        if (value && string.IsNullOrEmpty(_startupScriptPath) && _detectedScripts.Count > 0)
+        {
+            _startupScriptPath = _detectedScripts[0];
+        }
+    }
+
+    private void SelectStartupScript(string script)
+    {
+        _startupScriptPath = script;
+        _startupSettingsSaved = false;
+    }
+
+    private async Task SaveStartupSettings()
+    {
+        if (_server is null) return;
+
+        _savingStartupSettings = true;
+        _startupSettingsSaved = false;
+
+        try
+        {
+            // Build NativeConfigurationRequest - for Docker servers, create minimal config just for startup script
+            NativeConfigurationRequest? nativeConfigRequest;
+            if (_server.NativeConfig is not null)
+            {
+                nativeConfigRequest = new NativeConfigurationRequest(
+                    _server.NativeConfig.WorkingDirectory,
+                    _server.NativeConfig.ExecutablePath,
+                    _server.NativeConfig.Arguments,
+                    _server.NativeConfig.EnvironmentVariables,
+                    _server.NativeConfig.JavaPath,
+                    _server.NativeConfig.JavaArguments,
+                    _server.NativeConfig.RunAsService,
+                    _server.NativeConfig.RunAsUser,
+                    _useStartupScript,
+                    _startupScriptPath
+                );
+            }
+            else if (_server.DeploymentType == ServerDeploymentType.Docker)
+            {
+                // For Docker servers without NativeConfig, create a minimal config just for startup script settings
+                nativeConfigRequest = new NativeConfigurationRequest(
+                    _server.InstallPath,  // WorkingDirectory
+                    null,  // ExecutablePath
+                    null,  // Arguments
+                    null,  // EnvironmentVariables
+                    null,  // JavaPath
+                    null,  // JavaArguments
+                    false, // RunAsService
+                    null,  // RunAsUser
+                    _useStartupScript,
+                    _startupScriptPath
+                );
+            }
+            else
+            {
+                return; // No config to save
+            }
+
+            // Create update request with current server settings plus new startup script settings
+            var updateRequest = new UpdateGameServerRequest(
+                _server.Name,
+                _server.Description,
+                null, // Keep existing icon
+                _server.InstallPath,
+                _server.PrimaryPort,
+                _server.AdditionalPorts,
+                _server.BindAddress,
+                _server.DockerConfig is not null ? new DockerConfigurationRequest(
+                    _server.DockerConfig.Image,
+                    _server.DockerConfig.Tag,
+                    _server.DockerConfig.EnvironmentVariables,
+                    _server.DockerConfig.Volumes?.Select(v => new VolumeMountRequest(v.HostPath, v.ContainerPath, v.ReadOnly)).ToList(),
+                    _server.DockerConfig.Ports?.Select(p => new PortMappingRequest(p.HostPort, p.ContainerPort, p.Protocol)).ToList(),
+                    _server.DockerConfig.Network,
+                    _server.DockerConfig.Limits is not null ? new ResourceLimitsRequest(
+                        _server.DockerConfig.Limits.MaxMemoryMb,
+                        _server.DockerConfig.Limits.MaxCpuPercent,
+                        _server.DockerConfig.Limits.MaxDiskMb,
+                        _server.DockerConfig.Limits.MaxNetworkMbps) : null,
+                    _server.DockerConfig.RestartPolicy
+                ) : null,
+                nativeConfigRequest,
+                _server.RconConfig is not null ? new RconConfigurationRequest(
+                    _server.RconConfig.Enabled,
+                    _server.RconConfig.Protocol,
+                    _server.RconConfig.Host,
+                    _server.RconConfig.Port,
+                    _server.RconConfig.Password,
+                    _server.RconConfig.UseWebSocket,
+                    _server.RconConfig.WebRconPath,
+                    _server.RconConfig.TimeoutSeconds
+                ) : null,
+                _server.ResourceLimits is not null ? new ResourceLimitsRequest(
+                    _server.ResourceLimits.MaxMemoryMb,
+                    _server.ResourceLimits.MaxCpuPercent,
+                    _server.ResourceLimits.MaxDiskMb,
+                    _server.ResourceLimits.MaxNetworkMbps
+                ) : null
+            );
+
+            var result = await ServerService.UpdateServerAsync(ServerId, updateRequest);
+
+            if (result.IsSuccess)
+            {
+                _startupSettingsSaved = true;
+                await LoadServerAsync(); // Refresh to get updated config
+            }
+            else
+            {
+                _actionError = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+        }
+        finally
+        {
+            _savingStartupSettings = false;
+        }
+    }
+
+    private void OnRconEnabledChanged(bool value)
+    {
+        _rconEnabled = value;
+        _rconSettingsSaved = false;
+    }
+
+    private async Task SaveRconSettings()
+    {
+        if (_server is null) return;
+
+        _savingRconSettings = true;
+        _rconSettingsSaved = false;
+
+        try
+        {
+            // Sync additional ports with RCON config to ensure container port mappings match
+            var updatedAdditionalPorts = new Dictionary<string, int>(_server.AdditionalPorts);
+            if (_rconEnabled)
+            {
+                updatedAdditionalPorts["rcon"] = _rconPort;
+            }
+            else
+            {
+                updatedAdditionalPorts.Remove("rcon");
+            }
+
+            var updateRequest = new UpdateGameServerRequest(
+                _server.Name,
+                _server.Description,
+                null, // Keep existing icon
+                _server.InstallPath,
+                _server.PrimaryPort,
+                updatedAdditionalPorts,
+                _server.BindAddress,
+                _server.DockerConfig is not null ? new DockerConfigurationRequest(
+                    _server.DockerConfig.Image,
+                    _server.DockerConfig.Tag,
+                    _server.DockerConfig.EnvironmentVariables,
+                    _server.DockerConfig.Volumes?.Select(v => new VolumeMountRequest(v.HostPath, v.ContainerPath, v.ReadOnly)).ToList(),
+                    _server.DockerConfig.Ports?.Select(p => new PortMappingRequest(p.HostPort, p.ContainerPort, p.Protocol)).ToList(),
+                    _server.DockerConfig.Network,
+                    _server.DockerConfig.Limits is not null ? new ResourceLimitsRequest(
+                        _server.DockerConfig.Limits.MaxMemoryMb,
+                        _server.DockerConfig.Limits.MaxCpuPercent,
+                        _server.DockerConfig.Limits.MaxDiskMb,
+                        _server.DockerConfig.Limits.MaxNetworkMbps) : null,
+                    _server.DockerConfig.RestartPolicy
+                ) : null,
+                _server.NativeConfig is not null ? new NativeConfigurationRequest(
+                    _server.NativeConfig.WorkingDirectory,
+                    _server.NativeConfig.ExecutablePath,
+                    _server.NativeConfig.Arguments,
+                    _server.NativeConfig.EnvironmentVariables,
+                    _server.NativeConfig.JavaPath,
+                    _server.NativeConfig.JavaArguments,
+                    _server.NativeConfig.RunAsService,
+                    _server.NativeConfig.RunAsUser,
+                    _server.NativeConfig.UseStartupScript,
+                    _server.NativeConfig.StartupScriptPath
+                ) : null,
+                // Updated RCON config
+                new RconConfigurationRequest(
+                    _rconEnabled,
+                    RconProtocolType.Minecraft,
+                    _rconHost,
+                    _rconPort,
+                    _rconPassword,
+                    false,
+                    null,
+                    10
+                ),
+                _server.ResourceLimits is not null ? new ResourceLimitsRequest(
+                    _server.ResourceLimits.MaxMemoryMb,
+                    _server.ResourceLimits.MaxCpuPercent,
+                    _server.ResourceLimits.MaxDiskMb,
+                    _server.ResourceLimits.MaxNetworkMbps
+                ) : null
+            );
+
+            var result = await ServerService.UpdateServerAsync(ServerId, updateRequest);
+
+            if (result.IsSuccess)
+            {
+                _rconSettingsSaved = true;
+
+                // Update server.properties if it exists (for Minecraft servers)
+                var serverPropertiesUpdated = await UpdateServerPropertiesRconAsync();
+
+                // Check if port changed and server is Docker - remind about container recreation
+                var portChanged = _server.RconConfig?.Port != _rconPort ||
+                                  _server.AdditionalPorts.GetValueOrDefault("rcon") != _rconPort;
+                if (_server.DeploymentType == ServerDeploymentType.Docker && portChanged)
+                {
+                    var msg = serverPropertiesUpdated
+                        ? "RCON configuration and server.properties updated. Please stop and recreate the container for port changes to take effect."
+                        : "RCON configuration updated. Please stop and recreate the container for port changes to take effect.";
+                    ToastService.ShowSuccess("RCON settings saved", msg);
+                }
+                else
+                {
+                    var msg = serverPropertiesUpdated
+                        ? "RCON configuration and server.properties updated successfully."
+                        : "RCON configuration updated successfully.";
+                    ToastService.ShowSuccess("RCON settings saved", msg);
+                }
+
+                await LoadServerAsync(); // Refresh to get updated config
+            }
+            else
+            {
+                _actionError = result.Error;
+                ToastService.ShowError("Save failed", result.Error ?? "Failed to save RCON settings.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+            ToastService.ShowError("Error", ex.Message);
+        }
+        finally
+        {
+            _savingRconSettings = false;
+        }
+    }
+
+    /// <summary>
+    /// Updates server.properties and default-server.properties files with the current RCON settings.
+    /// Creates RCON entries if they don't exist. Returns true if any file was updated.
+    /// </summary>
+    private async Task<bool> UpdateServerPropertiesRconAsync()
+    {
+        if (_server is null) return false;
+
+        var updated = false;
+
+        // Update both server.properties and default-server.properties (for modpacks that use it)
+        var filesToUpdate = new[]
+        {
+            Path.Combine(_server.InstallPath, "server.properties"),
+            Path.Combine(_server.InstallPath, "default-server.properties")
+        };
+
+        foreach (var filePath in filesToUpdate)
+        {
+            if (await UpdatePropertiesFileAsync(filePath))
+            {
+                updated = true;
+            }
+        }
+
+        return updated;
+    }
+
+    /// <summary>
+    /// Updates a single properties file with RCON settings.
+    /// Adds missing RCON properties if they don't exist.
+    /// </summary>
+    private async Task<bool> UpdatePropertiesFileAsync(string filePath)
+    {
+        if (!File.Exists(filePath)) return false;
+
+        try
+        {
+            var lines = await File.ReadAllLinesAsync(filePath);
+            var newLines = new List<string>();
+            var hasEnableRcon = false;
+            var hasRconPort = false;
+            var hasRconPassword = false;
+
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith("enable-rcon="))
+                {
+                    newLines.Add($"enable-rcon={(_rconEnabled ? "true" : "false")}");
+                    hasEnableRcon = true;
+                }
+                else if (trimmed.StartsWith("rcon.port="))
+                {
+                    newLines.Add($"rcon.port={_rconPort}");
+                    hasRconPort = true;
+                }
+                else if (trimmed.StartsWith("rcon.password="))
+                {
+                    newLines.Add($"rcon.password={_rconPassword}");
+                    hasRconPassword = true;
+                }
+                else
+                {
+                    newLines.Add(line);
+                }
+            }
+
+            // Add missing RCON properties at the end
+            if (!hasEnableRcon)
+            {
+                newLines.Add($"enable-rcon={(_rconEnabled ? "true" : "false")}");
+            }
+            if (!hasRconPort)
+            {
+                newLines.Add($"rcon.port={_rconPort}");
+            }
+            if (!hasRconPassword)
+            {
+                newLines.Add($"rcon.password={_rconPassword}");
+            }
+
+            await File.WriteAllLinesAsync(filePath, newLines);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Log but don't fail the save operation
+            Console.WriteLine($"Failed to update {Path.GetFileName(filePath)}: {ex.Message}");
+        }
+
+        return false;
+    }
+
+    private static StatusType GetStatusType(ServerStatus status) => status switch
+    {
+        ServerStatus.Running => StatusType.Success,
+        ServerStatus.Starting => StatusType.Warning,
+        ServerStatus.Stopping => StatusType.Warning,
+        ServerStatus.Stopped => StatusType.Neutral,
+        ServerStatus.Crashed => StatusType.Error,
+        ServerStatus.Updating => StatusType.Info,
+        ServerStatus.Installing => StatusType.Info,
+        _ => StatusType.Neutral
+    };
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1)
+            return "Just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private static string FormatUptime(TimeSpan uptime)
+    {
+        if (uptime.TotalDays >= 1)
+            return $"{(int)uptime.TotalDays}d {uptime.Hours}h {uptime.Minutes}m";
+        if (uptime.TotalHours >= 1)
+            return $"{(int)uptime.TotalHours}h {uptime.Minutes}m";
+        if (uptime.TotalMinutes >= 1)
+            return $"{(int)uptime.TotalMinutes}m {uptime.Seconds}s";
+        return $"{uptime.Seconds}s";
+    }
+
+    private static string TruncatePath(string path)
+    {
+        if (path.Length <= 30) return path;
+        return "..." + path[^27..];
+    }
+
+    private async Task LoadResourceHistoryAsync()
+    {
+        _loadingResourceHistory = true;
+        StateHasChanged();
+
+        try
+        {
+            var allHistory = await DashboardService.GetResourceHistoryAsync(_resourceTimeRange);
+            var serverHistory = allHistory.FirstOrDefault(h => h.ServerId == ServerId);
+            _serverResourceHistory = serverHistory?.DataPoints ?? [];
+            _resourceHistoryLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load resource history: {ex.Message}");
+        }
+        finally
+        {
+            _loadingResourceHistory = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnResourceTimeRangeChanged(TimeSpan range)
+    {
+        _resourceTimeRange = range;
+        _resourceHistoryLoaded = false;
+        await LoadResourceHistoryAsync();
+    }
+
+    private string GetResourceTimeRangeButtonClass(TimeSpan range)
+    {
+        var baseClass = "px-2 py-1 text-xs rounded transition-colors";
+        if (_resourceTimeRange == range)
+        {
+            return $"{baseClass} bg-nebula-accent text-white";
+        }
+        return $"{baseClass} text-nebula-text-muted hover:bg-nebula-bg-tertiary";
+    }
+
+    public void Dispose()
+    {
+        StopConsoleStream();
+        StopResourceMonitoring();
+    }
+}

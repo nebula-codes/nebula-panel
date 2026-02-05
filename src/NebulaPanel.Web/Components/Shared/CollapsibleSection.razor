@@ -1,0 +1,92 @@
+@*
+    Reusable collapsible section component for advanced settings.
+    Shows a header that can be clicked to expand/collapse the content.
+*@
+
+<div class="border border-nebula-border-subtle rounded-nebula overflow-hidden @Class">
+    <button type="button"
+            class="w-full flex items-center justify-between px-4 py-3 bg-nebula-bg-secondary hover:bg-nebula-bg-tertiary transition-colors text-left"
+            @onclick="Toggle"
+            aria-expanded="@_isExpanded">
+        <div class="flex items-center gap-3">
+            @if (!string.IsNullOrEmpty(IconName))
+            {
+                <Icon Name="@IconName" Size="IconSize.Small" Class="text-nebula-text-muted" />
+            }
+            <div>
+                <span class="font-medium text-nebula-text-primary">@Title</span>
+                @if (!string.IsNullOrEmpty(Subtitle))
+                {
+                    <span class="text-sm text-nebula-text-muted ml-2">@Subtitle</span>
+                }
+            </div>
+        </div>
+        <Icon Name="@(_isExpanded ? "chevron-up" : "chevron-down")"
+              Size="IconSize.Small"
+              Class="text-nebula-text-muted transition-transform" />
+    </button>
+
+    @if (_isExpanded)
+    {
+        <div class="px-4 py-4 bg-nebula-bg-primary border-t border-nebula-border-subtle">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The title displayed in the header.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional subtitle displayed next to the title.
+    /// </summary>
+    [Parameter]
+    public string? Subtitle { get; set; }
+
+    /// <summary>
+    /// Optional icon name to display before the title.
+    /// </summary>
+    [Parameter]
+    public string? IconName { get; set; }
+
+    /// <summary>
+    /// Whether the section is initially expanded.
+    /// </summary>
+    [Parameter]
+    public bool InitiallyExpanded { get; set; }
+
+    /// <summary>
+    /// Additional CSS classes for the container.
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>
+    /// The content to display when expanded.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Event callback when expanded state changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnExpandedChanged { get; set; }
+
+    private bool _isExpanded;
+
+    protected override void OnInitialized()
+    {
+        _isExpanded = InitiallyExpanded;
+    }
+
+    private async Task Toggle()
+    {
+        _isExpanded = !_isExpanded;
+        await OnExpandedChanged.InvokeAsync(_isExpanded);
+    }
+}

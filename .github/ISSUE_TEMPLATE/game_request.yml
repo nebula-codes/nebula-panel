@@ -1,0 +1,63 @@
+name: Game Support Request
+description: Request support for a new game server
+labels: ["game-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Want Nebula Panel to support a new game? Let us know!
+
+  - type: input
+    id: game
+    attributes:
+      label: Game Name
+      placeholder: "e.g., Valheim, Terraria, ARK"
+    validations:
+      required: true
+
+  - type: input
+    id: server-software
+    attributes:
+      label: Server Software
+      description: What server software does this game use?
+      placeholder: "e.g., Dedicated Server from Steam, custom binary"
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Server Platform
+      options:
+        - Linux
+        - Windows
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: resources
+    attributes:
+      label: Documentation / Resources
+      description: Links to server setup guides, documentation, or other resources
+      placeholder: |
+        - Official docs: https://...
+        - Wiki: https://...
+
+  - type: textarea
+    id: features
+    attributes:
+      label: Notable Features
+      description: Any special features this game server has (RCON, mods, etc.)
+      placeholder: |
+        - Supports RCON
+        - Has Steam Workshop integration
+        - Uses custom config format
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this game hasn't been requested
+          required: true
+        - label: I have access to this game and can help test
+          required: false

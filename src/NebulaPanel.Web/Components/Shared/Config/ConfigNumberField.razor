@@ -1,0 +1,152 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.ValueObjects
+
+<div class="form-group">
+    <div class="flex items-center justify-between">
+        <label for="@_id" class="label">
+            @if (IsModified)
+            {
+                <span class="inline-block w-1.5 h-1.5 rounded-full bg-nebula-accent mr-1.5" title="Modified from default"></span>
+            }
+            @Field.DisplayName
+            @if (Field.Required)
+            {
+                <span class="text-nebula-error ml-1">*</span>
+            }
+            @if (!string.IsNullOrEmpty(Field.Unit))
+            {
+                <span class="text-nebula-text-muted ml-1">(@Field.Unit)</span>
+            }
+        </label>
+        @if (IsModified && OnResetToDefault.HasDelegate)
+        {
+            <button type="button"
+                    @onclick="OnResetToDefault"
+                    class="text-xs text-nebula-text-muted hover:text-nebula-accent transition-colors"
+                    title="Reset to default">
+                <Icon Name="rotate-ccw" Size="IconSize.Small" />
+            </button>
+        }
+    </div>
+
+    <div class="relative">
+        <input type="number"
+               id="@_id"
+               value="@DisplayValue"
+               @oninput="OnInput"
+               placeholder="@(Field.Placeholder ?? string.Empty)"
+               disabled="@Disabled"
+               readonly="@Field.ReadOnly"
+               min="@GetMin()"
+               max="@GetMax()"
+               step="@GetStep()"
+               class="@InputClasses" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(Field.Description) && !HasErrors)
+    {
+        <p class="text-xs text-nebula-text-muted mt-1">@Field.Description</p>
+    }
+    @if (HasConstraintHint && !HasErrors && string.IsNullOrEmpty(Field.Description))
+    {
+        <p class="text-xs text-nebula-text-muted mt-1">@ConstraintHint</p>
+    }
+
+    @if (HasErrors)
+    {
+        <p class="text-xs text-nebula-error mt-1">@string.Join(", ", Errors!)</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConfigField Field { get; set; } = null!;
+
+    [Parameter]
+    public double Value { get; set; }
+
+    [Parameter]
+    public EventCallback<double> ValueChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<int> IntValueChanged { get; set; }
+
+    [Parameter]
+    public bool IsFloat { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public List<string>? Errors { get; set; }
+
+    [Parameter]
+    public bool IsModified { get; set; }
+
+    [Parameter]
+    public EventCallback OnResetToDefault { get; set; }
+
+    private string _id = Guid.NewGuid().ToString("N")[..8];
+    private bool HasErrors => Errors?.Count > 0;
+
+    private bool HasConstraintHint => GetMin() != null || GetMax() != null;
+    private string ConstraintHint
+    {
+        get
+        {
+            var min = GetMin();
+            var max = GetMax();
+            if (min != null && max != null) return $"Range: {min} – {max}";
+            if (min != null) return $"Minimum: {min}";
+            if (max != null) return $"Maximum: {max}";
+            return string.Empty;
+        }
+    }
+
+    private string InputClasses => HasErrors ? "input input-error" : "input";
+
+    private string DisplayValue => IsFloat ? Value.ToString("G") : ((int)Value).ToString();
+
+    private string? GetMin()
+    {
+        var min = Field.Validation?.MinValueDouble ?? Field.Validation?.MinValue;
+        if (Field.Type == ConfigFieldType.Port)
+            min ??= 1;
+        return min?.ToString();
+    }
+
+    private string? GetMax()
+    {
+        var max = Field.Validation?.MaxValueDouble ?? Field.Validation?.MaxValue;
+        if (Field.Type == ConfigFieldType.Port)
+            max ??= 65535;
+        return max?.ToString();
+    }
+
+    private string GetStep()
+    {
+        if (IsFloat)
+            return "0.01";
+        return "1";
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var strValue = e.Value?.ToString() ?? "0";
+
+        if (IsFloat)
+        {
+            if (double.TryParse(strValue, out var doubleValue))
+            {
+                await ValueChanged.InvokeAsync(doubleValue);
+            }
+        }
+        else
+        {
+            if (int.TryParse(strValue, out var intValue))
+            {
+                await ValueChanged.InvokeAsync(intValue);
+            }
+        }
+    }
+}

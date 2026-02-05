@@ -1,0 +1,472 @@
+@page "/servers"
+@namespace NebulaPanel.Web.Components.Pages.Servers
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Web.Components.Shared.DataGrid
+@rendermode InteractiveServer
+
+<PageTitle>Servers - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @* Header *@
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Servers</h1>
+            <p class="text-nebula-text-muted mt-1">Manage your game servers.</p>
+        </div>
+        <Button Variant="Button.ButtonVariant.Primary"
+                Text="Create Server"
+                IconName="plus"
+                OnClick="NavigateToCreate" />
+    </div>
+
+    @* Error Alert *@
+    <ErrorAlert Message="@_error" Dismissible="true" OnDismiss="@(() => _error = null)" Class="mb-6" />
+
+    @* Filter Bar *@
+    <div class="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+        @* Status Filter Pills *@
+        <FilterPills TValue="ServerStatus?"
+                     Options="_statusOptions"
+                     @bind-SelectedValue="_statusFilter"
+                     AllLabel="All"
+                     TotalCount="@_servers.Count" />
+
+        @* Game Filter *@
+        @if (_games.Any())
+        {
+            <div class="flex items-center gap-2">
+                <select class="datagrid-page-size-select min-w-[160px]"
+                        value="@(_gameFilter?.ToString() ?? "")"
+                        @onchange="OnGameFilterChange">
+                    <option value="">All Games</option>
+                    @foreach (var game in _games)
+                    {
+                        <option value="@game.Id">@game.Name</option>
+                    }
+                </select>
+            </div>
+        }
+
+        @* Tag Filter *@
+        @if (AllTags.Any())
+        {
+            <div class="flex items-center gap-2">
+                <select class="datagrid-page-size-select min-w-[140px]"
+                        value="@(_tagFilter ?? "")"
+                        @onchange="OnTagFilterChange">
+                    <option value="">All Tags</option>
+                    @foreach (var tag in AllTags)
+                    {
+                        <option value="@tag">@tag</option>
+                    }
+                </select>
+            </div>
+        }
+
+        @* Spacer *@
+        <div class="flex-1"></div>
+
+        @* Clear Filters *@
+        @if (HasActiveFilters)
+        {
+            <button type="button" class="datagrid-clear-filters" @onclick="ClearFilters">
+                <Icon Name="x" Size="IconSize.Small" />
+                <span>Clear filters</span>
+            </button>
+        }
+
+        @* View Toggle *@
+        <ViewToggle @bind-Value="_viewMode" StorageKey="server-list-view" />
+    </div>
+
+    @* Content Area *@
+    @if (_viewMode == ViewMode.Grid)
+    {
+        @* Card Grid View *@
+        @if (_loading)
+        {
+            <div class="server-grid">
+                @for (int i = 0; i < 8; i++)
+                {
+                    <SkeletonCard Variant="SkeletonCard.SkeletonVariant.ServerCard" />
+                }
+            </div>
+        }
+        else if (!FilteredServers.Any())
+        {
+            <Card>
+                <EmptyState IconName="server"
+                            Heading="@(HasActiveFilters ? "No servers match filters" : "No servers yet")"
+                            Description="@(HasActiveFilters ? "Try adjusting your filters to see more servers." : "Create your first game server to get started.")"
+                            ShowStarfield="@(!HasActiveFilters)">
+                    <Actions>
+                        @if (HasActiveFilters)
+                        {
+                            <Button Variant="Button.ButtonVariant.Secondary"
+                                    Text="Clear Filters"
+                                    IconName="x"
+                                    OnClick="ClearFilters" />
+                        }
+                        else
+                        {
+                            <Button Variant="Button.ButtonVariant.Primary"
+                                    Text="Create Server"
+                                    IconName="plus"
+                                    OnClick="NavigateToCreate" />
+                        }
+                    </Actions>
+                </EmptyState>
+            </Card>
+        }
+        else
+        {
+            <div class="server-grid">
+                @foreach (var server in FilteredServers)
+                {
+                    <ServerCardEnhanced Server="server"
+                                        OnClick="ViewServer"
+                                        OnStartClick="StartServer"
+                                        OnStopClick="StopServer"
+                                        OnPinToggle="TogglePin"
+                                        ConsoleUrl="@($"/servers/{server.Id}?tab=console")"
+                                        SettingsUrl="@($"/servers/{server.Id}/config")" />
+                }
+            </div>
+        }
+    }
+    else
+    {
+        @* Table View *@
+        <DataGrid TItem="GameServerListItemDto"
+                  Items="FilteredServers"
+                  Loading="_loading"
+                  Searchable="true"
+                  SearchPlaceholder="Search servers..."
+                  SearchFields="@(s => $"{s.Name} {s.GameName} {s.Description}")"
+                  Pageable="true"
+                  PageSize="10"
+                  PageSizeOptions="@([10, 25, 50])"
+                  Selectable="true"
+                  SelectionMode="SelectionMode.Multiple"
+                  @bind-SelectedItems="_selectedServers"
+                  ItemKey="@(s => s.Id)"
+                  AllowColumnCustomization="true"
+                  ColumnPreferenceKey="server-list-columns"
+                  KeyboardNavigation="true"
+                  StickyHeader="true"
+                  EmptyMessage="@(HasActiveFilters ? "No servers match your filters." : "No servers configured yet.")"
+                  OnRowClick="ViewServer"
+                  RowClickable="@(_ => true)">
+
+            <BulkActions Context="selectedItems">
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Size="Button.ButtonSize.Small"
+                        IconName="play"
+                        Text="@($"Start ({StartableCount})")"
+                        Loading="_bulkStarting"
+                        Disabled="@(StartableCount == 0)"
+                        OnClick="BulkStart" />
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Size="Button.ButtonSize.Small"
+                        IconName="square"
+                        Text="@($"Stop ({StoppableCount})")"
+                        Loading="_bulkStopping"
+                        Disabled="@(StoppableCount == 0)"
+                        OnClick="BulkStop" />
+                <Button Variant="Button.ButtonVariant.Danger"
+                        Size="Button.ButtonSize.Small"
+                        IconName="trash-2"
+                        Text="@($"Delete ({DeletableCount})")"
+                        Disabled="@(DeletableCount == 0)"
+                        OnClick="ConfirmBulkDelete" />
+            </BulkActions>
+
+            <Columns>
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Server"
+                                Id="server"
+                                Field="@(s => s.Name)"
+                                Sortable="true"
+                                Hideable="false">
+                    <Template Context="server">
+                        <div class="flex items-center gap-3">
+                            @if (!string.IsNullOrEmpty(server.EffectiveIcon))
+                            {
+                                <img src="@server.EffectiveIcon" alt="@server.GameName" class="w-8 h-8 object-contain rounded" />
+                            }
+                            else
+                            {
+                                <div class="w-8 h-8 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                                    <Icon Name="server" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                </div>
+                            }
+                            <div>
+                                <div class="font-medium text-nebula-text-primary">@server.Name</div>
+                                <div class="text-sm text-nebula-text-muted">@server.GameName</div>
+                            </div>
+                        </div>
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Status"
+                                Id="status"
+                                Field="@(s => s.Status)"
+                                Sortable="true"
+                                Width="130px">
+                    <Template Context="server">
+                        <StatusBadge Status="@GetStatusType(server.Status)"
+                                     Text="@server.Status.ToString()"
+                                     ShowDot="true" />
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Tags"
+                                Id="tags"
+                                Width="160px"
+                                ResponsivePriority="2">
+                    <Template Context="server">
+                        @if (server.Tags.Count > 0)
+                        {
+                            <div class="flex flex-wrap gap-1">
+                                @foreach (var tag in server.Tags.Take(2))
+                                {
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-nebula-accent/10 text-nebula-accent border border-nebula-accent/20">
+                                        @tag
+                                    </span>
+                                }
+                                @if (server.Tags.Count > 2)
+                                {
+                                    <span class="text-[10px] text-nebula-text-muted">+@(server.Tags.Count - 2)</span>
+                                }
+                            </div>
+                        }
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Type"
+                                Id="type"
+                                Field="@(s => s.DeploymentType)"
+                                Sortable="true"
+                                Width="100px"
+                                ResponsivePriority="2">
+                    <Template Context="server">
+                        <div class="flex items-center gap-1.5">
+                            <Icon Name="@(server.DeploymentType == ServerDeploymentType.Docker ? "box" : "terminal")"
+                                  Size="IconSize.Small"
+                                  Class="text-nebula-text-muted" />
+                            <span class="text-sm text-nebula-text-secondary">@server.DeploymentType</span>
+                        </div>
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Address"
+                                Id="address"
+                                Field="@(s => s.PrimaryPort)"
+                                Sortable="true"
+                                Width="160px"
+                                ResponsivePriority="1">
+                    <Template Context="server">
+                        <code class="text-sm bg-nebula-bg-tertiary px-2 py-0.5 rounded text-nebula-text-secondary">
+                            @server.BindAddress:@server.PrimaryPort
+                        </code>
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Last Started"
+                                Id="last-started"
+                                Field="@(s => s.LastStarted)"
+                                Sortable="true"
+                                Width="140px"
+                                ResponsivePriority="3">
+                    <Template Context="server">
+                        @if (server.LastStarted.HasValue)
+                        {
+                            <RelativeTime DateTime="@server.LastStarted.Value" Class="text-sm text-nebula-text-muted" />
+                        }
+                        else
+                        {
+                            <span class="text-sm text-nebula-text-muted">Never</span>
+                        }
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
+                                Title=""
+                                Id="actions"
+                                Width="120px"
+                                Hideable="false">
+                    <Template Context="server">
+                        <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                            <button type="button"
+                                    class="@(server.IsPinned ? "text-nebula-accent" : "text-nebula-text-muted hover:text-nebula-accent") p-1 transition-colors"
+                                    title="@(server.IsPinned ? "Unpin" : "Pin")"
+                                    @onclick="@(() => TogglePin(server))">
+                                <Icon Name="star" Size="IconSize.Small" Class="@(server.IsPinned ? "fill-current" : "")" />
+                            </button>
+                            @if (server.Status == ServerStatus.Running)
+                            {
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Size="Button.ButtonSize.Small"
+                                        IconName="square"
+                                        IconOnly="true"
+                                        OnClick="@(() => StopServer(server))"
+                                        title="Stop" />
+                            }
+                            else if (server.Status == ServerStatus.Stopped || server.Status == ServerStatus.Crashed)
+                            {
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Size="Button.ButtonSize.Small"
+                                        IconName="play"
+                                        IconOnly="true"
+                                        OnClick="@(() => StartServer(server))"
+                                        title="Start" />
+                            }
+                            <Button Variant="Button.ButtonVariant.Ghost"
+                                    Size="Button.ButtonSize.Small"
+                                    IconName="terminal"
+                                    IconOnly="true"
+                                    OnClick="@(() => Navigation.NavigateTo($"/servers/{server.Id}?tab=console"))"
+                                    title="Console" />
+                            <Button Variant="Button.ButtonVariant.Ghost"
+                                    Size="Button.ButtonSize.Small"
+                                    IconName="settings"
+                                    IconOnly="true"
+                                    OnClick="@(() => Navigation.NavigateTo($"/servers/{server.Id}/config"))"
+                                    title="Settings" />
+                            <Button Variant="Button.ButtonVariant.Ghost"
+                                    Size="Button.ButtonSize.Small"
+                                    IconName="trash-2"
+                                    IconOnly="true"
+                                    Disabled="@(server.Status != ServerStatus.Stopped && server.Status != ServerStatus.Unknown)"
+                                    OnClick="@(() => ConfirmDelete(server))"
+                                    title="@(server.Status != ServerStatus.Stopped && server.Status != ServerStatus.Unknown ? "Stop server first" : "Delete")" />
+                        </div>
+                    </Template>
+                </DataGridColumn>
+            </Columns>
+
+            <EmptyAction>
+                @if (HasActiveFilters)
+                {
+                    <Button Variant="Button.ButtonVariant.Secondary"
+                            Text="Clear Filters"
+                            IconName="x"
+                            OnClick="ClearFilters" />
+                }
+                else
+                {
+                    <Button Variant="Button.ButtonVariant.Primary"
+                            Text="Create Your First Server"
+                            IconName="plus"
+                            OnClick="NavigateToCreate" />
+                }
+            </EmptyAction>
+        </DataGrid>
+    }
+</div>
+
+@* Delete Confirmation Modal *@
+@if (_showDeleteConfirm)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="Modal.ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">
+                @if (_isBulkDelete)
+                {
+                    <span>Delete @DeletableCount Server(s)</span>
+                }
+                else
+                {
+                    <span>Delete Server</span>
+                }
+            </h3>
+        </Header>
+        <Body>
+            @if (_isBulkDelete)
+            {
+                <p class="text-nebula-text-secondary">
+                    Are you sure you want to delete <strong class="text-nebula-text-primary">@DeletableCount server(s)</strong>?
+                </p>
+                @if (_selectedServers.Count() > DeletableCount)
+                {
+                    <p class="text-sm text-nebula-warning mt-2">
+                        <Icon Name="alert-triangle" Size="IconSize.Small" Class="inline mr-1" />
+                        @(_selectedServers.Count() - DeletableCount) running server(s) will be skipped.
+                    </p>
+                }
+            }
+            else if (_serverToDelete != null)
+            {
+                <p class="text-nebula-text-secondary">
+                    Are you sure you want to delete <strong class="text-nebula-text-primary">@_serverToDelete.Name</strong>?
+                </p>
+            }
+            <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone.</p>
+
+            <div class="mt-4 space-y-3">
+                @{
+                    var hasDockerServer = _isBulkDelete
+                        ? _selectedServers.Any(s => s.DeploymentType == ServerDeploymentType.Docker)
+                        : _serverToDelete?.DeploymentType == ServerDeploymentType.Docker;
+                }
+
+                @if (hasDockerServer)
+                {
+                    <label class="flex items-center gap-3 p-3 rounded-nebula bg-nebula-bg-secondary border border-nebula-border cursor-pointer hover:border-nebula-border-subtle transition-colors">
+                        <input type="checkbox" @bind="_deleteContainer" class="w-4 h-4 rounded border-nebula-border text-nebula-accent focus:ring-nebula-accent" />
+                        <div>
+                            <div class="text-sm font-medium text-nebula-text-primary">Remove Docker container(s)</div>
+                            <div class="text-xs text-nebula-text-muted">Delete Docker containers associated with these servers</div>
+                        </div>
+                    </label>
+                }
+
+                <label class="flex items-center gap-3 p-3 rounded-nebula bg-nebula-bg-secondary border border-nebula-border cursor-pointer hover:border-nebula-border-subtle transition-colors">
+                    <input type="checkbox" @bind="_deleteFiles" class="w-4 h-4 rounded border-nebula-border text-nebula-accent focus:ring-nebula-accent" />
+                    <div>
+                        <div class="text-sm font-medium text-nebula-text-primary">Delete server files</div>
+                        <div class="text-xs text-nebula-text-muted">Permanently delete all server files from disk</div>
+                    </div>
+                </label>
+
+                @if (_deleteFiles)
+                {
+                    <div class="p-3 rounded-nebula bg-red-500/10 border border-red-500/30">
+                        <p class="text-sm text-red-400 flex items-center gap-2">
+                            <Icon Name="alert-triangle" Size="IconSize.Small" />
+                            Warning: This will permanently delete all server files including worlds, configs, and mods.
+                        </p>
+                    </div>
+                }
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="Button.ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => { CancelDelete(); _deleteFiles = false; _deleteContainer = false; })" />
+                <Button Variant="Button.ButtonVariant.Danger" Text="Delete" Loading="_deleting" OnClick="DeleteServer" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private void OnGameFilterChange(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _gameFilter = string.IsNullOrEmpty(value) ? null : Guid.Parse(value);
+    }
+
+    private void OnTagFilterChange(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _tagFilter = string.IsNullOrEmpty(value) ? null : value;
+    }
+}

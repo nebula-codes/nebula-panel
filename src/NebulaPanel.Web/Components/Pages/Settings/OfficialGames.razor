@@ -1,0 +1,269 @@
+@page "/settings/official-games"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IOfficialGameService OfficialGameService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Official Games - Settings - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+                <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+                <Icon Name="chevron-right" Size="IconSize.Small" />
+                <span class="text-nebula-text-primary">Official Games</span>
+            </div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Official Games</h1>
+            <p class="text-nebula-text-muted mt-1">
+                Manage built-in game definitions and version caches.
+            </p>
+        </div>
+        <Button Variant="ButtonVariant.Secondary"
+                Text="Refresh All Versions"
+                IconName="refresh-cw"
+                Loading="_refreshingAll"
+                OnClick="RefreshAllVersions" />
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_successMessage" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    <DataGrid TItem="OfficialGameStatusDto"
+              Items="_games"
+              Loading="_loading"
+              EmptyMessage="No official games found."
+              OnRowClick="ViewDetails">
+        <Columns>
+            <DataGridColumn TItem="OfficialGameStatusDto"
+                           Title="Game"
+                           Field="@(g => g.Name)"
+                           Sortable="true">
+                <Template Context="game">
+                    <div class="flex items-center gap-3">
+                        @if (!string.IsNullOrEmpty(game.IconPath))
+                        {
+                            <img src="@game.IconPath" alt="@game.Name" class="w-10 h-10 object-contain rounded" />
+                        }
+                        else
+                        {
+                            <div class="w-10 h-10 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                                <Icon Name="gamepad-2" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            </div>
+                        }
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@game.Name</div>
+                            <div class="text-sm text-nebula-text-muted">@game.Slug</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="OfficialGameStatusDto"
+                           Title="Provider"
+                           Width="100px">
+                <Template Context="game">
+                    <span class="px-2 py-1 text-xs font-medium bg-nebula-bg-tertiary text-nebula-text-secondary rounded">
+                        @game.ProviderType
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="OfficialGameStatusDto"
+                           Title="Status"
+                           Width="100px">
+                <Template Context="game">
+                    @if (game.IsEnabled)
+                    {
+                        <StatusBadge Status="StatusBadge.StatusType.Success" Text="Enabled" />
+                    }
+                    else
+                    {
+                        <StatusBadge Status="StatusBadge.StatusType.Warning" Text="Disabled" />
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="OfficialGameStatusDto"
+                           Title="Versions"
+                           Width="130px">
+                <Template Context="game">
+                    <div class="text-center">
+                        <span class="font-medium text-nebula-text-primary">@(game.VersionCount?.ToString() ?? "—")</span>
+                        @if (game.LastVersionCheck.HasValue)
+                        {
+                            <div class="text-xs text-nebula-text-muted">
+                                @FormatRelativeTime(game.LastVersionCheck.Value)
+                            </div>
+                        }
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="OfficialGameStatusDto"
+                           Title="Servers"
+                           Width="80px">
+                <Template Context="game">
+                    <span class="px-2 py-1 text-xs font-medium bg-nebula-accent/10 text-nebula-accent rounded">
+                        @game.ServerCount
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="OfficialGameStatusDto"
+                           Title=""
+                           Width="150px">
+                <Template Context="game">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="refresh-cw"
+                                IconOnly="true"
+                                Loading="@(_refreshingSlug == game.Slug)"
+                                OnClick="@(() => RefreshVersions(game.Slug))"
+                                title="Refresh versions" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="@(game.IsEnabled ? "toggle-right" : "toggle-left")"
+                                IconOnly="true"
+                                OnClick="@(() => ToggleEnabled(game))"
+                                title="@(game.IsEnabled ? "Disable" : "Enable")" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="eye"
+                                IconOnly="true"
+                                OnClick="@(() => ViewDetails(game))"
+                                title="View details" />
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+    </DataGrid>
+</div>
+
+@code {
+    private List<OfficialGameStatusDto> _games = [];
+    private bool _loading = true;
+    private bool _refreshingAll;
+    private string? _refreshingSlug;
+    private string? _error;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGamesAsync();
+    }
+
+    private async Task LoadGamesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            _games = (await OfficialGameService.GetAllOfficialGamesAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshVersions(string slug)
+    {
+        try
+        {
+            _refreshingSlug = slug;
+            _error = null;
+            _successMessage = null;
+
+            var result = await OfficialGameService.RefreshVersionsAsync(slug);
+            if (result.IsSuccess)
+            {
+                _successMessage = $"Refreshed {result.Value.VersionCount} versions";
+                await LoadGamesAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        finally
+        {
+            _refreshingSlug = null;
+        }
+    }
+
+    private async Task RefreshAllVersions()
+    {
+        _refreshingAll = true;
+        _error = null;
+        _successMessage = null;
+
+        try
+        {
+            var totalVersions = 0;
+            foreach (var game in _games.Where(g => g.IsEnabled))
+            {
+                var result = await OfficialGameService.RefreshVersionsAsync(game.Slug);
+                if (result.IsSuccess)
+                {
+                    totalVersions += result.Value.VersionCount;
+                }
+            }
+            _successMessage = $"Refreshed {totalVersions} total versions across all games";
+            await LoadGamesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _refreshingAll = false;
+        }
+    }
+
+    private async Task ToggleEnabled(OfficialGameStatusDto game)
+    {
+        _error = null;
+        _successMessage = null;
+
+        var result = await OfficialGameService.SetOfficialGameEnabledAsync(game.Slug, !game.IsEnabled);
+        if (result.IsSuccess)
+        {
+            _successMessage = $"{game.Name} has been {(game.IsEnabled ? "disabled" : "enabled")}";
+            await LoadGamesAsync();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+
+    private void ViewDetails(OfficialGameStatusDto game)
+    {
+        Navigation.NavigateTo($"/settings/official-games/{game.Slug}");
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1)
+            return "just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+}

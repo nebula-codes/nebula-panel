@@ -1,0 +1,63 @@
+@typeparam TValue where TValue : notnull
+
+<div class="tab-nav">
+    @foreach (var tab in Tabs)
+    {
+        <button type="button"
+                class="@GetTabClass(tab)"
+                @onclick="@(() => SelectTab(tab))">
+            @if (!string.IsNullOrEmpty(GetIcon(tab)))
+            {
+                <Icon Name="@GetIcon(tab)" Size="IconSize.Small" />
+            }
+            <span>@GetLabel(tab)</span>
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IEnumerable<TValue> Tabs { get; set; } = [];
+
+    [Parameter]
+    public TValue? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<TValue> ValueChanged { get; set; }
+
+    [Parameter]
+    public Func<TValue, string>? LabelSelector { get; set; }
+
+    [Parameter]
+    public Func<TValue, string?>? IconSelector { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string GetTabClass(TValue tab)
+    {
+        var isActive = Value?.Equals(tab) ?? false;
+        return isActive ? "tab-nav-item tab-nav-item-active" : "tab-nav-item";
+    }
+
+    private string GetLabel(TValue tab)
+    {
+        if (LabelSelector != null)
+            return LabelSelector(tab);
+        return tab.ToString() ?? "";
+    }
+
+    private string? GetIcon(TValue tab)
+    {
+        return IconSelector?.Invoke(tab);
+    }
+
+    private async Task SelectTab(TValue tab)
+    {
+        if (!tab.Equals(Value))
+        {
+            Value = tab;
+            await ValueChanged.InvokeAsync(tab);
+        }
+    }
+}

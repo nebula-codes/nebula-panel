@@ -1,0 +1,406 @@
+@page "/settings/official-games/{Slug}"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IOfficialGameService OfficialGameService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>@(_game?.Name ?? "Game Details") - Official Games - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="spinner"></div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <ErrorAlert Message="@_error" />
+    }
+    else if (_game is not null)
+    {
+        <!-- Header -->
+        <div class="flex items-start justify-between mb-6">
+            <div>
+                <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+                    <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+                    <Icon Name="chevron-right" Size="IconSize.Small" />
+                    <NavLink href="/settings/official-games" class="hover:text-nebula-text-secondary">Official Games</NavLink>
+                    <Icon Name="chevron-right" Size="IconSize.Small" />
+                    <span class="text-nebula-text-primary">@_game.Name</span>
+                </div>
+                <div class="flex items-center gap-4">
+                    @if (!string.IsNullOrEmpty(_game.IconPath))
+                    {
+                        <img src="@_game.IconPath" alt="@_game.Name" class="w-16 h-16 object-contain rounded" />
+                    }
+                    else
+                    {
+                        <div class="w-16 h-16 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                            <Icon Name="gamepad-2" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <div>
+                        <h1 class="text-2xl font-semibold text-nebula-text-primary">@_game.Name</h1>
+                        <div class="flex items-center gap-3 mt-1">
+                            <span class="text-nebula-text-muted">@_game.Slug</span>
+                            <span class="px-2 py-0.5 text-xs font-medium bg-nebula-bg-tertiary text-nebula-text-secondary rounded">
+                                @_game.ProviderType
+                            </span>
+                            @if (_game.IsEnabled)
+                            {
+                                <StatusBadge Status="StatusBadge.StatusType.Success" Text="Enabled" />
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusBadge.StatusType.Warning" Text="Disabled" />
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="@(_game.IsEnabled ? "Disable" : "Enable")"
+                        IconName="@(_game.IsEnabled ? "toggle-right" : "toggle-left")"
+                        OnClick="ToggleEnabled" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Refresh Versions"
+                        IconName="refresh-cw"
+                        Loading="_refreshing"
+                        OnClick="RefreshVersions" />
+            </div>
+        </div>
+
+        <ErrorAlert Message="@_successMessage" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Main Info -->
+            <div class="lg:col-span-2 space-y-6">
+                <!-- Stats -->
+                <div class="grid grid-cols-3 gap-4">
+                    <Card>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-nebula-accent">@_game.ServerCount</div>
+                            <div class="text-sm text-nebula-text-muted mt-1">Servers</div>
+                        </div>
+                    </Card>
+                    <Card>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-nebula-text-primary">@_game.VersionCount</div>
+                            <div class="text-sm text-nebula-text-muted mt-1">Versions</div>
+                        </div>
+                    </Card>
+                    <Card>
+                        <div class="text-center">
+                            <div class="text-3xl font-bold text-nebula-text-primary">@_game.ConfigSchemas.Count</div>
+                            <div class="text-sm text-nebula-text-muted mt-1">Config Files</div>
+                        </div>
+                    </Card>
+                </div>
+
+                <!-- Server Configuration -->
+                <Card>
+                    <CardHeader Title="Server Configuration" />
+                    <CardBody>
+                        <dl class="grid grid-cols-2 gap-4">
+                            <div>
+                                <dt class="text-sm text-nebula-text-muted">Executable Type</dt>
+                                <dd class="font-medium text-nebula-text-primary">@_game.ExecutableType</dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm text-nebula-text-muted">Executable Path</dt>
+                                <dd class="font-mono text-sm text-nebula-text-primary">@_game.DefaultExecutablePath</dd>
+                            </div>
+                            <div class="col-span-2">
+                                <dt class="text-sm text-nebula-text-muted">Start Command</dt>
+                                <dd class="font-mono text-sm text-nebula-text-primary bg-nebula-bg-tertiary px-2 py-1 rounded mt-1">@_game.DefaultStartCommand</dd>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_game.DefaultStopCommand))
+                            {
+                                <div class="col-span-2">
+                                    <dt class="text-sm text-nebula-text-muted">Stop Command</dt>
+                                    <dd class="font-mono text-sm text-nebula-text-primary bg-nebula-bg-tertiary px-2 py-1 rounded mt-1">@_game.DefaultStopCommand</dd>
+                                </div>
+                            }
+                        </dl>
+                    </CardBody>
+                </Card>
+
+                <!-- Features -->
+                <Card>
+                    <CardHeader Title="Features" />
+                    <CardBody>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="flex items-center gap-2">
+                                @if (_game.SupportsDocker)
+                                {
+                                    <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                }
+                                else
+                                {
+                                    <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                }
+                                <span class="text-sm @(_game.SupportsDocker ? "text-nebula-text-primary" : "text-nebula-text-muted")">Docker</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                @if (_game.SupportsMods)
+                                {
+                                    <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                }
+                                else
+                                {
+                                    <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                }
+                                <span class="text-sm @(_game.SupportsMods ? "text-nebula-text-primary" : "text-nebula-text-muted")">Mods</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                @if (_game.RconDefaults is not null)
+                                {
+                                    <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                }
+                                else
+                                {
+                                    <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                }
+                                <span class="text-sm @(_game.RconDefaults is not null ? "text-nebula-text-primary" : "text-nebula-text-muted")">RCON</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                @if (!string.IsNullOrEmpty(_game.SteamAppId))
+                                {
+                                    <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                }
+                                else
+                                {
+                                    <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                }
+                                <span class="text-sm @(!string.IsNullOrEmpty(_game.SteamAppId) ? "text-nebula-text-primary" : "text-nebula-text-muted")">Steam</span>
+                            </div>
+                        </div>
+                    </CardBody>
+                </Card>
+
+                <!-- Configuration Schemas -->
+                @if (_game.ConfigSchemas.Count > 0)
+                {
+                    <Card>
+                        <CardHeader Title="Configuration Schemas" />
+                        <CardBody NoPadding="true">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-nebula-border">
+                                        <th class="text-left text-sm text-nebula-text-muted font-medium px-4 py-2">File</th>
+                                        <th class="text-left text-sm text-nebula-text-muted font-medium px-4 py-2">Type</th>
+                                        <th class="text-left text-sm text-nebula-text-muted font-medium px-4 py-2">Fields</th>
+                                        <th class="text-left text-sm text-nebula-text-muted font-medium px-4 py-2">Categories</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var schema in _game.ConfigSchemas)
+                                    {
+                                        <tr class="border-b border-nebula-border last:border-0">
+                                            <td class="px-4 py-3 font-mono text-sm text-nebula-text-primary">@schema.FileName</td>
+                                            <td class="px-4 py-3 text-sm text-nebula-text-secondary">@schema.FileType</td>
+                                            <td class="px-4 py-3 text-sm text-nebula-text-secondary">@schema.FieldCount</td>
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-wrap gap-1">
+                                                    @foreach (var category in schema.Categories.Take(4))
+                                                    {
+                                                        <span class="px-2 py-0.5 text-xs bg-nebula-bg-tertiary text-nebula-text-muted rounded">@category</span>
+                                                    }
+                                                    @if (schema.Categories.Count > 4)
+                                                    {
+                                                        <span class="px-2 py-0.5 text-xs text-nebula-text-muted">+@(schema.Categories.Count - 4)</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </CardBody>
+                    </Card>
+                }
+            </div>
+
+            <!-- Sidebar -->
+            <div class="space-y-6">
+                <!-- Version Info -->
+                <Card>
+                    <CardHeader Title="Version Info" />
+                    <CardBody>
+                        <dl class="space-y-3">
+                            <div>
+                                <dt class="text-sm text-nebula-text-muted">Last Check</dt>
+                                <dd class="font-medium text-nebula-text-primary">
+                                    @(_game.LastVersionCheck?.ToString("g") ?? "Never")
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-sm text-nebula-text-muted">Available Versions</dt>
+                                <dd class="font-medium text-nebula-text-primary">@_game.VersionCount</dd>
+                            </div>
+                        </dl>
+                    </CardBody>
+                </Card>
+
+                <!-- RCON -->
+                @if (_game.RconDefaults is not null)
+                {
+                    <Card>
+                        <CardHeader Title="RCON Settings" />
+                        <CardBody>
+                            <dl class="space-y-3">
+                                <div>
+                                    <dt class="text-sm text-nebula-text-muted">Protocol</dt>
+                                    <dd class="font-medium text-nebula-text-primary">@_game.RconDefaults.Protocol</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm text-nebula-text-muted">Default Port</dt>
+                                    <dd class="font-medium text-nebula-text-primary">@_game.RconDefaults.DefaultPort</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm text-nebula-text-muted">Enabled by Default</dt>
+                                    <dd class="font-medium text-nebula-text-primary">@(_game.RconDefaults.DefaultEnabled ? "Yes" : "No")</dd>
+                                </div>
+                            </dl>
+                        </CardBody>
+                    </Card>
+                }
+
+                <!-- Mod Providers -->
+                @if (_game.ModProviders.Count > 0)
+                {
+                    <Card>
+                        <CardHeader Title="Mod Providers" />
+                        <CardBody>
+                            <ul class="space-y-2">
+                                @foreach (var provider in _game.ModProviders.Where(p => p.Enabled).OrderBy(p => p.Priority))
+                                {
+                                    <li class="flex items-center justify-between">
+                                        <span class="text-sm text-nebula-text-primary">@provider.Provider</span>
+                                        <span class="text-xs text-nebula-text-muted">Priority @provider.Priority</span>
+                                    </li>
+                                }
+                            </ul>
+                        </CardBody>
+                    </Card>
+                }
+
+                <!-- Recent Versions -->
+                @if (_game.RecentVersions.Count > 0)
+                {
+                    <Card>
+                        <CardHeader Title="Recent Versions" />
+                        <CardBody>
+                            <ul class="space-y-2 max-h-64 overflow-y-auto">
+                                @foreach (var version in _game.RecentVersions.Take(10))
+                                {
+                                    <li class="flex items-center justify-between text-sm">
+                                        <span class="font-medium text-nebula-text-primary">@version.DisplayName</span>
+                                        @if (version.IsRecommended)
+                                        {
+                                            <span class="px-2 py-0.5 text-xs bg-nebula-success/10 text-nebula-success rounded">Recommended</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-nebula-text-muted text-xs">@version.VersionType</span>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        </CardBody>
+                    </Card>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Slug { get; set; } = string.Empty;
+
+    private OfficialGameDetailDto? _game;
+    private bool _loading = true;
+    private bool _refreshing;
+    private string? _error;
+    private string? _successMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadGameAsync();
+    }
+
+    private async Task LoadGameAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var result = await OfficialGameService.GetOfficialGameAsync(Slug);
+            if (result.IsSuccess)
+            {
+                _game = result.Value;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshVersions()
+    {
+        try
+        {
+            _refreshing = true;
+            _error = null;
+            _successMessage = null;
+
+            var result = await OfficialGameService.RefreshVersionsAsync(Slug);
+            if (result.IsSuccess)
+            {
+                _successMessage = $"Refreshed {result.Value.VersionCount} versions";
+                await LoadGameAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private async Task ToggleEnabled()
+    {
+        if (_game is null) return;
+
+        _error = null;
+        _successMessage = null;
+
+        var result = await OfficialGameService.SetOfficialGameEnabledAsync(Slug, !_game.IsEnabled);
+        if (result.IsSuccess)
+        {
+            _successMessage = $"{_game.Name} has been {(_game.IsEnabled ? "disabled" : "enabled")}";
+            await LoadGameAsync();
+        }
+        else
+        {
+            _error = result.Error;
+        }
+    }
+}

@@ -1,0 +1,608 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Domain.ValueObjects
+@inject IHytaleUpdateService UpdateService
+@inject IHytaleAuthService AuthService
+@inject IToastService ToastService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="space-y-6">
+    @* Current Version Card *@
+    <Card>
+        <div class="flex items-start justify-between">
+            <div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">Current Version</h3>
+                <div class="mt-2 space-y-1 text-sm">
+                    <div class="flex items-center gap-2">
+                        <span class="text-nebula-text-muted">Version:</span>
+                        <code class="bg-nebula-bg-tertiary px-2 py-0.5 rounded text-nebula-text-primary">
+                            @(HytaleInfo?.InstalledVersion ?? "Unknown")
+                        </code>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-nebula-text-muted">Patchline:</span>
+                        <StatusBadge Status="@GetPatchlineStatus()"
+                                     Text="@GetPatchlineDisplay()"
+                                     Size="BadgeSize.Small" />
+                    </div>
+                    @if (HytaleInfo?.InstalledAt != default)
+                    {
+                        <div class="flex items-center gap-2">
+                            <span class="text-nebula-text-muted">Installed:</span>
+                            <span class="text-nebula-text-secondary">@HytaleInfo.InstalledAt.ToString("MMMM d, yyyy")</span>
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Text="Check for Updates"
+                        IconName="refresh-cw"
+                        Loading="_checking"
+                        Disabled="_updating"
+                        OnClick="CheckForUpdates" />
+            </div>
+        </div>
+    </Card>
+
+    @* Latest Version Card *@
+    @if (HytaleInfo?.AvailableVersion != null || _latestVersion != null)
+    {
+        <Card>
+            <div class="flex items-start justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-lg font-medium text-nebula-text-primary">Latest Version</h3>
+                        @if (IsUpdateAvailable)
+                        {
+                            <StatusBadge Status="StatusType.Info" Text="NEW" Size="BadgeSize.Small" />
+                        }
+                    </div>
+                    <div class="mt-2 space-y-1 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-nebula-text-muted">Version:</span>
+                            <code class="bg-nebula-bg-tertiary px-2 py-0.5 rounded text-nebula-text-primary">
+                                @(_latestVersion ?? HytaleInfo?.AvailableVersion ?? "Unknown")
+                            </code>
+                        </div>
+                        @if (HytaleInfo?.LastUpdateCheckAt != null)
+                        {
+                            <div class="flex items-center gap-2">
+                                <span class="text-nebula-text-muted">Checked:</span>
+                                <span class="text-nebula-text-secondary">@HytaleInfo.LastUpdateCheckAt?.ToString("g")</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+                @if (IsUpdateAvailable && !_updating)
+                {
+                    <Button Variant="Button.ButtonVariant.Primary"
+                            Text="Update Server"
+                            IconName="download"
+                            Disabled="_checking"
+                            OnClick="ShowUpdateModal" />
+                }
+            </div>
+        </Card>
+    }
+
+    @* Warnings *@
+    @if (IsUpdateAvailable)
+    {
+        <div class="space-y-2">
+            <div class="flex items-center gap-2 text-sm text-nebula-warning">
+                <Icon Name="alert-triangle" Size="Icon.IconSize.Small" />
+                <span>Server will be stopped during update</span>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-nebula-success">
+                <Icon Name="check-circle" Size="Icon.IconSize.Small" />
+                <span>Backup will be created automatically</span>
+            </div>
+        </div>
+    }
+
+    @* Update Progress *@
+    @if (_updating)
+    {
+        <Card>
+            <h3 class="text-lg font-medium text-nebula-text-primary mb-4">Updating Server</h3>
+            <div class="space-y-4">
+                <div class="flex items-center gap-3">
+                    <span class="spinner"></span>
+                    <span class="text-nebula-text-secondary">@_updateMessage</span>
+                </div>
+                <div class="w-full bg-nebula-bg-tertiary rounded-full h-2">
+                    <div class="bg-nebula-primary h-2 rounded-full transition-all duration-300"
+                         style="width: @(_updateProgress)%"></div>
+                </div>
+                <div class="text-xs text-nebula-text-muted text-right">@_updateProgress.ToString("0")%</div>
+            </div>
+        </Card>
+    }
+
+    @* Patchline Change Section *@
+    <Card>
+        <h3 class="text-lg font-medium text-nebula-text-primary">Change Patchline</h3>
+        <p class="text-sm text-nebula-text-muted mt-1">
+            Currently: <span class="text-nebula-text-secondary">@GetPatchlineDisplay()</span>
+        </p>
+
+        <div class="mt-4">
+            @if (HytaleInfo?.Patchline == "release")
+            {
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Text="Switch to Pre-release"
+                        IconName="git-branch"
+                        Loading="_changingPatchline"
+                        Disabled="_checking || _updating"
+                        OnClick="@(() => SwitchPatchline("pre-release"))" />
+
+                <p class="mt-2 text-xs text-nebula-warning flex items-center gap-1">
+                    <Icon Name="alert-triangle" Size="Icon.IconSize.XSmall" />
+                    Pre-release builds may be unstable
+                </p>
+            }
+            else
+            {
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Text="Switch to Release"
+                        IconName="git-branch"
+                        Loading="_changingPatchline"
+                        Disabled="_checking || _updating"
+                        OnClick="@(() => SwitchPatchline("release"))" />
+
+                <p class="mt-2 text-xs text-nebula-success flex items-center gap-1">
+                    <Icon Name="check-circle" Size="Icon.IconSize.XSmall" />
+                    Release builds are stable and recommended for production
+                </p>
+            }
+        </div>
+    </Card>
+
+    @* Auth Required Warning *@
+    @if (_authRequired)
+    {
+        <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @onclick="@(() => _authRequired = false)">
+            <div class="bg-nebula-bg-secondary rounded-nebula-lg p-6 max-w-md mx-4" @onclick:stopPropagation>
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-full bg-nebula-warning/10 flex items-center justify-center">
+                        <Icon Name="alert-triangle" Size="Icon.IconSize.Large" Class="text-nebula-warning" />
+                    </div>
+                    <h3 class="text-lg font-medium text-nebula-text-primary">Authentication Required</h3>
+                </div>
+
+                <p class="text-sm text-nebula-text-secondary mb-6">
+                    Your Hytale token has expired. Please reconnect your account to update this server.
+                </p>
+
+                <div class="flex justify-end gap-2">
+                    <Button Variant="Button.ButtonVariant.Ghost"
+                            Text="Cancel"
+                            OnClick="@(() => _authRequired = false)" />
+                    <Button Variant="Button.ButtonVariant.Primary"
+                            Text="Reconnect Hytale Account"
+                            IconName="link"
+                            OnClick="NavigateToHytaleSettings" />
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@* Update Confirmation Modal *@
+<Modal IsOpen="_showUpdateModal" OnClose="@(() => _showUpdateModal = false)">
+    <Header>
+        <h2 class="text-lg font-semibold">Update Server</h2>
+    </Header>
+    <Body>
+        <div class="space-y-4">
+            <p class="text-sm text-nebula-text-secondary">
+                Update from <code class="bg-nebula-bg-tertiary px-1 rounded">@HytaleInfo?.InstalledVersion</code>
+                to <code class="bg-nebula-bg-tertiary px-1 rounded">@(_latestVersion ?? HytaleInfo?.AvailableVersion)</code>
+            </p>
+
+            <div class="space-y-2">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" @bind="_createBackup" class="rounded border-nebula-border" />
+                    <span class="text-sm text-nebula-text-primary">Create backup before update</span>
+                </label>
+
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" @bind="_preserveWorld" class="rounded border-nebula-border" />
+                    <span class="text-sm text-nebula-text-primary">Preserve world data</span>
+                </label>
+
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" @bind="_preserveConfigs" class="rounded border-nebula-border" />
+                    <span class="text-sm text-nebula-text-primary">Preserve custom configurations</span>
+                </label>
+
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" @bind="_restartAfter" class="rounded border-nebula-border" />
+                    <span class="text-sm text-nebula-text-primary">Restart server after update</span>
+                </label>
+            </div>
+
+            <div class="text-xs text-nebula-text-muted bg-nebula-bg-tertiary p-3 rounded-lg">
+                <p class="font-medium mb-1">What happens during update:</p>
+                <ul class="list-disc list-inside space-y-0.5">
+                    <li>Server will be stopped</li>
+                    <li>Backup will be created (if enabled)</li>
+                    <li>New version will be downloaded</li>
+                    <li>Files will be updated</li>
+                    <li>Server will restart (if enabled)</li>
+                </ul>
+            </div>
+        </div>
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost"
+                Text="Cancel"
+                OnClick="@(() => _showUpdateModal = false)" />
+        <Button Variant="Button.ButtonVariant.Primary"
+                Text="Update Now"
+                IconName="download"
+                OnClick="StartUpdate" />
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameServerDto Server { get; set; } = default!;
+
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the update state changes (updating started or finished).
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnUpdateStateChanged { get; set; }
+
+    private HytaleServerInfo? HytaleInfo => Server.HytaleInfo;
+
+    // Use local state if available (after check), otherwise use server data
+    private bool IsUpdateAvailable => _updateAvailable ?? HytaleInfo?.UpdateAvailable ?? false;
+
+    // State
+    private bool _checking;
+    private bool _updating;
+    private bool _changingPatchline;
+    private bool _authRequired;
+    private bool _showUpdateModal;
+    private string? _latestVersion;
+    private bool? _updateAvailable; // Local state to track update availability after check
+    private string _updateMessage = "";
+    private double _updateProgress;
+
+    // SignalR hub connection
+    private HubConnection? _hubConnection;
+
+    // Update options
+    private bool _createBackup = true;
+    private bool _preserveWorld = true;
+    private bool _preserveConfigs = true;
+    private bool _restartAfter = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SetupHubConnectionAsync().ConfigureAwait(false);
+        await CheckActiveUpdateAsync().ConfigureAwait(false);
+    }
+
+    private async Task<string?> GetAccessTokenAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task SetupHubConnectionAsync()
+    {
+        var hubUrl = NavigationManager.ToAbsoluteUri("/hubs/install-progress");
+        var token = await GetAccessTokenAsync();
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<MinecraftInstallProgressDto>("ReceiveProgress", OnReceiveProgress);
+        _hubConnection.On<Guid, bool, string?>("InstallationComplete", OnInstallationComplete);
+
+        try
+        {
+            await _hubConnection.StartAsync().ConfigureAwait(false);
+            await _hubConnection.InvokeAsync("JoinHytaleUpdate", Server.Id).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to connect to SignalR hub: {ex.Message}");
+        }
+    }
+
+    private async Task CheckActiveUpdateAsync()
+    {
+        try
+        {
+            var activeProgress = await UpdateService.GetActiveUpdateProgressAsync(Server.Id).ConfigureAwait(false);
+            if (activeProgress != null && !activeProgress.IsComplete && !activeProgress.HasError)
+            {
+                _updating = true;
+                _updateProgress = activeProgress.Percentage;
+                _updateMessage = activeProgress.Message;
+                await NotifyUpdateStateChanged(true).ConfigureAwait(false);
+                await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to check active update: {ex.Message}");
+        }
+    }
+
+    private async void OnReceiveProgress(MinecraftInstallProgressDto progress)
+    {
+        if (progress.InstallationId != Server.Id) return;
+
+        _updating = true;
+        _updateProgress = progress.Percentage;
+        _updateMessage = progress.Message;
+
+        await NotifyUpdateStateChanged(true).ConfigureAwait(false);
+        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+    }
+
+    private async void OnInstallationComplete(Guid serverId, bool success, string? error)
+    {
+        if (serverId != Server.Id) return;
+
+        _updating = false;
+        _updateProgress = 0;
+        _updateMessage = "";
+
+        await NotifyUpdateStateChanged(false).ConfigureAwait(false);
+        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+
+        if (success)
+        {
+            ToastService.ShowSuccess("Server updated successfully!");
+        }
+        else if (!string.IsNullOrEmpty(error))
+        {
+            ToastService.ShowError($"Update failed: {error}");
+        }
+    }
+
+    private async Task NotifyUpdateStateChanged(bool isUpdating)
+    {
+        if (OnUpdateStateChanged.HasDelegate)
+        {
+            await OnUpdateStateChanged.InvokeAsync(isUpdating).ConfigureAwait(false);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("LeaveHytaleUpdate", Server.Id).ConfigureAwait(false);
+                await _hubConnection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+
+    private StatusType GetPatchlineStatus() => HytaleInfo?.Patchline switch
+    {
+        "release" => StatusType.Success,
+        "pre-release" => StatusType.Warning,
+        _ => StatusType.Neutral
+    };
+
+    private string GetPatchlineDisplay() => HytaleInfo?.Patchline switch
+    {
+        "release" => "Release",
+        "pre-release" => "Pre-release",
+        _ => "Unknown"
+    };
+
+    private async Task CheckForUpdates()
+    {
+        _checking = true;
+        StateHasChanged();
+
+        try
+        {
+            // First check if we have valid credentials
+            if (!await AuthService.HasValidCredentialsAsync(UserId))
+            {
+                _authRequired = true;
+                return;
+            }
+
+            // Get the actual GameServer entity
+            var server = new GameServer { Id = Server.Id, HytaleInfo = HytaleInfo };
+            var result = await UpdateService.CheckForUpdateAsync(server, UserId);
+
+            if (result.Success)
+            {
+                _latestVersion = result.LatestVersion;
+                _updateAvailable = result.UpdateAvailable;
+                if (result.UpdateAvailable)
+                {
+                    ToastService.ShowSuccess($"Update available: {result.LatestVersion}");
+                }
+                else
+                {
+                    ToastService.ShowInfo("You're running the latest version");
+                }
+            }
+            else
+            {
+                if (result.Error?.Contains("expired", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _authRequired = true;
+                }
+                else
+                {
+                    ToastService.ShowError(result.Error ?? "Failed to check for updates");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error checking for updates: {ex.Message}");
+        }
+        finally
+        {
+            _checking = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowUpdateModal()
+    {
+        _showUpdateModal = true;
+    }
+
+    private async Task StartUpdate()
+    {
+        _showUpdateModal = false;
+        _updating = true;
+        _updateProgress = 0;
+        _updateMessage = "Initializing...";
+        await NotifyUpdateStateChanged(true);
+        StateHasChanged();
+
+        try
+        {
+            var options = new HytaleUpdateOptions
+            {
+                CreateBackupBeforeUpdate = _createBackup,
+                PreserveWorldData = _preserveWorld,
+                PreserveCustomConfigs = _preserveConfigs,
+                RestartServerAfterUpdate = _restartAfter
+            };
+
+            var progress = new Progress<HytaleUpdateProgressDto>(p =>
+            {
+                _updateProgress = p.Percentage;
+                _updateMessage = p.Message;
+                InvokeAsync(StateHasChanged);
+            });
+
+            var server = new GameServer { Id = Server.Id, HytaleInfo = HytaleInfo, InstallPath = Server.InstallPath };
+            var result = await UpdateService.UpdateServerAsync(server, UserId, options, progress);
+
+            if (result.Success)
+            {
+                ToastService.ShowSuccess($"Server updated to {result.NewVersion}");
+            }
+            else
+            {
+                if (result.Error?.Contains("expired", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _authRequired = true;
+                }
+                else
+                {
+                    ToastService.ShowError(result.Error ?? "Update failed");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Update failed: {ex.Message}");
+        }
+        finally
+        {
+            _updating = false;
+            await NotifyUpdateStateChanged(false);
+            StateHasChanged();
+        }
+    }
+
+    private async Task SwitchPatchline(string newPatchline)
+    {
+        _changingPatchline = true;
+        StateHasChanged();
+
+        try
+        {
+            // First check if we have valid credentials
+            if (!await AuthService.HasValidCredentialsAsync(UserId))
+            {
+                _authRequired = true;
+                return;
+            }
+
+            _updating = true;
+            _updateProgress = 0;
+            _updateMessage = $"Switching to {newPatchline}...";
+            await NotifyUpdateStateChanged(true);
+            StateHasChanged();
+
+            var options = new HytaleUpdateOptions
+            {
+                CreateBackupBeforeUpdate = true,
+                PreserveWorldData = true,
+                PreserveCustomConfigs = true,
+                RestartServerAfterUpdate = Server.Status == Domain.Enums.ServerStatus.Running
+            };
+
+            var progress = new Progress<HytaleUpdateProgressDto>(p =>
+            {
+                _updateProgress = p.Percentage;
+                _updateMessage = p.Message;
+                InvokeAsync(StateHasChanged);
+            });
+
+            var server = new GameServer { Id = Server.Id, HytaleInfo = HytaleInfo, InstallPath = Server.InstallPath };
+            var result = await UpdateService.ChangePatchlineAsync(server, newPatchline, UserId, options, progress);
+
+            if (result.Success)
+            {
+                ToastService.ShowSuccess($"Switched to {newPatchline} (version {result.NewVersion})");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to switch patchline");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to switch patchline: {ex.Message}");
+        }
+        finally
+        {
+            _changingPatchline = false;
+            _updating = false;
+            await NotifyUpdateStateChanged(false);
+            StateHasChanged();
+        }
+    }
+
+    private void NavigateToHytaleSettings()
+    {
+        _authRequired = false;
+        NavigationManager.NavigateTo("/settings/integrations/hytale");
+    }
+}

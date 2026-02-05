@@ -1,0 +1,12 @@
+global using Xunit;
+global using FluentAssertions;
+global using Moq;
+global using NebulaPanel.Domain.Entities;
+global using NebulaPanel.Domain.Enums;
+global using NebulaPanel.Domain.ValueObjects;
+global using NebulaPanel.Domain.Interfaces;
+global using NebulaPanel.Domain.Repositories;
+global using NebulaPanel.Application.Services;
+global using NebulaPanel.Application.DTOs;
+global using NebulaPanel.Application.Common;
+global using Microsoft.Extensions.Logging;

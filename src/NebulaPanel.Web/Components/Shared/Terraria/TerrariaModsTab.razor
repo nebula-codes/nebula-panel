@@ -1,0 +1,157 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Repositories
+@inject ITerrariaModService ModService
+@inject IGameServerRepository ServerRepository
+@inject IJSRuntime JS
+
+<div class="terraria-mods-tab">
+    @* Tab Navigation *@
+    <div class="flex items-center justify-between border-b border-nebula-border-subtle mb-6">
+        <div class="flex">
+            <button type="button"
+                    class="px-4 py-3 text-sm font-medium border-b-2 transition-colors @(_activeTab == "installed" ? "border-nebula-accent text-nebula-accent" : "border-transparent text-nebula-text-muted hover:text-nebula-text-secondary")"
+                    @onclick="@(() => _activeTab = "installed")">
+                <span class="flex items-center gap-2">
+                    <Icon Name="package" Size="IconSize.Small" />
+                    Installed (@_installedCount)
+                </span>
+            </button>
+            <button type="button"
+                    class="px-4 py-3 text-sm font-medium border-b-2 transition-colors @(_activeTab == "browse" ? "border-nebula-accent text-nebula-accent" : "border-transparent text-nebula-text-muted hover:text-nebula-text-secondary")"
+                    @onclick="@(() => _activeTab = "browse")">
+                <span class="flex items-center gap-2">
+                    <Icon Name="search" Size="IconSize.Small" />
+                    Browse Mods
+                </span>
+            </button>
+        </div>
+
+        @* Actions *@
+        <div class="flex items-center gap-2 pb-2">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Import"
+                    IconName="upload"
+                    Size="ButtonSize.Small"
+                    OnClick="OpenImportModal" />
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Export"
+                    IconName="download"
+                    Size="ButtonSize.Small"
+                    Disabled="@(_installedCount == 0)"
+                    OnClick="ExportModpack" />
+        </div>
+    </div>
+
+    @* Tab Content *@
+    @if (_activeTab == "installed")
+    {
+        <TerrariaInstalledModsPanel @ref="_installedModsPanel"
+                                    ServerId="@ServerId"
+                                    OnBrowseClick="@(() => _activeTab = "browse")" />
+    }
+    else
+    {
+        <TerrariaModBrowser ServerId="@ServerId"
+                           OnModInstalled="HandleModInstalled" />
+    }
+</div>
+
+@* Import Modal *@
+<TerrariaModpackImportModal ServerId="@ServerId"
+                            IsOpen="_showImportModal"
+                            OnClose="CloseImportModal"
+                            OnImported="HandleModsImported" />
+
+@code {
+    /// <summary>
+    /// The server ID to manage mods for.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    [Inject]
+    private IToastService ToastService { get; set; } = default!;
+
+    // State
+    private string _activeTab = "installed";
+    private int _installedCount;
+    private bool _showImportModal;
+    private TerrariaInstalledModsPanel? _installedModsPanel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInstalledCountAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadInstalledCountAsync();
+    }
+
+    private async Task LoadInstalledCountAsync()
+    {
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                var mods = await ModService.GetInstalledModsAsync(server);
+                _installedCount = mods.Count;
+            }
+        }
+        catch
+        {
+            _installedCount = 0;
+        }
+    }
+
+    private async Task HandleModInstalled()
+    {
+        await LoadInstalledCountAsync();
+        if (_installedModsPanel != null)
+        {
+            await _installedModsPanel.RefreshAsync();
+        }
+    }
+
+    private void OpenImportModal()
+    {
+        _showImportModal = true;
+    }
+
+    private void CloseImportModal()
+    {
+        _showImportModal = false;
+    }
+
+    private async Task HandleModsImported()
+    {
+        _showImportModal = false;
+        ToastService.ShowSuccess("Mods imported successfully!");
+        await HandleModInstalled();
+    }
+
+    private async Task ExportModpack()
+    {
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server == null)
+            {
+                ToastService.ShowError("Server not found");
+                return;
+            }
+
+            var json = await ModService.ExportModpackAsync(server);
+
+            // Copy to clipboard
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+            ToastService.ShowSuccess("Modpack JSON copied to clipboard!");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to export: {ex.Message}");
+        }
+    }
+}

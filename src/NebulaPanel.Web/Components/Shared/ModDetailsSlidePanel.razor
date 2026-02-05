@@ -1,0 +1,462 @@
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Application.Services
+
+@inject IUnifiedModService ModService
+
+<div class="slide-panel @(IsOpen ? "open" : "")">
+    <div class="slide-panel-header">
+        <h3>Mod Details</h3>
+        <button type="button" class="btn-close" @onclick="HandleClose" title="Close">
+            <Icon Name="x" Size="IconSize.Small" />
+        </button>
+    </div>
+
+    <div class="slide-panel-content">
+        @if (Mod == null)
+        {
+            <div class="empty-panel">
+                <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                <p>Select a mod to view details</p>
+            </div>
+        }
+        else if (_isLoading)
+        {
+            <div class="loading-skeleton">
+                <div class="skeleton-header">
+                    <div class="skeleton-icon"></div>
+                    <div class="skeleton-info">
+                        <div class="skeleton-title"></div>
+                        <div class="skeleton-author"></div>
+                        <div class="skeleton-badges"></div>
+                    </div>
+                </div>
+                <div class="skeleton-stats"></div>
+                <div class="skeleton-description">
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line short"></div>
+                </div>
+                <div class="skeleton-tags"></div>
+            </div>
+        }
+        else
+        {
+            @* Header with icon, name, author, badges *@
+            <div class="mod-header">
+                <div class="mod-icon">
+                    @if (!string.IsNullOrEmpty(Mod.IconUrl))
+                    {
+                        <img src="@Mod.IconUrl" alt="@Mod.Name" loading="lazy" />
+                    }
+                    else
+                    {
+                        <Icon Name="package" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                    }
+                </div>
+                <div class="mod-info">
+                    <h4 class="mod-name" title="@Mod.Name">@Mod.Name</h4>
+                    <p class="mod-author">by @(Mod.Author ?? "Unknown")</p>
+                    <div class="badges">
+                        <span class="provider-badge provider-@Mod.Provider.ToString().ToLowerInvariant()">
+                            @GetProviderDisplayName(Mod.Provider)
+                        </span>
+                        @if (Mod.Categories?.Count > 0)
+                        {
+                            var classification = GetPrimaryCategory(Mod.Categories);
+                            <span class="classification-badge @GetCategoryBadgeClass(classification)">
+                                @GetClassificationIcon(classification) @classification
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* Stats row *@
+            <div class="stats-row">
+                <div class="stat">
+                    <Icon Name="download" Size="IconSize.Small" />
+                    <span>@FormatDownloads(_details?.Downloads ?? Mod.Downloads)</span>
+                </div>
+                <div class="stat">
+                    <Icon Name="clock" Size="IconSize.Small" />
+                    <span>Updated @FormatRelativeDate(_details?.UpdatedAt ?? Mod.UpdatedAt)</span>
+                </div>
+                @if (_details != null)
+                {
+                    <div class="stat">
+                        <Icon Name="calendar" Size="IconSize.Small" />
+                        <span>Created @FormatRelativeDate(_details.CreatedAt)</span>
+                    </div>
+                }
+            </div>
+
+            @* Summary/Description *@
+            <div class="description-section">
+                @if (_details != null && !string.IsNullOrEmpty(_details.Description))
+                {
+                    <div class="description" @onclick="ToggleDescription">
+                        <div class="description-content @(_descriptionExpanded ? "expanded" : "")">
+                            @((MarkupString)SanitizeHtml(_details.Description))
+                        </div>
+                        @if (_details.Description.Length > 300)
+                        {
+                            <button type="button" class="expand-btn">
+                                @(_descriptionExpanded ? "Show less" : "Show more")
+                                <Icon Name="@(_descriptionExpanded ? "chevron-up" : "chevron-down")" Size="IconSize.XSmall" />
+                            </button>
+                        }
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(Mod.Summary))
+                {
+                    <p class="summary">@Mod.Summary</p>
+                }
+            </div>
+
+            @* Categories/Tags *@
+            @if ((_details?.Categories ?? Mod.Categories)?.Count > 0)
+            {
+                <div class="section">
+                    <h5 class="section-title">Categories</h5>
+                    <div class="tags">
+                        @foreach (var category in (_details?.Categories ?? Mod.Categories ?? []).Take(8))
+                        {
+                            <span class="tag">@category</span>
+                        }
+                        @{
+                            var totalCategories = (_details?.Categories ?? Mod.Categories)?.Count ?? 0;
+                        }
+                        @if (totalCategories > 8)
+                        {
+                            <span class="tag more">+@(totalCategories - 8) more</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Game versions *@
+            @if ((_details?.GameVersions ?? Mod.GameVersions)?.Count > 0)
+            {
+                <div class="section">
+                    <h5 class="section-title">Supported Versions</h5>
+                    <div class="versions">
+                        @foreach (var version in (_details?.GameVersions ?? Mod.GameVersions ?? []).Take(10))
+                        {
+                            <span class="version-tag">@version</span>
+                        }
+                        @{
+                            var totalVersions = (_details?.GameVersions ?? Mod.GameVersions)?.Count ?? 0;
+                        }
+                        @if (totalVersions > 10)
+                        {
+                            <span class="version-tag more">+@(totalVersions - 10) more</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Mod loaders *@
+            @if (_details?.Loaders?.Count > 0)
+            {
+                <div class="section">
+                    <h5 class="section-title">Mod Loaders</h5>
+                    <div class="loaders">
+                        @foreach (var loader in _details.Loaders)
+                        {
+                            <span class="loader-tag">@loader</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Screenshots *@
+            @if (_details?.Screenshots?.Count > 0)
+            {
+                <div class="section">
+                    <h5 class="section-title">Screenshots</h5>
+                    <div class="screenshots">
+                        @foreach (var screenshot in _details.Screenshots.Take(4))
+                        {
+                            <img src="@screenshot.Url"
+                                 alt="@(screenshot.Title ?? "Screenshot")"
+                                 loading="lazy"
+                                 @onclick="() => OpenScreenshot(screenshot.Url)" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @* External links *@
+            @if (_details != null && HasExternalLinks())
+            {
+                <div class="section">
+                    <h5 class="section-title">Links</h5>
+                    <div class="external-links">
+                        @if (!string.IsNullOrEmpty(_details.SourceUrl))
+                        {
+                            <a href="@_details.SourceUrl" target="_blank" rel="noopener noreferrer">
+                                <Icon Name="github" Size="IconSize.Small" /> Source Code
+                            </a>
+                        }
+                        @if (!string.IsNullOrEmpty(_details.WikiUrl))
+                        {
+                            <a href="@_details.WikiUrl" target="_blank" rel="noopener noreferrer">
+                                <Icon Name="book-open" Size="IconSize.Small" /> Wiki
+                            </a>
+                        }
+                        @if (!string.IsNullOrEmpty(_details.DiscordUrl))
+                        {
+                            <a href="@_details.DiscordUrl" target="_blank" rel="noopener noreferrer">
+                                <Icon Name="message-circle" Size="IconSize.Small" /> Discord
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Authors *@
+            @if (_details?.Authors?.Count > 0)
+            {
+                <div class="section">
+                    <h5 class="section-title">Authors</h5>
+                    <div class="authors">
+                        @foreach (var author in _details.Authors)
+                        {
+                            @if (!string.IsNullOrEmpty(author.Url))
+                            {
+                                <a href="@author.Url" target="_blank" rel="noopener noreferrer" class="author">
+                                    @author.Name
+                                </a>
+                            }
+                            else
+                            {
+                                <span class="author">@author.Name</span>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="slide-panel-footer">
+        @if (Mod != null)
+        {
+            @if (IsInstalled)
+            {
+                <Button Text="Installed"
+                        IconName="check"
+                        Variant="ButtonVariant.Ghost"
+                        Disabled="true"
+                        FullWidth="true"
+                        Class="btn-installed" />
+            }
+            else
+            {
+                <Button Text="Install"
+                        IconName="download"
+                        Variant="ButtonVariant.Primary"
+                        Loading="@IsBusy"
+                        FullWidth="true"
+                        OnClick="HandleInstall" />
+            }
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The mod to display details for.
+    /// </summary>
+    [Parameter]
+    public ModSearchItem? Mod { get; set; }
+
+    /// <summary>
+    /// Whether the panel is open/visible.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Whether the mod is already installed.
+    /// </summary>
+    [Parameter]
+    public bool IsInstalled { get; set; }
+
+    /// <summary>
+    /// Whether the mod is currently being installed.
+    /// </summary>
+    [Parameter]
+    public bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Callback when the panel should be closed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when install is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ModSearchItem> OnInstall { get; set; }
+
+    private ModDetails? _details;
+    private bool _isLoading;
+    private bool _descriptionExpanded;
+    private string? _currentModId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Mod != null && IsOpen && _currentModId != Mod.Id)
+        {
+            _currentModId = Mod.Id;
+            _descriptionExpanded = false;
+            await LoadDetailsAsync();
+        }
+        else if (!IsOpen)
+        {
+            _currentModId = null;
+            _details = null;
+        }
+    }
+
+    private async Task LoadDetailsAsync()
+    {
+        if (Mod == null) return;
+
+        _isLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            _details = await ModService.GetDetailsAsync(Mod.Provider, Mod.Id);
+        }
+        catch (Exception)
+        {
+            // Failed to load details - will show basic info from search item
+            _details = null;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleInstall()
+    {
+        if (Mod != null)
+        {
+            await OnInstall.InvokeAsync(Mod);
+        }
+    }
+
+    private void ToggleDescription()
+    {
+        _descriptionExpanded = !_descriptionExpanded;
+    }
+
+    private void OpenScreenshot(string url)
+    {
+        // Could open a lightbox modal here
+        // For now, just navigate to the image
+    }
+
+    private bool HasExternalLinks()
+    {
+        return _details != null && (
+            !string.IsNullOrEmpty(_details.SourceUrl) ||
+            !string.IsNullOrEmpty(_details.WikiUrl) ||
+            !string.IsNullOrEmpty(_details.DiscordUrl));
+    }
+
+    private static string SanitizeHtml(string html)
+    {
+        // Basic sanitization - in production, use a proper HTML sanitizer
+        // For now, just allow the content through as the providers typically return safe HTML
+        return html;
+    }
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Thunderstore => "Thunderstore",
+        ModProviderType.SpigotMC => "SpigotMC",
+        ModProviderType.Hangar => "Hangar",
+        ModProviderType.NexusMods => "Nexus Mods",
+        ModProviderType.SteamWorkshop => "Steam Workshop",
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string GetPrimaryCategory(List<string> categories)
+    {
+        if (categories.Count == 0)
+            return "Mod";
+
+        var category = categories[0];
+        return string.IsNullOrEmpty(category) ? "Mod" : char.ToUpper(category[0]) + category[1..].ToLower();
+    }
+
+    private static string GetCategoryBadgeClass(string category)
+    {
+        return category.ToLowerInvariant() switch
+        {
+            "plugin" => "classification-plugin",
+            "mod" or "mods" => "classification-mod",
+            "data" or "datapack" => "classification-data",
+            "art" or "resourcepack" or "texture" or "shader" => "classification-art",
+            "save" or "world" or "map" => "classification-save",
+            "modpack" => "classification-modpack",
+            _ => "classification-mod"
+        };
+    }
+
+    private static string GetClassificationIcon(string category)
+    {
+        return category.ToLowerInvariant() switch
+        {
+            "plugin" => "\ud83d\udd0c",
+            "data" or "datapack" => "\ud83d\udcca",
+            "art" or "resourcepack" or "texture" or "shader" => "\ud83c\udfa8",
+            "save" or "world" or "map" => "\ud83d\uddfa\ufe0f",
+            "modpack" => "\ud83d\udce6",
+            _ => "\ud83d\udce6"
+        };
+    }
+
+    private static string FormatDownloads(long downloads)
+    {
+        if (downloads >= 1_000_000_000)
+            return $"{downloads / 1_000_000_000.0:F1}B";
+        if (downloads >= 1_000_000)
+            return $"{downloads / 1_000_000.0:F1}M";
+        if (downloads >= 1_000)
+            return $"{downloads / 1_000.0:F1}K";
+        return downloads.ToString("N0");
+    }
+
+    private static string FormatRelativeDate(DateTime? date)
+    {
+        if (!date.HasValue) return "Unknown";
+
+        var now = DateTime.UtcNow;
+        var diff = now - date.Value.ToUniversalTime();
+
+        if (diff.TotalSeconds < 60) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+}

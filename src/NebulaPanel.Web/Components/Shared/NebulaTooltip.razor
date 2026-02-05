@@ -1,0 +1,113 @@
+@inherits ComponentBase
+@implements IDisposable
+
+<div class="tooltip-container"
+     @onmouseenter="StartShowTimer"
+     @onmouseleave="Hide"
+     @onfocusin="StartShowTimer"
+     @onfocusout="Hide">
+    @ChildContent
+
+    @if (_isVisible || _isShowing)
+    {
+        <div class="@TooltipClasses" role="tooltip" aria-hidden="@(!_isVisible)">
+            @Text
+            <div class="tooltip-arrow"></div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public RenderFragment ChildContent { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public string Text { get; set; } = string.Empty;
+
+    [Parameter]
+    public TooltipPosition Position { get; set; } = TooltipPosition.Top;
+
+    [Parameter]
+    public int DelayMs { get; set; } = 200;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private bool _isVisible;
+    private bool _isShowing;
+    private Timer? _showTimer;
+    private Timer? _hideTimer;
+
+    private string TooltipClasses
+    {
+        get
+        {
+            var classes = new List<string>
+            {
+                "tooltip",
+                GetPositionClass()
+            };
+
+            if (_isVisible)
+                classes.Add("tooltip-visible");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string GetPositionClass() => Position switch
+    {
+        TooltipPosition.Top => "tooltip-top",
+        TooltipPosition.Bottom => "tooltip-bottom",
+        TooltipPosition.Left => "tooltip-left",
+        TooltipPosition.Right => "tooltip-right",
+        _ => "tooltip-top"
+    };
+
+    private void StartShowTimer()
+    {
+        _hideTimer?.Dispose();
+        _hideTimer = null;
+
+        _isShowing = true;
+        StateHasChanged();
+
+        _showTimer?.Dispose();
+        _showTimer = new Timer(_ =>
+        {
+            _isVisible = true;
+            InvokeAsync(StateHasChanged);
+        }, null, DelayMs, Timeout.Infinite);
+    }
+
+    private void Hide()
+    {
+        _showTimer?.Dispose();
+        _showTimer = null;
+
+        _hideTimer?.Dispose();
+        _hideTimer = new Timer(_ =>
+        {
+            _isVisible = false;
+            _isShowing = false;
+            InvokeAsync(StateHasChanged);
+        }, null, 100, Timeout.Infinite);
+    }
+
+    public void Dispose()
+    {
+        _showTimer?.Dispose();
+        _hideTimer?.Dispose();
+    }
+
+    public enum TooltipPosition
+    {
+        Top,
+        Bottom,
+        Left,
+        Right
+    }
+}

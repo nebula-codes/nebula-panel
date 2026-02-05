@@ -1,0 +1,65 @@
+@*
+    Reusable wizard step indicator component.
+    Displays a horizontal progress indicator with numbered steps.
+*@
+
+<div class="flex items-center justify-center mb-8">
+    @for (int i = 0; i < Steps.Count; i++)
+    {
+        var step = i + 1;
+        var stepInfo = Steps[i];
+        <div class="flex items-center">
+            <div class="@GetStepCircleClass(step)">
+                @if (CurrentStep > step)
+                {
+                    <Icon Name="check" Size="IconSize.Small" />
+                }
+                else
+                {
+                    @step
+                }
+            </div>
+            <span class="@GetStepLabelClass(step) ml-2 text-sm hidden sm:inline">@stepInfo.Label</span>
+            @if (i < Steps.Count - 1)
+            {
+                <div class="w-8 sm:w-16 h-0.5 mx-2 sm:mx-4 @(CurrentStep > step ? "bg-nebula-accent" : "bg-nebula-border-subtle")"></div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The current step (1-based).
+    /// </summary>
+    [Parameter, EditorRequired]
+    public int CurrentStep { get; set; }
+
+    /// <summary>
+    /// List of step information.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<WizardStepInfo> Steps { get; set; } = [];
+
+    private string GetStepCircleClass(int step)
+    {
+        var baseClass = "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors";
+        if (CurrentStep > step)
+            return $"{baseClass} bg-nebula-accent text-white";
+        if (CurrentStep == step)
+            return $"{baseClass} bg-nebula-accent text-white";
+        return $"{baseClass} bg-nebula-bg-tertiary text-nebula-text-muted";
+    }
+
+    private string GetStepLabelClass(int step)
+    {
+        if (CurrentStep >= step)
+            return "text-nebula-text-primary font-medium";
+        return "text-nebula-text-muted";
+    }
+
+    /// <summary>
+    /// Information about a wizard step.
+    /// </summary>
+    public record WizardStepInfo(string Label);
+}

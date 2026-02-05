@@ -1,0 +1,190 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+@using NebulaPanel.Application.DTOs
+@using Microsoft.AspNetCore.Components.Web
+
+<div class="file-list">
+    <div class="file-list-header">
+        <button class="file-list-header-btn file-list-col-name" @onclick="() => SetSort(SortColumn.Name)">
+            <span>Name</span>
+            @if (_sortColumn == SortColumn.Name)
+            {
+                <Icon Name="@(_sortAscending ? "chevron-up" : "chevron-down")" Size="IconSize.XSmall" />
+            }
+        </button>
+        <button class="file-list-header-btn file-list-col-size" @onclick="() => SetSort(SortColumn.Size)">
+            <span>Size</span>
+            @if (_sortColumn == SortColumn.Size)
+            {
+                <Icon Name="@(_sortAscending ? "chevron-up" : "chevron-down")" Size="IconSize.XSmall" />
+            }
+        </button>
+        <button class="file-list-header-btn file-list-col-modified" @onclick="() => SetSort(SortColumn.Modified)">
+            <span>Modified</span>
+            @if (_sortColumn == SortColumn.Modified)
+            {
+                <Icon Name="@(_sortAscending ? "chevron-up" : "chevron-down")" Size="IconSize.XSmall" />
+            }
+        </button>
+    </div>
+
+    @foreach (var entry in SortedEntries)
+    {
+        var isSelected = SelectedItems.Contains(entry.Path);
+        <div class="file-list-item @(isSelected ? "selected" : "") @(entry.IsHidden ? "opacity-60" : "")"
+             @onclick="e => HandleClick(e, entry.Path)"
+             @onclick:stopPropagation
+             @ondblclick="() => OnOpen.InvokeAsync(entry)"
+             @oncontextmenu="e => OnContextMenu.InvokeAsync((entry, e))"
+             @oncontextmenu:preventDefault>
+
+            <div class="file-list-col-name">
+                <div class="file-list-icon">
+                    @if (entry.Type == "directory")
+                    {
+                        <Icon Name="folder" Size="IconSize.Small" Class="text-nebula-warning" />
+                    }
+                    else
+                    {
+                        <Icon Name="@GetFileIcon(entry.Extension)" Size="IconSize.Small" Class="text-nebula-text-secondary" />
+                    }
+                </div>
+                <span class="truncate" title="@entry.Name">@entry.Name</span>
+                @if (entry.IsEditable)
+                {
+                    <Icon Name="edit" Size="IconSize.XSmall" Class="text-nebula-text-muted ml-1" Title="Editable" />
+                }
+            </div>
+
+            <div class="file-list-col-size">
+                @if (entry.Type == "file" && entry.Size.HasValue)
+                {
+                    @FormatFileSize(entry.Size.Value)
+                }
+                else if (entry.Type == "directory")
+                {
+                    <span class="text-nebula-text-muted">—</span>
+                }
+            </div>
+
+            <div class="file-list-col-modified">
+                @FormatDate(entry.ModifiedAt)
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<FileSystemEntryDto> Entries { get; set; } = [];
+    [Parameter] public HashSet<string> SelectedItems { get; set; } = [];
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+    [Parameter] public EventCallback<string> OnMultiSelect { get; set; }
+    [Parameter] public EventCallback<FileSystemEntryDto> OnOpen { get; set; }
+    [Parameter] public EventCallback<(FileSystemEntryDto Entry, MouseEventArgs Args)> OnContextMenu { get; set; }
+
+    private SortColumn _sortColumn = SortColumn.Name;
+    private bool _sortAscending = true;
+
+    private enum SortColumn { Name, Size, Modified }
+
+    private IEnumerable<FileSystemEntryDto> SortedEntries
+    {
+        get
+        {
+            // Always keep directories first, then sort within each group
+            var directories = Entries.Where(e => e.Type == "directory");
+            var files = Entries.Where(e => e.Type != "directory");
+
+            directories = SortEntries(directories);
+            files = SortEntries(files);
+
+            return directories.Concat(files);
+        }
+    }
+
+    private IEnumerable<FileSystemEntryDto> SortEntries(IEnumerable<FileSystemEntryDto> entries)
+    {
+        return _sortColumn switch
+        {
+            SortColumn.Name => _sortAscending
+                ? entries.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                : entries.OrderByDescending(e => e.Name, StringComparer.OrdinalIgnoreCase),
+            SortColumn.Size => _sortAscending
+                ? entries.OrderBy(e => e.Size ?? 0)
+                : entries.OrderByDescending(e => e.Size ?? 0),
+            SortColumn.Modified => _sortAscending
+                ? entries.OrderBy(e => e.ModifiedAt)
+                : entries.OrderByDescending(e => e.ModifiedAt),
+            _ => entries
+        };
+    }
+
+    private void SetSort(SortColumn column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortAscending = !_sortAscending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortAscending = true;
+        }
+    }
+
+    private async Task HandleClick(MouseEventArgs e, string path)
+    {
+        if (e.CtrlKey || e.MetaKey)
+        {
+            await OnMultiSelect.InvokeAsync(path);
+        }
+        else
+        {
+            await OnSelect.InvokeAsync(path);
+        }
+    }
+
+    private string GetFileIcon(string? extension) => extension?.ToLowerInvariant() switch
+    {
+        ".json" => "file-json",
+        ".xml" or ".yaml" or ".yml" => "file-code",
+        ".properties" or ".cfg" or ".conf" or ".ini" or ".toml" => "settings",
+        ".sh" or ".bat" or ".cmd" or ".ps1" => "terminal",
+        ".log" or ".txt" or ".md" => "file-text",
+        ".zip" or ".tar" or ".gz" or ".7z" => "package",
+        ".jar" => "box",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" => "image",
+        ".js" or ".ts" or ".py" or ".java" or ".cs" or ".lua" => "file-code",
+        _ => "file"
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    private static string FormatDate(DateTime date)
+    {
+        var local = date.ToLocalTime();
+        var now = DateTime.Now;
+
+        if (local.Date == now.Date)
+        {
+            return local.ToString("h:mm tt");
+        }
+        if (local.Year == now.Year)
+        {
+            return local.ToString("MMM d, h:mm tt");
+        }
+        return local.ToString("MMM d, yyyy");
+    }
+}

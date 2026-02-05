@@ -1,0 +1,211 @@
+.install-error-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: linear-gradient(180deg, var(--nebula-bg-void) 0%, var(--nebula-bg-primary) 100%);
+}
+
+.install-error-content {
+    width: 100%;
+    max-width: 500px;
+    text-align: center;
+}
+
+/* Error Icon */
+.error-icon-wrapper {
+    margin-bottom: 1.5rem;
+}
+
+.error-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--nebula-error) 0%, #f43f5e 100%);
+    color: white;
+    animation: shake 0.5s ease-out;
+    box-shadow:
+        0 0 0 8px rgba(239, 68, 68, 0.1),
+        0 0 0 16px rgba(239, 68, 68, 0.05);
+}
+
+@keyframes shake {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    10%, 30%, 50%, 70%, 90% {
+        transform: translateX(-4px);
+    }
+    20%, 40%, 60%, 80% {
+        transform: translateX(4px);
+    }
+}
+
+/* Title */
+.error-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--nebula-text-primary);
+    margin-bottom: 1.5rem;
+}
+
+/* Error Message Box */
+.error-message-box {
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: var(--nebula-radius-lg);
+    padding: 1rem 1.5rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.error-message {
+    color: var(--nebula-error);
+    font-weight: 500;
+    margin: 0;
+    font-size: 0.875rem;
+}
+
+.error-details {
+    color: var(--nebula-text-muted);
+    font-size: 0.75rem;
+    margin: 0.5rem 0 0 0;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Log Section */
+.log-section {
+    margin-bottom: 1.5rem;
+}
+
+.log-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: none;
+    color: var(--nebula-text-secondary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--nebula-radius);
+    transition: all 0.15s ease;
+}
+
+.log-toggle:hover {
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-primary);
+}
+
+.log-viewer {
+    margin-top: 1rem;
+    background-color: var(--nebula-bg-void);
+    border-radius: var(--nebula-radius);
+    border: 1px solid var(--nebula-border-subtle);
+    padding: 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+    text-align: left;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.75rem;
+}
+
+.log-line {
+    color: var(--nebula-text-muted);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-line.error {
+    color: var(--nebula-error);
+}
+
+/* Help Section */
+.help-section {
+    margin-bottom: 1rem;
+}
+
+.help-text {
+    color: var(--nebula-text-secondary);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+/* Error Tips */
+.error-tips {
+    background-color: var(--nebula-bg-secondary);
+    border-radius: var(--nebula-radius-lg);
+    border: 1px solid var(--nebula-border-subtle);
+    padding: 1rem 1.5rem;
+    text-align: left;
+}
+
+.error-tips .tips-header {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--nebula-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+}
+
+.error-tips .tips-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.error-tips .tips-list li {
+    position: relative;
+    padding-left: 1.25rem;
+    font-size: 0.875rem;
+    color: var(--nebula-text-secondary);
+    line-height: 1.6;
+}
+
+.error-tips .tips-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6em;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: var(--nebula-text-muted);
+}
+
+.error-tips .tips-list li:not(:last-child) {
+    margin-bottom: 0.5rem;
+}
+
+/* Scrollbar styling for log viewer */
+.log-viewer::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-viewer::-webkit-scrollbar-track {
+    background: var(--nebula-bg-tertiary);
+    border-radius: 3px;
+}
+
+.log-viewer::-webkit-scrollbar-thumb {
+    background: var(--nebula-border);
+    border-radius: 3px;
+}
+
+.log-viewer::-webkit-scrollbar-thumb:hover {
+    background: var(--nebula-text-muted);
+}

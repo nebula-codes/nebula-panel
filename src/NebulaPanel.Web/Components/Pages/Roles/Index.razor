@@ -1,0 +1,304 @@
+@page "/roles"
+@attribute [Authorize(Policy = "ManageRoles")]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IRoleService RoleService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Roles - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Roles</h1>
+            <p class="text-nebula-text-muted mt-1">Manage roles and their permissions.</p>
+        </div>
+        <Button Variant="ButtonVariant.Primary"
+                Text="Create Role"
+                IconName="shield-plus"
+                OnClick="@(() => Navigation.NavigateTo("/roles/create"))" />
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    <DataGrid TItem="RoleListItem"
+              Items="_roles"
+              Loading="_loading"
+              Searchable="true"
+              SearchPlaceholder="Search roles..."
+              SearchFields="@(r => $"{r.Role.Name} {r.Role.Description}")"
+              Pageable="true"
+              PageSize="10"
+              EmptyMessage="No roles found."
+              OnRowClick="ViewRole"
+              RowClickable="@(_ => true)">
+        <Columns>
+            <DataGridColumn TItem="RoleListItem"
+                           Title="Role"
+                           Field="@(r => r.Role.Name)"
+                           Sortable="true">
+                <Template Context="item">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 @GetRoleIconBackground(item.Role.Name) rounded-full flex items-center justify-center">
+                            <Icon Name="shield" Size="IconSize.Small" Class="@GetRoleIconColor(item.Role.Name)" />
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium text-nebula-text-primary">@item.Role.Name</span>
+                                @if (item.Role.IsSystemRole)
+                                {
+                                    <span class="px-1.5 py-0.5 text-xs bg-nebula-bg-tertiary text-nebula-text-muted rounded">System</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrEmpty(item.Role.Description))
+                            {
+                                <div class="text-sm text-nebula-text-muted">@item.Role.Description</div>
+                            }
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="RoleListItem"
+                           Title="Priority"
+                           Field="@(r => r.Role.Priority)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="item">
+                    <span class="text-sm text-nebula-text-secondary">@item.Role.Priority</span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="RoleListItem"
+                           Title="Permissions"
+                           Field="@(r => r.PermissionCount)"
+                           Sortable="true"
+                           Width="120px">
+                <Template Context="item">
+                    <div class="flex items-center gap-1.5">
+                        <Icon Name="key" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        <span class="text-sm text-nebula-text-secondary">@item.PermissionCount</span>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="RoleListItem"
+                           Title="Users"
+                           Field="@(r => r.UserCount)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="item">
+                    <div class="flex items-center gap-1.5">
+                        <Icon Name="users" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        <span class="text-sm text-nebula-text-secondary">@item.UserCount</span>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="RoleListItem"
+                           Title=""
+                           Width="120px">
+                <Template Context="item">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="eye"
+                                IconOnly="true"
+                                OnClick="@(() => ViewRole(item))"
+                                title="View" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="pencil"
+                                IconOnly="true"
+                                OnClick="@(() => EditRole(item))"
+                                title="@(item.Role.IsSystemRole ? "View (system role)" : "Edit")" />
+                        @if (!item.Role.IsSystemRole)
+                        {
+                            <Button Variant="ButtonVariant.Ghost"
+                                    Size="ButtonSize.Small"
+                                    IconName="trash-2"
+                                    IconOnly="true"
+                                    OnClick="@(() => ConfirmDelete(item))"
+                                    title="Delete" />
+                        }
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+
+        <EmptyAction>
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Create Your First Role"
+                    IconName="shield-plus"
+                    OnClick="@(() => Navigation.NavigateTo("/roles/create"))" />
+        </EmptyAction>
+    </DataGrid>
+</div>
+
+@if (_showDeleteConfirm && _roleToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete Role</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_roleToDelete.Role.Name</strong>?
+            </p>
+            @if (_roleToDelete.UserCount > 0)
+            {
+                <div class="mt-3 p-3 bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula text-sm">
+                    <div class="flex items-start gap-2">
+                        <Icon Name="alert-triangle" Size="IconSize.Small" Class="mt-0.5 flex-shrink-0" />
+                        <span>This role has @_roleToDelete.UserCount user(s) assigned. You must remove all users from this role before deleting it.</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone.</p>
+            }
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDelete" />
+                <Button Variant="ButtonVariant.Danger"
+                        Text="Delete"
+                        Loading="_deleting"
+                        Disabled="@(_roleToDelete.UserCount > 0)"
+                        OnClick="DeleteRole" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private List<RoleListItem> _roles = [];
+    private bool _loading = true;
+    private string? _error;
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private RoleListItem? _roleToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRolesAsync();
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            var roles = await RoleService.GetAllRolesAsync();
+
+            _roles = [];
+            foreach (var role in roles)
+            {
+                var detail = await RoleService.GetRoleDetailAsync(role.Id);
+                if (detail.IsSuccess)
+                {
+                    _roles.Add(new RoleListItem(
+                        role,
+                        detail.Value!.Permissions.Count(p => p.IsAssigned),
+                        detail.Value.UserCount
+                    ));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ViewRole(RoleListItem item)
+    {
+        Navigation.NavigateTo($"/roles/{item.Role.Id}/edit");
+    }
+
+    private void EditRole(RoleListItem item)
+    {
+        Navigation.NavigateTo($"/roles/{item.Role.Id}/edit");
+    }
+
+    private void ConfirmDelete(RoleListItem item)
+    {
+        _roleToDelete = item;
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _roleToDelete = null;
+        _showDeleteConfirm = false;
+    }
+
+    private async Task DeleteRole()
+    {
+        if (_roleToDelete is null) return;
+
+        try
+        {
+            _deleting = true;
+            var result = await RoleService.DeleteRoleAsync(_roleToDelete.Role.Id, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _roles.Remove(_roleToDelete);
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteConfirm = false;
+            _roleToDelete = null;
+        }
+    }
+
+    private static string GetRoleIconBackground(string roleName) => roleName.ToLowerInvariant() switch
+    {
+        "admin" => "bg-nebula-error/20",
+        "moderator" => "bg-nebula-warning/20",
+        "user" => "bg-nebula-accent/20",
+        _ => "bg-nebula-bg-tertiary"
+    };
+
+    private static string GetRoleIconColor(string roleName) => roleName.ToLowerInvariant() switch
+    {
+        "admin" => "text-nebula-error",
+        "moderator" => "text-nebula-warning",
+        "user" => "text-nebula-accent",
+        _ => "text-nebula-text-secondary"
+    };
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private record RoleListItem(RoleDto Role, int PermissionCount, int UserCount);
+}

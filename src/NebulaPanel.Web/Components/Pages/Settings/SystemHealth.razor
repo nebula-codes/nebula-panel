@@ -1,0 +1,369 @@
+@page "/settings/system-health"
+@attribute [Authorize(Roles = "Admin")]
+@inject HealthCheckService HealthCheckService
+@inject NavigationManager NavigationManager
+@inject IToastService ToastService
+@using NebulaPanel.Application.DTOs
+@using Microsoft.Extensions.Diagnostics.HealthChecks
+@using System.Text.Json
+@implements IDisposable
+
+<PageTitle>System Health - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    <div class="flex items-center gap-4 mb-6">
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="arrow-left"
+                OnClick="@(() => NavigationManager.NavigateTo("/settings"))" />
+        <div class="flex-1">
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">System Health</h1>
+            <p class="text-nebula-text-muted">Monitor system health checks and service status.</p>
+        </div>
+        <Button Variant="ButtonVariant.Secondary"
+                IconName="refresh-cw"
+                Text="Refresh"
+                Loading="_isLoading"
+                OnClick="LoadHealthReportAsync" />
+    </div>
+
+    @* Overall Status Banner *@
+    <Card Class="mb-6">
+        <div class="flex items-center gap-4">
+            <div class="p-3 rounded-nebula-lg @GetStatusBgClass(_healthReport?.Status ?? "Unknown")">
+                <Icon Name="@GetStatusIcon(_healthReport?.Status ?? "Unknown")"
+                      Size="IconSize.Large"
+                      Class="@GetStatusTextClass(_healthReport?.Status ?? "Unknown")" />
+            </div>
+            <div class="flex-1">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-xl font-semibold text-nebula-text-primary">
+                        @GetStatusLabel(_healthReport?.Status ?? "Unknown")
+                    </h2>
+                    <StatusBadge Status="@GetBadgeStatus(_healthReport?.Status ?? "Unknown")"
+                                 Text="@(_healthReport?.Status ?? "Unknown")"
+                                 ShowDot="true" />
+                </div>
+                <p class="text-sm text-nebula-text-muted mt-1">
+                    @if (_healthReport is not null)
+                    {
+                        <span>Last checked: @_healthReport.Timestamp.ToLocalTime().ToString("g")</span>
+                        <span class="mx-2">•</span>
+                        <span>Duration: @_healthReport.TotalDuration.TotalMilliseconds.ToString("0")ms</span>
+                    }
+                    else if (_isLoading)
+                    {
+                        <span>Loading health status...</span>
+                    }
+                    else
+                    {
+                        <span>Unable to retrieve health status</span>
+                    }
+                </p>
+            </div>
+        </div>
+    </Card>
+
+    @* Health Checks Grid *@
+    @if (_isLoading && _healthReport is null)
+    {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            @for (int i = 0; i < 5; i++)
+            {
+                <Card>
+                    <div class="animate-pulse">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div class="w-10 h-10 bg-nebula-bg-tertiary rounded-nebula"></div>
+                            <div class="flex-1">
+                                <div class="h-4 bg-nebula-bg-tertiary rounded w-24 mb-2"></div>
+                                <div class="h-3 bg-nebula-bg-tertiary rounded w-16"></div>
+                            </div>
+                        </div>
+                        <div class="h-3 bg-nebula-bg-tertiary rounded w-full"></div>
+                    </div>
+                </Card>
+            }
+        </div>
+    }
+    else if (_healthReport?.Entries is not null)
+    {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            @foreach (var entry in _healthReport.Entries.OrderBy(e => GetStatusOrder(e.Status)))
+            {
+                <Card Class="@GetCardBorderClass(entry.Status)">
+                    <div class="flex items-start gap-3">
+                        <div class="p-2 rounded-nebula @GetStatusBgClass(entry.Status)">
+                            <Icon Name="@GetCheckIcon(entry.Name)"
+                                  Size="IconSize.Medium"
+                                  Class="@GetStatusTextClass(entry.Status)" />
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center justify-between gap-2">
+                                <h3 class="font-medium text-nebula-text-primary">@GetCheckDisplayName(entry.Name)</h3>
+                                <StatusBadge Status="@GetBadgeStatus(entry.Status)"
+                                             Text="@entry.Status"
+                                             Size="StatusBadge.BadgeSize.Small" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(entry.Description))
+                            {
+                                <p class="text-sm text-nebula-text-muted mt-1 truncate" title="@entry.Description">
+                                    @entry.Description
+                                </p>
+                            }
+                            <p class="text-xs text-nebula-text-muted mt-2">
+                                Response time: @entry.Duration.TotalMilliseconds.ToString("0")ms
+                            </p>
+
+                            @* Additional data if available *@
+                            @if (entry.Data?.Count > 0)
+                            {
+                                <button @onclick="() => ToggleDetails(entry.Name)"
+                                        class="text-xs text-nebula-accent hover:text-nebula-accent-hover mt-2 flex items-center gap-1">
+                                    <Icon Name="@(_expandedChecks.Contains(entry.Name) ? "chevron-up" : "chevron-down")"
+                                          Size="IconSize.XSmall" />
+                                    @(_expandedChecks.Contains(entry.Name) ? "Hide details" : "Show details")
+                                </button>
+
+                                @if (_expandedChecks.Contains(entry.Name))
+                                {
+                                    <div class="mt-3 pt-3 border-t border-nebula-border-subtle">
+                                        <dl class="space-y-1 text-xs">
+                                            @foreach (var kvp in entry.Data)
+                                            {
+                                                <div class="flex justify-between gap-2">
+                                                    <dt class="text-nebula-text-muted">@FormatDataKey(kvp.Key)</dt>
+                                                    <dd class="text-nebula-text-secondary font-mono">@FormatDataValue(kvp.Value)</dd>
+                                                </div>
+                                            }
+                                        </dl>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </Card>
+            }
+        </div>
+    }
+    else if (_error is not null)
+    {
+        <Card>
+            <div class="flex flex-col items-center justify-center py-8 text-center">
+                <div class="p-3 rounded-full bg-nebula-error/10 mb-4">
+                    <Icon Name="alert-triangle" Size="IconSize.Large" Class="text-nebula-error" />
+                </div>
+                <h3 class="text-lg font-medium text-nebula-text-primary mb-2">Failed to Load Health Status</h3>
+                <p class="text-sm text-nebula-text-muted mb-4">@_error</p>
+                <Button Variant="ButtonVariant.Secondary"
+                        IconName="refresh-cw"
+                        Text="Try Again"
+                        OnClick="LoadHealthReportAsync" />
+            </div>
+        </Card>
+    }
+
+    @* Info Section *@
+    <Card Class="mt-6">
+        <CardHeader Title="About Health Checks" />
+        <div class="prose prose-sm text-nebula-text-secondary">
+            <p>Health checks monitor the status of critical system components:</p>
+            <ul class="list-disc list-inside space-y-1 mt-2 text-sm">
+                <li><strong>Database</strong> - Verifies database connectivity and responsiveness</li>
+                <li><strong>Docker</strong> - Checks if Docker daemon is reachable (optional for native servers)</li>
+                <li><strong>Disk Space</strong> - Ensures all drives have at least 1GB free space</li>
+                <li><strong>Memory</strong> - Monitors system memory usage (warns above 90%)</li>
+                <li><strong>External APIs</strong> - Checks connectivity to mod providers (CurseForge, Modrinth)</li>
+            </ul>
+        </div>
+    </Card>
+
+    @* API Endpoints Info *@
+    <Card Class="mt-4">
+        <CardHeader Title="Health Check Endpoints" />
+        <div class="space-y-3 text-sm">
+            <div class="flex items-start gap-3 p-3 bg-nebula-bg-tertiary rounded-nebula">
+                <code class="text-nebula-accent font-mono text-xs">GET /health</code>
+                <span class="text-nebula-text-muted">Overall health status for load balancers</span>
+            </div>
+            <div class="flex items-start gap-3 p-3 bg-nebula-bg-tertiary rounded-nebula">
+                <code class="text-nebula-accent font-mono text-xs">GET /health/live</code>
+                <span class="text-nebula-text-muted">Kubernetes liveness probe (always 200 if app running)</span>
+            </div>
+            <div class="flex items-start gap-3 p-3 bg-nebula-bg-tertiary rounded-nebula">
+                <code class="text-nebula-accent font-mono text-xs">GET /health/ready</code>
+                <span class="text-nebula-text-muted">Kubernetes readiness probe (checks dependencies)</span>
+            </div>
+        </div>
+    </Card>
+</div>
+
+@code {
+    private DetailedHealthReportDto? _healthReport;
+    private bool _isLoading = true;
+    private string? _error;
+    private HashSet<string> _expandedChecks = new();
+    private System.Timers.Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHealthReportAsync();
+
+        // Auto-refresh every 30 seconds
+        _refreshTimer = new System.Timers.Timer(30000);
+        _refreshTimer.Elapsed += async (_, _) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadHealthReportAsync();
+                StateHasChanged();
+            });
+        };
+        _refreshTimer.Start();
+    }
+
+    private async Task LoadHealthReportAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _error = null;
+            StateHasChanged();
+
+            var report = await HealthCheckService.CheckHealthAsync();
+
+            // Convert to DTO format
+            var entries = report.Entries.Select(e => new HealthCheckEntryDto(
+                Name: e.Key,
+                Status: e.Value.Status.ToString(),
+                Description: e.Value.Description,
+                Duration: e.Value.Duration,
+                Data: e.Value.Data?.Count > 0
+                    ? e.Value.Data.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                    : null
+            )).ToList();
+
+            _healthReport = new DetailedHealthReportDto(
+                Status: report.Status.ToString(),
+                TotalDuration: report.TotalDuration,
+                Entries: entries,
+                Timestamp: DateTime.UtcNow
+            );
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ToggleDetails(string checkName)
+    {
+        if (_expandedChecks.Contains(checkName))
+            _expandedChecks.Remove(checkName);
+        else
+            _expandedChecks.Add(checkName);
+    }
+
+    private static string GetStatusLabel(string status) => status switch
+    {
+        "Healthy" => "All Systems Operational",
+        "Degraded" => "Some Services Degraded",
+        "Unhealthy" => "System Issues Detected",
+        _ => "Unknown Status"
+    };
+
+    private static string GetStatusIcon(string status) => status switch
+    {
+        "Healthy" => "check-circle",
+        "Degraded" => "alert-circle",
+        "Unhealthy" => "x-circle",
+        _ => "help-circle"
+    };
+
+    private static string GetStatusBgClass(string status) => status switch
+    {
+        "Healthy" => "bg-nebula-success/10",
+        "Degraded" => "bg-nebula-warning/10",
+        "Unhealthy" => "bg-nebula-error/10",
+        _ => "bg-nebula-bg-tertiary"
+    };
+
+    private static string GetStatusTextClass(string status) => status switch
+    {
+        "Healthy" => "text-nebula-success",
+        "Degraded" => "text-nebula-warning",
+        "Unhealthy" => "text-nebula-error",
+        _ => "text-nebula-text-muted"
+    };
+
+    private static string GetCardBorderClass(string status) => status switch
+    {
+        "Unhealthy" => "border-nebula-error/30",
+        "Degraded" => "border-nebula-warning/30",
+        _ => ""
+    };
+
+    private static StatusBadge.StatusType GetBadgeStatus(string status) => status switch
+    {
+        "Healthy" => StatusBadge.StatusType.Success,
+        "Degraded" => StatusBadge.StatusType.Warning,
+        "Unhealthy" => StatusBadge.StatusType.Error,
+        _ => StatusBadge.StatusType.Neutral
+    };
+
+    private static int GetStatusOrder(string status) => status switch
+    {
+        "Unhealthy" => 0,
+        "Degraded" => 1,
+        "Healthy" => 2,
+        _ => 3
+    };
+
+    private static string GetCheckIcon(string checkName) => checkName.ToLowerInvariant() switch
+    {
+        "database" => "database",
+        "docker" => "container",
+        "disk_space" => "hard-drive",
+        "memory" => "cpu",
+        "external_apis" => "globe",
+        _ => "activity"
+    };
+
+    private static string GetCheckDisplayName(string checkName) => checkName.ToLowerInvariant() switch
+    {
+        "database" => "Database",
+        "docker" => "Docker",
+        "disk_space" => "Disk Space",
+        "memory" => "Memory",
+        "external_apis" => "External APIs",
+        _ => checkName.Replace("_", " ")
+    };
+
+    private static string FormatDataKey(string key)
+    {
+        return key.Replace("_", " ").Replace("percent", "%");
+    }
+
+    private static string FormatDataValue(object value)
+    {
+        if (value is JsonElement element)
+        {
+            return element.ValueKind switch
+            {
+                JsonValueKind.True => "Yes",
+                JsonValueKind.False => "No",
+                JsonValueKind.Number => element.TryGetDouble(out var d) ? d.ToString("0.##") : element.ToString(),
+                _ => element.ToString()
+            };
+        }
+        return value?.ToString() ?? "N/A";
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Stop();
+        _refreshTimer?.Dispose();
+    }
+}

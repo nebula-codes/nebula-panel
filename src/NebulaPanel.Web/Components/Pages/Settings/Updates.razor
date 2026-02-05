@@ -1,0 +1,944 @@
+@page "/settings/updates"
+@attribute [Authorize]
+@using Markdig
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Domain.ValueObjects
+@inject ISettingsService SettingsService
+@inject IUpdateService UpdateService
+@inject IUpdateScheduleService ScheduleService
+@inject IUpdateHistoryService HistoryService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Update Settings - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Updates</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Update Settings</h1>
+    <p class="text-nebula-text-muted mb-6">Configure automatic update checking and update channels.</p>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-6">
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Current Version</h2>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="ButtonVariant.Secondary"
+                                    Size="ButtonSize.Small"
+                                    Text="Check Now"
+                                    Loading="_checking"
+                                    OnClick="ManualCheckForUpdates" />
+                            @if (!string.IsNullOrEmpty(_settings?.LatestAvailableVersion) && _settings.LatestAvailableVersion != _settings.CurrentVersion)
+                            {
+                                <span class="px-2 py-1 text-xs font-medium bg-nebula-accent/20 text-nebula-accent rounded">
+                                    Update Available
+                                </span>
+                            }
+                        </div>
+                    </div>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Installed Version</p>
+                            <p class="text-xl font-semibold text-nebula-text-primary mt-1">@(_settings?.CurrentVersion ?? "Unknown")</p>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_settings?.LatestAvailableVersion))
+                        {
+                            <div>
+                                <p class="text-sm text-nebula-text-muted">Latest Available</p>
+                                <p class="text-xl font-semibold text-nebula-accent mt-1">@_settings.LatestAvailableVersion</p>
+                            </div>
+                        }
+
+                        @if (_settings?.LastCheckAt.HasValue == true)
+                        {
+                            <div>
+                                <p class="text-sm text-nebula-text-muted">Last Checked</p>
+                                <p class="text-nebula-text-secondary mt-1">@_settings.LastCheckAt.Value.ToString("MMM d, yyyy h:mm tt")</p>
+                            </div>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Update Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-6">
+                        <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                            <div>
+                                <p class="font-medium text-nebula-text-primary">Enable Updates</p>
+                                <p class="text-sm text-nebula-text-muted">Allow the panel to check for and install updates.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" @bind="_enabled" class="sr-only peer" />
+                                <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                            </label>
+                        </div>
+
+                        @if (_enabled)
+                        {
+                            <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                                <div>
+                                    <p class="font-medium text-nebula-text-primary">Automatic Check</p>
+                                    <p class="text-sm text-nebula-text-muted">Automatically check for updates at regular intervals.</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" @bind="_autoCheck" class="sr-only peer" />
+                                    <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                                </label>
+                            </div>
+
+                            @if (_autoCheck)
+                            {
+                                <div class="form-group">
+                                    <label class="label">Check Interval</label>
+                                    <select @bind="_checkIntervalHours" class="input">
+                                        <option value="1">Every hour</option>
+                                        <option value="6">Every 6 hours</option>
+                                        <option value="12">Every 12 hours</option>
+                                        <option value="24">Every 24 hours</option>
+                                        <option value="168">Every week</option>
+                                    </select>
+                                    <p class="text-xs text-nebula-text-muted mt-1">How often to check for new updates.</p>
+                                </div>
+                            }
+
+                            <div class="form-group">
+                                <label class="label">Update Channel</label>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                                    @foreach (var channel in _channels)
+                                    {
+                                        <div @onclick="@(() => _channel = channel.Id)"
+                                             class="@GetChannelCardClass(channel.Id) cursor-pointer p-4 rounded-nebula border-2 transition-all">
+                                            <div class="flex items-center gap-2 mb-2">
+                                                <Icon Name="@channel.Icon" Size="IconSize.Small" Class="@GetChannelIconClass(channel.Id)" />
+                                                <span class="font-medium text-nebula-text-primary">@channel.Name</span>
+                                            </div>
+                                            <p class="text-sm text-nebula-text-muted">@channel.Description</p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="flex justify-end gap-3 pt-4 border-t border-nebula-border">
+                            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => Navigation.NavigateTo("/settings"))" />
+                            <Button Variant="ButtonVariant.Primary" Text="Save Changes" Loading="_saving" OnClick="SaveSettings" />
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            @* Scheduled Update Card *@
+            @if (_pendingSchedule is not null)
+            {
+                <Card>
+                    <Header>
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-lg font-medium text-nebula-text-primary">Scheduled Update</h2>
+                            <span class="px-2 py-1 text-xs font-medium bg-amber-500/20 text-amber-500 rounded">
+                                Pending
+                            </span>
+                        </div>
+                    </Header>
+                    <ChildContent>
+                        <div class="p-4 bg-amber-500/10 border border-amber-500/30 rounded-nebula">
+                            <div class="flex items-center gap-3 mb-3">
+                                <Icon Name="clock" Size="IconSize.Medium" Class="text-amber-500" />
+                                <span class="text-lg font-medium text-nebula-text-primary">
+                                    Update to v@(_pendingSchedule.TargetVersion)
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+                                <div>
+                                    <span class="text-nebula-text-muted">Scheduled for:</span>
+                                    <span class="ml-2 text-nebula-text-primary">@_pendingSchedule.ScheduledAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                                </div>
+                                <div>
+                                    <span class="text-nebula-text-muted">Scheduled by:</span>
+                                    <span class="ml-2 text-nebula-text-primary">@_pendingSchedule.CreatedByUser?.Username</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <Button Variant="ButtonVariant.Danger"
+                                        Size="ButtonSize.Small"
+                                        Text="Cancel Update"
+                                        Loading="_cancellingSchedule"
+                                        OnClick="CancelScheduledUpdate" />
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            @* Available Update Card with Release Notes *@
+            @if (_availableRelease is not null)
+            {
+                <Card>
+                    <Header>
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-lg font-medium text-nebula-text-primary">Available Update</h2>
+                            <span class="px-2 py-1 text-xs font-medium bg-nebula-accent/20 text-nebula-accent rounded">
+                                v@(_availableRelease.Version)
+                            </span>
+                        </div>
+                    </Header>
+                    <ChildContent>
+                        <div class="space-y-4">
+                            <div class="prose prose-invert max-w-none max-h-64 overflow-y-auto">
+                                @((MarkupString)RenderMarkdown(_availableRelease.Body))
+                            </div>
+                            <div class="flex items-center gap-3 pt-4 border-t border-nebula-border">
+                                <Button Variant="ButtonVariant.Primary"
+                                        Text="Update Now"
+                                        Loading="_updating"
+                                        OnClick="StartUpdate" />
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Text="Schedule Update"
+                                        OnClick="ShowScheduleModal" />
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            @* Update History Card *@
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Update History</h2>
+                        <span class="text-sm text-nebula-text-muted">@(_updateHistory?.Count ?? 0) updates</span>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_loadingHistory)
+                    {
+                        <div class="flex items-center justify-center py-8">
+                            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-nebula-accent"></div>
+                        </div>
+                    }
+                    else if (_updateHistory is null || _updateHistory.Count == 0)
+                    {
+                        <div class="text-center py-8 text-nebula-text-muted">
+                            <Icon Name="history" Size="IconSize.Large" Class="mx-auto mb-2 opacity-50" />
+                            <p>No update history</p>
+                            <p class="text-sm mt-1">Updates will be logged here.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-3">
+                            @foreach (var history in _updateHistory)
+                            {
+                                <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            @if (history.Success)
+                                            {
+                                                <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                            }
+                                            else
+                                            {
+                                                <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-error" />
+                                            }
+                                            <span class="font-medium text-nebula-text-primary">@history.FromVersion</span>
+                                            <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                            <span class="font-medium @(history.Success ? "text-nebula-success" : "text-nebula-error")">@history.ToVersion</span>
+                                            @if (history.WasScheduled)
+                                            {
+                                                <span class="px-1.5 py-0.5 text-xs bg-nebula-bg-tertiary text-nebula-text-muted rounded">Scheduled</span>
+                                            }
+                                            @if (history.WasRolledBack)
+                                            {
+                                                <span class="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-500 rounded">Rolled Back</span>
+                                            }
+                                        </div>
+                                        <div class="flex items-center gap-4 mt-1 text-sm text-nebula-text-muted">
+                                            <span>@history.StartedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                                            @if (!string.IsNullOrEmpty(history.InitiatedByUser?.Username))
+                                            {
+                                                <span>by @history.InitiatedByUser.Username</span>
+                                            }
+                                        </div>
+                                        @if (!history.Success && !string.IsNullOrEmpty(history.ErrorMessage))
+                                        {
+                                            <div class="mt-2 text-sm text-nebula-error">
+                                                @history.ErrorMessage
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Update Backups</h2>
+                        <span class="text-sm text-nebula-text-muted">@(_backups?.Count ?? 0) backups</span>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_loadingBackups)
+                    {
+                        <div class="flex items-center justify-center py-8">
+                            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-nebula-accent"></div>
+                        </div>
+                    }
+                    else if (_backups is null || _backups.Count == 0)
+                    {
+                        <div class="text-center py-8 text-nebula-text-muted">
+                            <Icon Name="archive" Size="IconSize.Large" Class="mx-auto mb-2 opacity-50" />
+                            <p>No backups available</p>
+                            <p class="text-sm mt-1">Backups are automatically created before updates.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="space-y-3">
+                            @foreach (var backup in _backups)
+                            {
+                                <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium text-nebula-text-primary">@backup.FromVersion</span>
+                                            <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                            <span class="font-medium text-nebula-accent">@backup.ForVersion</span>
+                                        </div>
+                                        <div class="flex items-center gap-4 mt-1 text-sm text-nebula-text-muted">
+                                            <span>@backup.CreatedAt.ToString("MMM d, yyyy h:mm tt")</span>
+                                            <span>@FormatBytes(backup.SizeBytes)</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <Button Variant="ButtonVariant.Secondary"
+                                                Size="ButtonSize.Small"
+                                                Text="Restore"
+                                                OnClick="@(() => ShowRestoreConfirmation(backup))" />
+                                        <Button Variant="ButtonVariant.Ghost"
+                                                Size="ButtonSize.Small"
+                                                OnClick="@(() => ShowDeleteConfirmation(backup))">
+                                            <Icon Name="trash-2" Size="IconSize.Small" Class="text-nebula-error" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+        </div>
+    }
+</div>
+
+@* Restore Confirmation Modal *@
+<Modal @bind-IsOpen="_showRestoreModal" Title="Confirm Restore">
+    <ChildContent>
+        <p class="text-nebula-text-secondary">
+            Are you sure you want to restore from this backup? This will:
+        </p>
+        <ul class="list-disc list-inside mt-2 text-nebula-text-muted text-sm">
+            <li>Stop any running game servers</li>
+            <li>Replace the current database and configuration</li>
+            <li>Restart the game servers</li>
+        </ul>
+        <div class="mt-4 p-3 bg-nebula-bg-secondary rounded-nebula">
+            <p class="text-sm">
+                <strong>From:</strong> @_selectedBackup?.FromVersion<br />
+                <strong>Created:</strong> @_selectedBackup?.CreatedAt.ToString("f")
+            </p>
+        </div>
+    </ChildContent>
+    <Footer>
+        <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CloseRestoreModal" />
+        <Button Variant="ButtonVariant.Danger" Text="Restore" Loading="_restoring" OnClick="RestoreBackup" />
+    </Footer>
+</Modal>
+
+@* Delete Confirmation Modal *@
+<Modal @bind-IsOpen="_showDeleteModal" Title="Confirm Delete">
+    <ChildContent>
+        <p class="text-nebula-text-secondary">
+            Are you sure you want to delete this backup? This action cannot be undone.
+        </p>
+        <div class="mt-4 p-3 bg-nebula-bg-secondary rounded-nebula">
+            <p class="text-sm">
+                <strong>Version:</strong> @_selectedBackup?.FromVersion -> @_selectedBackup?.ForVersion<br />
+                <strong>Size:</strong> @FormatBytes(_selectedBackup?.SizeBytes ?? 0)
+            </p>
+        </div>
+    </ChildContent>
+    <Footer>
+        <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CloseDeleteModal" />
+        <Button Variant="ButtonVariant.Danger" Text="Delete" Loading="_deleting" OnClick="DeleteBackup" />
+    </Footer>
+</Modal>
+
+@* Schedule Update Modal *@
+<Modal @bind-IsOpen="_showScheduleModal" Title="Schedule Update" Size="Modal.ModalSize.Medium">
+    <ChildContent>
+        <div class="space-y-4">
+            <p class="text-nebula-text-secondary">
+                Schedule the update to version <strong class="text-nebula-accent">@_availableRelease?.Version</strong> for a specific time.
+            </p>
+
+            <div class="form-group">
+                <label class="label">Scheduled Date & Time</label>
+                <input type="datetime-local" @bind="_scheduleDateTime" class="input" min="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")" />
+                <p class="text-xs text-nebula-text-muted mt-1">Select when the update should be applied.</p>
+            </div>
+
+            <div class="space-y-3">
+                <div class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula">
+                    <div>
+                        <p class="font-medium text-nebula-text-primary">Create Backup</p>
+                        <p class="text-sm text-nebula-text-muted">Backup before updating</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" @bind="_scheduleCreateBackup" class="sr-only peer" />
+                        <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula">
+                    <div>
+                        <p class="font-medium text-nebula-text-primary">Stop Game Servers</p>
+                        <p class="text-sm text-nebula-text-muted">Stop running servers before updating</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" @bind="_scheduleStopServers" class="sr-only peer" />
+                        <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                    </label>
+                </div>
+
+                <div class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula">
+                    <div>
+                        <p class="font-medium text-nebula-text-primary">Restart Game Servers</p>
+                        <p class="text-sm text-nebula-text-muted">Restart servers after update</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" @bind="_scheduleRestartServers" class="sr-only peer" />
+                        <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CloseScheduleModal" />
+        <Button Variant="ButtonVariant.Primary" Text="Schedule Update" Loading="_scheduling" OnClick="ScheduleUpdate" />
+    </Footer>
+</Modal>
+
+@code {
+    private UpdateSettingsDto? _settings;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _checking;
+    private string? _error;
+    private string? _success;
+
+    // Form fields
+    private bool _enabled;
+    private bool _autoCheck;
+    private int _checkIntervalHours = 6;
+    private string _channel = "Stable";
+
+    // Backup management
+    private IReadOnlyList<UpdateBackup>? _backups;
+    private bool _loadingBackups;
+    private UpdateBackup? _selectedBackup;
+    private bool _showRestoreModal;
+    private bool _showDeleteModal;
+    private bool _restoring;
+    private bool _deleting;
+
+    // Schedule management
+    private UpdateSchedule? _pendingSchedule;
+    private bool _cancellingSchedule;
+    private bool _showScheduleModal;
+    private bool _scheduling;
+    private DateTime _scheduleDateTime = DateTime.Now.AddHours(1);
+    private bool _scheduleCreateBackup = true;
+    private bool _scheduleStopServers = true;
+    private bool _scheduleRestartServers = true;
+
+    // Update history
+    private IReadOnlyList<UpdateHistory>? _updateHistory;
+    private bool _loadingHistory;
+
+    // Available update
+    private ReleaseInfo? _availableRelease;
+    private bool _updating;
+
+    private readonly ChannelOption[] _channels =
+    [
+        new("Stable", "shield-check", "Stable releases only. Recommended for production.", "Stable"),
+        new("Preview", "flask-conical", "Preview releases with new features. May have minor bugs.", "Preview"),
+        new("Development", "code", "Latest development builds. Unstable, for testing only.", "Development")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(
+            LoadSettingsAsync(),
+            LoadBackupsAsync(),
+            LoadScheduleAsync(),
+            LoadHistoryAsync(),
+            CheckForUpdatesAsync());
+    }
+
+    private async Task LoadScheduleAsync()
+    {
+        try
+        {
+            _pendingSchedule = await ScheduleService.GetPendingScheduleAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load schedule: {ex.Message}";
+        }
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        try
+        {
+            _loadingHistory = true;
+            _updateHistory = await HistoryService.GetHistoryAsync(10);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load history: {ex.Message}";
+        }
+        finally
+        {
+            _loadingHistory = false;
+        }
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var result = await UpdateService.CheckForUpdatesAsync();
+            if (result.UpdateAvailable && result.LatestRelease is not null)
+            {
+                _availableRelease = result.LatestRelease;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to check for updates: {ex.Message}";
+        }
+    }
+
+    private async Task ManualCheckForUpdates()
+    {
+        try
+        {
+            _checking = true;
+            _error = null;
+            _success = null;
+            StateHasChanged();
+
+            var result = await UpdateService.CheckForUpdatesAsync();
+            if (result.UpdateAvailable && result.LatestRelease is not null)
+            {
+                _availableRelease = result.LatestRelease;
+                _success = $"Update found: v{result.LatestRelease.Version}";
+            }
+            else
+            {
+                _success = "You're running the latest version.";
+                _availableRelease = null;
+            }
+
+            // Reload settings to update LastCheckAt timestamp
+            await LoadSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to check for updates: {ex.Message}";
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private async Task LoadBackupsAsync()
+    {
+        try
+        {
+            _loadingBackups = true;
+            _backups = await UpdateService.GetBackupsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load backups: {ex.Message}";
+        }
+        finally
+        {
+            _loadingBackups = false;
+        }
+    }
+
+    private void ShowRestoreConfirmation(UpdateBackup backup)
+    {
+        _selectedBackup = backup;
+        _showRestoreModal = true;
+    }
+
+    private void ShowDeleteConfirmation(UpdateBackup backup)
+    {
+        _selectedBackup = backup;
+        _showDeleteModal = true;
+    }
+
+    private void CloseRestoreModal()
+    {
+        _showRestoreModal = false;
+    }
+
+    private void CloseDeleteModal()
+    {
+        _showDeleteModal = false;
+    }
+
+    private async Task RestoreBackup()
+    {
+        if (_selectedBackup is null) return;
+
+        try
+        {
+            _restoring = true;
+            _error = null;
+
+            var result = await UpdateService.RestoreBackupAsync(_selectedBackup.Id);
+            if (result.IsSuccess)
+            {
+                _success = "Backup restored successfully.";
+                CloseRestoreModal();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _restoring = false;
+        }
+    }
+
+    private async Task DeleteBackup()
+    {
+        if (_selectedBackup is null) return;
+
+        try
+        {
+            _deleting = true;
+            _error = null;
+
+            var result = await UpdateService.DeleteBackupAsync(_selectedBackup.Id);
+            if (result.IsSuccess)
+            {
+                _success = "Backup deleted successfully.";
+                CloseDeleteModal();
+                await LoadBackupsAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB"];
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            _settings = await SettingsService.GetUpdateSettingsAsync();
+
+            _enabled = _settings.Enabled;
+            _autoCheck = _settings.AutoCheck;
+            _checkIntervalHours = _settings.CheckIntervalHours;
+            _channel = _settings.Channel;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateUpdateSettingsRequest(
+                _enabled,
+                _autoCheck,
+                _checkIntervalHours,
+                _channel);
+
+            var result = await SettingsService.UpdateUpdateSettingsAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Update settings saved successfully.";
+                _settings = result.Value;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private string GetChannelCardClass(string channelId)
+    {
+        return _channel == channelId
+            ? "border-nebula-accent bg-nebula-accent/5"
+            : "border-nebula-border bg-nebula-bg-secondary hover:border-nebula-accent/50";
+    }
+
+    private string GetChannelIconClass(string channelId)
+    {
+        return _channel == channelId
+            ? "text-nebula-accent"
+            : "text-nebula-text-muted";
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    // Schedule management methods
+    private void ShowScheduleModal()
+    {
+        _scheduleDateTime = DateTime.Now.AddHours(1);
+        _scheduleCreateBackup = true;
+        _scheduleStopServers = true;
+        _scheduleRestartServers = true;
+        _showScheduleModal = true;
+    }
+
+    private void CloseScheduleModal()
+    {
+        _showScheduleModal = false;
+    }
+
+    private async Task ScheduleUpdate()
+    {
+        if (_availableRelease is null) return;
+
+        try
+        {
+            _scheduling = true;
+            _error = null;
+
+            var options = new UpdateOptions
+            {
+                CreateBackup = _scheduleCreateBackup,
+                StopGameServers = _scheduleStopServers,
+                RestartGameServers = _scheduleRestartServers
+            };
+
+            var result = await ScheduleService.ScheduleUpdateAsync(
+                _availableRelease.Version,
+                _scheduleDateTime.ToUniversalTime(),
+                options,
+                GetCurrentUserId(),
+                _availableRelease.Body);
+
+            if (result.IsSuccess)
+            {
+                _success = $"Update to v{_availableRelease.Version} scheduled for {_scheduleDateTime:MMM d, yyyy h:mm tt}";
+                _pendingSchedule = result.Value;
+                CloseScheduleModal();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _scheduling = false;
+        }
+    }
+
+    private async Task CancelScheduledUpdate()
+    {
+        if (_pendingSchedule is null) return;
+
+        try
+        {
+            _cancellingSchedule = true;
+            _error = null;
+
+            var result = await ScheduleService.CancelScheduledUpdateAsync(
+                _pendingSchedule.Id,
+                GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Scheduled update cancelled.";
+                _pendingSchedule = null;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _cancellingSchedule = false;
+        }
+    }
+
+    private async Task StartUpdate()
+    {
+        if (_availableRelease is null) return;
+
+        try
+        {
+            _updating = true;
+            _error = null;
+
+            // First download the update
+            var downloadResult = await UpdateService.DownloadUpdateAsync(_availableRelease.Version);
+            if (!downloadResult.Success)
+            {
+                _error = downloadResult.Error;
+                return;
+            }
+
+            // Then apply it
+            var options = new UpdateOptions
+            {
+                CreateBackup = true,
+                StopGameServers = true,
+                RestartGameServers = true
+            };
+
+            var applyResult = await UpdateService.ApplyUpdateAsync(_availableRelease.Version, options);
+            if (applyResult.IsFailure)
+            {
+                _error = applyResult.Error;
+            }
+            // If successful, the app will restart
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _updating = false;
+        }
+    }
+
+    private static string RenderMarkdown(string? markdown)
+    {
+        if (string.IsNullOrEmpty(markdown))
+            return "<p>No release notes available.</p>";
+
+        var pipeline = new MarkdownPipelineBuilder()
+            .UseAdvancedExtensions()
+            .Build();
+
+        return Markdown.ToHtml(markdown, pipeline);
+    }
+
+    private record ChannelOption(string Name, string Icon, string Description, string Id);
+}

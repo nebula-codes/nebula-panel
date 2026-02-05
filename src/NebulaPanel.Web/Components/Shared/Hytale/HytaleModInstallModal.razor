@@ -1,0 +1,475 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.Repositories
+
+<Modal IsOpen="@IsOpen"
+       Size="ModalSize.Large"
+       OnClose="HandleClose"
+       ShowCloseButton="true"
+       CloseOnBackdropClick="@(!_isInstalling)"
+       CloseOnEscape="@(!_isInstalling)">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Install Mod</span>
+    </Header>
+    <Body>
+        @if (Mod == null)
+        {
+            <div class="flex items-center justify-center py-12">
+                <span class="text-nebula-text-muted">No mod selected</span>
+            </div>
+        }
+        else if (_isInstalling)
+        {
+            @* Installation progress *@
+            <div class="install-progress">
+                <div class="progress-icon">
+                    @if (_installError != null)
+                    {
+                        <Icon Name="alert-circle" Size="IconSize.XLarge" Class="text-nebula-error" />
+                    }
+                    else if (_installComplete)
+                    {
+                        <Icon Name="check-circle" Size="IconSize.XLarge" Class="text-nebula-success" />
+                    }
+                    else
+                    {
+                        <div class="animate-spin rounded-full h-12 w-12 border-4 border-nebula-accent border-t-transparent"></div>
+                    }
+                </div>
+
+                <h3 class="progress-title">
+                    @if (_installError != null)
+                    {
+                        <span class="text-nebula-error">Installation Failed</span>
+                    }
+                    else if (_installComplete)
+                    {
+                        <span class="text-nebula-success">Installation Complete</span>
+                    }
+                    else
+                    {
+                        <span>Installing @Mod.Name...</span>
+                    }
+                </h3>
+
+                <p class="progress-message">
+                    @if (_installError != null)
+                    {
+                        @_installError
+                    }
+                    else
+                    {
+                        @(_installProgress?.Message ?? "Preparing...")
+                    }
+                </p>
+
+                @if (!_installComplete && _installError == null)
+                {
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @(_installProgress?.Percentage ?? 0)%"></div>
+                    </div>
+                }
+            </div>
+        }
+        else if (_isLoadingDetails)
+        {
+            <div class="flex items-center justify-center py-12">
+                <div class="flex flex-col items-center gap-3">
+                    <div class="animate-spin rounded-full h-8 w-8 border-2 border-nebula-accent border-t-transparent"></div>
+                    <span class="text-nebula-text-muted">Loading mod details...</span>
+                </div>
+            </div>
+        }
+        else if (_loadError != null)
+        {
+            <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4">
+                <div class="flex items-center gap-2">
+                    <Icon Name="alert-circle" Size="IconSize.Small" />
+                    <span>@_loadError</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="install-content">
+                @* Mod Header *@
+                <div class="flex gap-4 mb-6">
+                    <div class="mod-icon">
+                        @if (!string.IsNullOrEmpty(Mod.IconUrl))
+                        {
+                            <img src="@Mod.IconUrl" alt="@Mod.Name" class="w-full h-full object-cover rounded-lg" />
+                        }
+                        else
+                        {
+                            <div class="w-full h-full flex items-center justify-center bg-nebula-bg-tertiary rounded-lg">
+                                <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                            </div>
+                        }
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-xl font-semibold text-nebula-text-primary mb-1">@Mod.Name</h2>
+                        @if (!string.IsNullOrEmpty(Mod.Author))
+                        {
+                            <p class="text-sm text-nebula-text-secondary mb-2">by @Mod.Author</p>
+                        }
+                        @if (!string.IsNullOrEmpty(Mod.Summary))
+                        {
+                            <p class="text-sm text-nebula-text-muted">@Mod.Summary</p>
+                        }
+                    </div>
+                </div>
+
+                @* Version Selection *@
+                <div class="mb-4">
+                    <h3 class="text-sm font-medium text-nebula-text-primary mb-3">Select Version</h3>
+
+                    @if (_isLoadingVersions)
+                    {
+                        <div class="flex items-center gap-2 text-nebula-text-muted py-4">
+                            <div class="animate-spin rounded-full h-4 w-4 border-2 border-nebula-accent border-t-transparent"></div>
+                            <span class="text-sm">Loading versions...</span>
+                        </div>
+                    }
+                    else if (_versions.Count > 0)
+                    {
+                        <div class="version-list">
+                            @foreach (var version in _versions.Take(10))
+                            {
+                                <label class="version-item @(_selectedVersionId == version.Id ? "selected" : "")">
+                                    <input type="radio"
+                                           name="mod-version"
+                                           value="@version.Id"
+                                           checked="@(_selectedVersionId == version.Id)"
+                                           @onchange="() => SelectVersion(version)" />
+                                    <div class="flex-1">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium text-nebula-text-primary">@(version.Name ?? version.Version)</span>
+                                            @if (version == _versions.First())
+                                            {
+                                                <span class="badge badge-success text-xs">Latest</span>
+                                            }
+                                            @if (version.VersionType != ModVersionType.Release)
+                                            {
+                                                <span class="badge @(version.VersionType == ModVersionType.Beta ? "badge-warning" : "badge-neutral") text-xs">
+                                                    @version.VersionType
+                                                </span>
+                                            }
+                                        </div>
+                                        <div class="flex items-center gap-3 text-xs text-nebula-text-muted mt-1">
+                                            @if (version.GameVersions.Count > 0)
+                                            {
+                                                <span>@version.GameVersions.First()</span>
+                                            }
+                                            <span>@FormatDate(version.ReleasedAt)</span>
+                                            <span>@FormatDownloads(version.Downloads) downloads</span>
+                                        </div>
+                                    </div>
+                                </label>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-sm text-nebula-text-muted">No versions available.</p>
+                    }
+                </div>
+
+                @* Dependencies Warning *@
+                @if (_selectedVersion?.Dependencies.Any(d => d.Type == ModDependencyType.Required) == true)
+                {
+                    <div class="bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula p-3 mb-4">
+                        <div class="flex items-start gap-2">
+                            <Icon Name="alert-triangle" Size="IconSize.Small" Class="mt-0.5" />
+                            <div>
+                                <p class="font-medium text-sm">Dependencies required</p>
+                                <p class="text-xs mt-1 opacity-80">
+                                    This mod requires the following dependencies:
+                                    @string.Join(", ", _selectedVersion.Dependencies
+                                        .Where(d => d.Type == ModDependencyType.Required)
+                                        .Select(d => d.ModName ?? d.ModId))
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </Body>
+    <Footer>
+        @if (_installComplete)
+        {
+            <div class="flex justify-end">
+                <Button Variant="ButtonVariant.Primary" Text="Done" OnClick="HandleInstallComplete" />
+            </div>
+        }
+        else if (_installError != null)
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="HandleClose" />
+                <Button Variant="ButtonVariant.Primary" Text="Try Again" OnClick="StartInstall" />
+            </div>
+        }
+        else if (_isInstalling)
+        {
+            <div class="flex justify-end">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" Disabled="true" />
+            </div>
+        }
+        else
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="HandleClose" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Install"
+                        IconName="download"
+                        Disabled="@(_selectedVersion == null)"
+                        OnClick="StartInstall" />
+            </div>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The mod to install.
+    /// </summary>
+    [Parameter]
+    public ModSearchItem? Mod { get; set; }
+
+    /// <summary>
+    /// The provider the mod is from.
+    /// </summary>
+    [Parameter]
+    public ModProviderType Provider { get; set; }
+
+    /// <summary>
+    /// The server ID to install the mod to.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Whether the modal is open.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the modal is closed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when the mod has been successfully installed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnInstalled { get; set; }
+
+    [Inject]
+    private IHytaleModService ModService { get; set; } = default!;
+
+    [Inject]
+    private IGameServerRepository ServerRepository { get; set; } = default!;
+
+    // State
+    private ModDetails? _details;
+    private List<ModVersion> _versions = [];
+    private string? _selectedVersionId;
+    private ModVersion? _selectedVersion;
+    private bool _isLoadingDetails;
+    private bool _isLoadingVersions;
+    private string? _loadError;
+    private string? _lastLoadedModId;
+
+    // Install state
+    private bool _isInstalling;
+    private bool _installComplete;
+    private string? _installError;
+    private HytaleModInstallProgress? _installProgress;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && Mod != null && Mod.Id != _lastLoadedModId)
+        {
+            await LoadModAsync();
+        }
+    }
+
+    private async Task LoadModAsync()
+    {
+        if (Mod == null) return;
+
+        _isLoadingDetails = true;
+        _isLoadingVersions = true;
+        _loadError = null;
+        _details = null;
+        _versions = [];
+        _selectedVersion = null;
+        _selectedVersionId = null;
+        _isInstalling = false;
+        _installComplete = false;
+        _installError = null;
+        _installProgress = null;
+        _lastLoadedModId = Mod.Id;
+        StateHasChanged();
+
+        try
+        {
+            // Load details and versions in parallel
+            var detailsTask = ModService.GetDetailsAsync(Provider, Mod.Id);
+
+            _details = await detailsTask;
+            _isLoadingDetails = false;
+            StateHasChanged();
+
+            // Get versions from the details or load separately
+            // For now, we'll simulate getting versions from a provider
+            // In a real implementation, you'd call ModService.GetVersionsAsync or similar
+            _versions = await GetVersionsAsync();
+            _isLoadingVersions = false;
+
+            // Auto-select the latest stable version
+            var preferredVersion = _versions.FirstOrDefault(v => v.VersionType == ModVersionType.Release)
+                                   ?? _versions.FirstOrDefault();
+            if (preferredVersion != null)
+            {
+                SelectVersion(preferredVersion);
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Failed to load mod details: {ex.Message}";
+            _isLoadingDetails = false;
+            _isLoadingVersions = false;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task<List<ModVersion>> GetVersionsAsync()
+    {
+        if (Mod == null) return [];
+
+        try
+        {
+            var versions = await ModService.GetVersionsAsync(Provider, Mod.Id);
+            return versions.ToList();
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Failed to load versions: {ex.Message}";
+            return [];
+        }
+    }
+
+    private void SelectVersion(ModVersion version)
+    {
+        _selectedVersion = version;
+        _selectedVersionId = version.Id;
+    }
+
+    private async Task StartInstall()
+    {
+        if (Mod == null || _selectedVersion == null) return;
+
+        _isInstalling = true;
+        _installComplete = false;
+        _installError = null;
+        _installProgress = null;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server == null)
+            {
+                _installError = "Server not found";
+                return;
+            }
+
+            var progress = new Progress<HytaleModInstallProgress>(p =>
+            {
+                _installProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            var result = await ModService.InstallModAsync(
+                server,
+                Provider,
+                Mod.Id,
+                _selectedVersion.Id,
+                progress);
+
+            if (result.Success)
+            {
+                _installComplete = true;
+            }
+            else
+            {
+                _installError = result.Error ?? "Installation failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            _installError = $"Installation failed: {ex.Message}";
+        }
+        finally
+        {
+            // Only exit the installing state if we completed successfully
+            // Keep _isInstalling true on error so the error message stays visible
+            if (_installComplete)
+            {
+                // Success - keep _isInstalling true to show the complete state
+            }
+            else if (_installError != null)
+            {
+                // Error - keep _isInstalling true to show the error state
+            }
+            else
+            {
+                // Unexpected state (shouldn't happen) - reset
+                _isInstalling = false;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleInstallComplete()
+    {
+        await OnInstalled.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        // Don't allow closing while actively installing (unless error or complete)
+        if (_isInstalling && !_installComplete && _installError == null) return;
+
+        _lastLoadedModId = null;
+        _isInstalling = false;
+        _installComplete = false;
+        _installError = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private static string FormatDate(DateTime date)
+    {
+        var diff = DateTime.UtcNow - date;
+        var days = diff.TotalDays;
+        if (days < 1) return "today";
+        if (days < 2) return "yesterday";
+        if (days < 7) return $"{(int)days}d ago";
+        if (days < 30) return $"{(int)(days / 7)}w ago";
+        if (days < 365) return $"{(int)(days / 30)}mo ago";
+        return date.ToString("MMM yyyy");
+    }
+
+    private static string FormatDownloads(long count) => count switch
+    {
+        >= 1_000_000 => $"{count / 1_000_000.0:F1}M",
+        >= 1_000 => $"{count / 1_000.0:F1}K",
+        _ => count.ToString()
+    };
+}

@@ -1,0 +1,219 @@
+@page "/settings/general"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using System.ComponentModel.DataAnnotations
+@inject ISettingsService SettingsService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>General Settings - Nebula Panel</PageTitle>
+<NavigationLock OnBeforeInternalNavigation="OnBeforeInternalNavigation" ConfirmExternalNavigation="_isDirty" />
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">General</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">General Settings</h1>
+    <p class="text-nebula-text-muted mb-6">Configure application name, URL, and general system settings.</p>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.SettingsForm" />
+    }
+    else
+    {
+        <Card>
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Application Settings</h2>
+            </Header>
+            <ChildContent>
+                <EditForm Model="_model" OnValidSubmit="SaveSettings" @oninput="() => _isDirty = true">
+                    <DataAnnotationsValidator />
+                    <div class="space-y-6">
+                        <div class="form-group">
+                            <label for="appName" class="label">Application Name</label>
+                            <InputText id="appName" @bind-Value="_model.ApplicationName" class="input" placeholder="Nebula Panel" />
+                            <ValidationMessage For="@(() => _model.ApplicationName)" class="text-nebula-error text-xs mt-1" />
+                            <p class="text-xs text-nebula-text-muted mt-1">The name displayed in the browser title and throughout the UI.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="appUrl" class="label">Application URL</label>
+                            <InputText id="appUrl" @bind-Value="_model.ApplicationUrl" class="input" placeholder="https://panel.example.com" />
+                            <ValidationMessage For="@(() => _model.ApplicationUrl)" class="text-nebula-error text-xs mt-1" />
+                            <p class="text-xs text-nebula-text-muted mt-1">The public URL where this panel is accessible. Used for generating links.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="supportEmail" class="label">Support Email</label>
+                            <InputText id="supportEmail" @bind-Value="_model.SupportEmail" class="input" type="email" placeholder="support@example.com" />
+                            <ValidationMessage For="@(() => _model.SupportEmail)" class="text-nebula-error text-xs mt-1" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Contact email displayed to users for support requests.</p>
+                        </div>
+
+                        <div class="border-t border-nebula-border pt-6">
+                            <h3 class="text-base font-medium text-nebula-text-primary mb-4">Maintenance Mode</h3>
+
+                            <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula mb-4">
+                                <div>
+                                    <p class="font-medium text-nebula-text-primary">Enable Maintenance Mode</p>
+                                    <p class="text-sm text-nebula-text-muted">When enabled, only administrators can access the panel.</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <InputCheckbox @bind-Value="_model.MaintenanceMode" class="sr-only peer" />
+                                    <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                                </label>
+                            </div>
+
+                            @if (_model.MaintenanceMode)
+                            {
+                                <div class="form-group">
+                                    <label for="maintenanceMessage" class="label">Maintenance Message</label>
+                                    <InputTextArea id="maintenanceMessage" @bind-Value="_model.MaintenanceMessage" class="input" rows="3" placeholder="We're currently performing maintenance. Please check back later." />
+                                    <p class="text-xs text-nebula-text-muted mt-1">Message displayed to non-admin users during maintenance.</p>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="flex justify-end gap-3 pt-4 border-t border-nebula-border">
+                            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => Navigation.NavigateTo("/settings"))" />
+                            <Button Type="submit" Variant="ButtonVariant.Primary" Text="Save Changes" Loading="_saving" />
+                        </div>
+                    </div>
+                </EditForm>
+            </ChildContent>
+        </Card>
+    }
+</div>
+
+@code {
+    private GeneralSettingsModel _model = new();
+    private bool _loading = true;
+    private bool _saving;
+    private bool _isDirty;
+    private string? _error;
+    private string? _success;
+
+    private async Task OnBeforeInternalNavigation(LocationChangingContext context)
+    {
+        if (!_isDirty || _saving)
+            return;
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "You have unsaved changes. Are you sure you want to leave?");
+
+        if (!confirmed)
+        {
+            context.PreventNavigation();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettingsAsync();
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var settings = await SettingsService.GetGeneralSettingsAsync();
+            _model = new GeneralSettingsModel
+            {
+                ApplicationName = settings.ApplicationName,
+                ApplicationUrl = settings.ApplicationUrl,
+                SupportEmail = settings.SupportEmail,
+                MaintenanceMode = settings.MaintenanceMode,
+                MaintenanceMessage = settings.MaintenanceMessage
+            };
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateGeneralSettingsRequest(
+                _model.ApplicationName,
+                _model.ApplicationUrl,
+                _model.SupportEmail,
+                _model.MaintenanceMode,
+                _model.MaintenanceMessage);
+
+            var result = await SettingsService.UpdateGeneralSettingsAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _isDirty = false;
+                _success = "General settings saved successfully.";
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private class GeneralSettingsModel
+    {
+        [Required(ErrorMessage = "Application name is required")]
+        [StringLength(100, MinimumLength = 1, ErrorMessage = "Application name must be between 1 and 100 characters")]
+        public string ApplicationName { get; set; } = "Nebula Panel";
+
+        [Url(ErrorMessage = "Please enter a valid URL")]
+        public string? ApplicationUrl { get; set; }
+
+        [EmailAddress(ErrorMessage = "Please enter a valid email address")]
+        public string? SupportEmail { get; set; }
+
+        public bool MaintenanceMode { get; set; }
+
+        [StringLength(500, ErrorMessage = "Maintenance message cannot exceed 500 characters")]
+        public string? MaintenanceMessage { get; set; }
+    }
+}

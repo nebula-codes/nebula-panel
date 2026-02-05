@@ -1,0 +1,121 @@
+Nebula Panel Source Available License (NP-SAL) v1.2
+
+SPDX-License-Identifier: NP-SAL-1.2
+
+Copyright (c) 2026 Nebula Panel Contributors
+
+------------------------------------------------------------
+
+1. Grant of Rights
+
+Subject to the terms of this License, the Licensor grants you a non-exclusive,
+worldwide, royalty-free right to:
+
+- View, copy, and modify the source code of Nebula Panel.
+- Run the software for personal, educational, or internal organizational use,
+  including self-hosting for your own infrastructure.
+
+This License does not grant rights for commercial distribution or third-party
+service offerings.
+
+------------------------------------------------------------
+
+2. Prohibited Uses
+
+You may not, directly or indirectly, whether for payment or free of charge:
+
+2.1 Commercial & Service Restrictions
+- Sell, sublicense, rent, lease, or commercially distribute the software.
+- Offer the software or any derivative as a hosted service, managed service,
+  Software-as-a-Service (SaaS), or platform offering.
+- Use the software to provide services to third parties where access to the
+  software is a core or material part of the offering.
+
+2.2 Branding & Attribution Restrictions
+- Rebrand, white-label, or rename the software.
+- Remove or obscure the Nebula Panel name, trademarks, or attribution.
+- Represent the software as primarily authored by anyone other than the Licensor.
+
+2.3 Redistribution Restrictions
+- Redistribute the software or derivative works in source or binary form,
+  except where explicitly permitted by the Licensor in writing.
+
+------------------------------------------------------------
+
+3. Internal Use Clarification
+
+“Internal use” means use solely within your own organization or personal
+environment, where:
+- No third party is granted access to the software as a service.
+- The software is not marketed, sold, or offered as a product or platform.
+- Any benefit derived is incidental to internal operations.
+
+------------------------------------------------------------
+
+4. Attribution Requirements
+
+All permitted uses must retain:
+- The name “Nebula Panel”
+- All original copyright notices
+- This License text
+
+------------------------------------------------------------
+
+5. Change Date and License Conversion
+
+On January 1, 2030 (“Change Date”), this software shall automatically be licensed
+under the Apache License, Version 2.0.
+
+After the Change Date:
+- All restrictions in Section 2 are lifted.
+- The Apache License, Version 2.0 governs all use, modification, and distribution.
+
+No action is required for this conversion to take effect.
+
+------------------------------------------------------------
+
+6. Contributions
+
+Unless otherwise stated in writing, any contribution intentionally submitted
+for inclusion in the software is licensed under this License and shall transition
+to Apache License, Version 2.0 on the Change Date.
+
+------------------------------------------------------------
+
+7. No Warranty
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+
+------------------------------------------------------------
+
+8. Limitation of Liability
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY ARISING FROM THE USE OR INABILITY TO USE THE SOFTWARE.
+
+------------------------------------------------------------
+
+9. Source-Available Notice
+
+This License makes the source code available but does not grant open-source
+rights as defined by the Open Source Initiative until the Change Date.
+
+------------------------------------------------------------
+
+10. Commercial Exception License
+
+The Licensor may grant a Commercial Exception License allowing activities
+otherwise prohibited by this License, including but not limited to:
+- Hosting Nebula Panel as a service
+- Reselling or redistributing Nebula Panel
+- Operating a managed game server business using Nebula Panel
+- White-labeling or commercial integration
+
+Such rights are not granted automatically and require explicit written permission
+from the Licensor.
+
+To request a Commercial Exception License, contact the Licensor via:
+- Discord: .therealpanda
+
+Any commercial rights must be explicitly confirmed in writing by the Licensor,
+regardless of the communication medium.

@@ -1,0 +1,180 @@
+@typeparam TItem
+@implements IDisposable
+
+@code {
+    [CascadingParameter]
+    public DataGrid<TItem>? ParentGrid { get; set; }
+
+    /// <summary>
+    /// Column header title.
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    /// <summary>
+    /// Unique identifier for the column. Auto-generated from Title if not set.
+    /// </summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    /// <summary>
+    /// Property name for auto-binding.
+    /// </summary>
+    [Parameter]
+    public string? PropertyName { get; set; }
+
+    /// <summary>
+    /// Function to extract the field value from an item.
+    /// </summary>
+    [Parameter]
+    public Func<TItem, object?>? Field { get; set; }
+
+    /// <summary>
+    /// Custom template for rendering the cell content.
+    /// </summary>
+    [Parameter]
+    public RenderFragment<TItem>? Template { get; set; }
+
+    /// <summary>
+    /// Custom template for rendering the header content.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? HeaderTemplate { get; set; }
+
+    /// <summary>
+    /// Whether the column is sortable.
+    /// </summary>
+    [Parameter]
+    public bool Sortable { get; set; }
+
+    /// <summary>
+    /// Custom function for sorting. Uses Field if not specified.
+    /// </summary>
+    [Parameter]
+    public Func<TItem, object?>? SortField { get; set; }
+
+    /// <summary>
+    /// Default sort direction for this column.
+    /// </summary>
+    [Parameter]
+    public SortDirection? DefaultSort { get; set; }
+
+    /// <summary>
+    /// Whether the column is filterable.
+    /// </summary>
+    [Parameter]
+    public bool Filterable { get; set; }
+
+    /// <summary>
+    /// Type of filter to use.
+    /// </summary>
+    [Parameter]
+    public ColumnFilterType FilterType { get; set; } = ColumnFilterType.Text;
+
+    /// <summary>
+    /// Filter options for Select/MultiSelect filter types.
+    /// </summary>
+    [Parameter]
+    public IEnumerable<FilterOption>? FilterOptions { get; set; }
+
+    /// <summary>
+    /// Custom function for filtering. Uses Field if not specified.
+    /// </summary>
+    [Parameter]
+    public Func<TItem, object?>? FilterField { get; set; }
+
+    /// <summary>
+    /// Fixed width for the column (e.g., "100px", "10%").
+    /// </summary>
+    [Parameter]
+    public string? Width { get; set; }
+
+    /// <summary>
+    /// Minimum width for the column.
+    /// </summary>
+    [Parameter]
+    public string? MinWidth { get; set; }
+
+    /// <summary>
+    /// Whether the column is visible.
+    /// </summary>
+    [Parameter]
+    public bool Visible { get; set; } = true;
+
+    /// <summary>
+    /// Whether the user can hide this column.
+    /// </summary>
+    [Parameter]
+    public bool Hideable { get; set; } = true;
+
+    /// <summary>
+    /// Responsive hide priority (higher = hidden first on smaller screens).
+    /// 0 = always visible, 1 = hidden on lg, 2 = hidden on xl, 3 = hidden on 2xl.
+    /// </summary>
+    [Parameter]
+    public int ResponsivePriority { get; set; } = 0;
+
+    /// <summary>
+    /// Text alignment for the column.
+    /// </summary>
+    [Parameter]
+    public TextAlign Align { get; set; } = TextAlign.Left;
+
+    /// <summary>
+    /// Additional CSS classes for the column cells.
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    /// <summary>
+    /// Additional CSS classes for the header cell.
+    /// </summary>
+    [Parameter]
+    public string? HeaderClass { get; set; }
+
+    /// <summary>
+    /// Gets the column identifier.
+    /// </summary>
+    public string ColumnId => Id ?? Title.Replace(" ", "-").ToLowerInvariant();
+
+    /// <summary>
+    /// Gets the effective sort field function.
+    /// </summary>
+    public Func<TItem, object?>? EffectiveSortField => SortField ?? Field;
+
+    /// <summary>
+    /// Gets the effective filter field function.
+    /// </summary>
+    public Func<TItem, object?>? EffectiveFilterField => FilterField ?? Field;
+
+    /// <summary>
+    /// Gets the responsive CSS classes based on priority.
+    /// </summary>
+    public string ResponsiveClasses => ResponsivePriority switch
+    {
+        1 => "hidden lg:table-cell",
+        2 => "hidden xl:table-cell",
+        3 => "hidden 2xl:table-cell",
+        _ => ""
+    };
+
+    /// <summary>
+    /// Gets the text alignment CSS class.
+    /// </summary>
+    public string AlignClass => Align switch
+    {
+        TextAlign.Center => "text-center",
+        TextAlign.Right => "text-right",
+        _ => "text-left"
+    };
+
+    protected override void OnInitialized()
+    {
+        ParentGrid?.AddColumn(this);
+    }
+
+    public void Dispose()
+    {
+        ParentGrid?.RemoveColumn(this);
+    }
+}

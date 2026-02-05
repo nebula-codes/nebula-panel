@@ -1,0 +1,186 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="code-editor-container">
+    <div class="code-editor-toolbar">
+        <div class="flex items-center gap-2">
+            <select class="code-editor-language-select"
+                    @bind="_selectedLanguage"
+                    @bind:after="UpdateLanguageAsync"
+                    disabled="@ReadOnly">
+                <option value="plaintext">Plain Text</option>
+                <option value="json">JSON</option>
+                <option value="yaml">YAML</option>
+                <option value="xml">XML</option>
+                <option value="ini">Properties / INI</option>
+                <option value="lua">Lua</option>
+                <option value="javascript">JavaScript</option>
+                <option value="typescript">TypeScript</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="csharp">C#</option>
+                <option value="shell">Shell</option>
+                <option value="bat">Batch</option>
+                <option value="powershell">PowerShell</option>
+                <option value="markdown">Markdown</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+                <option value="sql">SQL</option>
+            </select>
+
+            @if (ReadOnly)
+            {
+                <span class="text-xs text-nebula-text-muted bg-nebula-bg-tertiary px-2 py-1 rounded">Read-only</span>
+            }
+        </div>
+
+        <div class="flex items-center gap-1">
+            <button class="code-editor-action" @onclick="CopyAllAsync" title="Copy all">
+                <Icon Name="copy" Size="IconSize.Small" />
+            </button>
+            <button class="code-editor-action" @onclick="ToggleWordWrap" title="Toggle word wrap">
+                <Icon Name="wrap-text" Size="IconSize.Small" />
+            </button>
+        </div>
+    </div>
+
+    <div id="@_editorId" class="code-editor" @ref="_editorElement"></div>
+</div>
+
+@code {
+    [Parameter] public string Content { get; set; } = "";
+    [Parameter] public string Language { get; set; } = "plaintext";
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    private ElementReference _editorElement;
+    private string _editorId = $"monaco-editor-{Guid.NewGuid():N}";
+    private string _selectedLanguage = "plaintext";
+    private bool _initialized;
+    private bool _wordWrap = true;
+
+    protected override void OnParametersSet()
+    {
+        _selectedLanguage = Language;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeEditorAsync();
+        }
+    }
+
+    private async Task InitializeEditorAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("monacoEditor.create",
+                _editorId,
+                Content,
+                _selectedLanguage,
+                ReadOnly,
+                _wordWrap);
+
+            _initialized = true;
+
+            // Register save handler
+            if (!ReadOnly)
+            {
+                var dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("monacoEditor.registerSaveHandler", _editorId, dotNetRef);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to initialize Monaco editor: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleSaveShortcut()
+    {
+        await OnSave.InvokeAsync();
+    }
+
+    public async Task<string> GetContentAsync()
+    {
+        if (!_initialized) return Content;
+
+        try
+        {
+            return await JS.InvokeAsync<string>("monacoEditor.getValue", _editorId);
+        }
+        catch
+        {
+            return Content;
+        }
+    }
+
+    public async Task SetContentAsync(string content)
+    {
+        if (!_initialized) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("monacoEditor.setValue", _editorId, content);
+        }
+        catch
+        {
+            // Ignore
+        }
+    }
+
+    private async Task UpdateLanguageAsync()
+    {
+        if (!_initialized) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("monacoEditor.setLanguage", _editorId, _selectedLanguage);
+        }
+        catch
+        {
+            // Ignore
+        }
+    }
+
+    private async Task CopyAllAsync()
+    {
+        var content = await GetContentAsync();
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", content);
+    }
+
+    private async Task ToggleWordWrap()
+    {
+        _wordWrap = !_wordWrap;
+
+        if (!_initialized) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("monacoEditor.setWordWrap", _editorId, _wordWrap);
+        }
+        catch
+        {
+            // Ignore
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_initialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("monacoEditor.dispose", _editorId);
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+}

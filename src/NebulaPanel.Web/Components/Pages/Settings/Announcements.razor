@@ -1,0 +1,328 @@
+@page "/settings/announcements"
+@attribute [Authorize(Policy = "RequireAdmin")]
+@inject IAnnouncementService AnnouncementService
+@inject IToastService ToastService
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using Microsoft.AspNetCore.Components.Authorization
+
+<PageTitle>Announcements - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    @* Page header *@
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">Announcements</h1>
+            <p class="text-sm text-nebula-text-muted mt-1">Manage dashboard announcements visible to all users.</p>
+        </div>
+        <Button Variant="ButtonVariant.Primary" IconName="plus" OnClick="@ShowCreateModal">
+            New Announcement
+        </Button>
+    </div>
+
+    @* Announcements list *@
+    <Card>
+        @if (_isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <Icon Name="loader-2" Size="IconSize.Large" Class="animate-spin text-nebula-text-muted" />
+            </div>
+        }
+        else if (_announcements.Count == 0)
+        {
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mb-4">
+                    <Icon Name="megaphone" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                </div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">No announcements</h3>
+                <p class="text-sm text-nebula-text-muted mt-1 max-w-sm">
+                    Create announcements to notify users about important updates, maintenance, or news.
+                </p>
+                <Button Variant="ButtonVariant.Primary" IconName="plus" Class="mt-4" OnClick="@ShowCreateModal">
+                    Create Announcement
+                </Button>
+            </div>
+        }
+        else
+        {
+            <div class="divide-y divide-nebula-border">
+                @foreach (var announcement in _announcements)
+                {
+                    <div class="p-4 hover:bg-nebula-bg-secondary/50 transition-colors">
+                        <div class="flex items-start gap-4">
+                            <div class="p-2 rounded-nebula @GetBackgroundClass(announcement.Type) flex-shrink-0">
+                                <Icon Name="@GetIconName(announcement.Type)" Size="IconSize.Small" Class="@GetIconClass(announcement.Type)" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-medium text-nebula-text-primary">@announcement.Title</h3>
+                                    @if (announcement.IsPinned)
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-accent/20 text-nebula-accent">Pinned</span>
+                                    }
+                                    <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">@announcement.Type</span>
+                                </div>
+                                <p class="text-sm text-nebula-text-secondary mt-1 line-clamp-2">@announcement.Content</p>
+                                <div class="flex items-center gap-4 mt-2 text-xs text-nebula-text-muted">
+                                    <span>Created @FormatDate(announcement.CreatedAt) by @announcement.CreatedByUsername</span>
+                                    @if (announcement.ExpiresAt.HasValue)
+                                    {
+                                        <span>Expires @FormatDate(announcement.ExpiresAt.Value)</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <Button Variant="ButtonVariant.Ghost" IconName="pencil" OnClick="@(() => ShowEditModal(announcement))" />
+                                <Button Variant="ButtonVariant.Ghost" IconName="trash-2" OnClick="@(() => DeleteAnnouncement(announcement.Id))" />
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </Card>
+</div>
+
+@* Create/Edit Modal *@
+<Modal @bind-IsOpen="_isModalOpen" Title="@(_editingAnnouncement is null ? "Create Announcement" : "Edit Announcement")">
+    <EditForm Model="_formModel" OnValidSubmit="SaveAnnouncement">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-primary mb-1">Title</label>
+                <InputText @bind-Value="_formModel.Title" class="input w-full" placeholder="Announcement title" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-primary mb-1">Content</label>
+                <InputTextArea @bind-Value="_formModel.Content" class="input w-full min-h-[100px]" placeholder="Announcement content (Markdown supported)" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-primary mb-1">Type</label>
+                    <InputSelect @bind-Value="_formModel.Type" class="input w-full">
+                        <option value="Info">Info</option>
+                        <option value="Success">Success</option>
+                        <option value="Warning">Warning</option>
+                        <option value="Error">Error</option>
+                        <option value="Maintenance">Maintenance</option>
+                    </InputSelect>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-primary mb-1">Expires At (Optional)</label>
+                    <InputDate @bind-Value="_formModel.ExpiresAt" class="input w-full" />
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <InputCheckbox @bind-Value="_formModel.IsPinned" class="rounded" />
+                    <span class="text-sm text-nebula-text-primary">Pin to top</span>
+                </label>
+
+                @if (_editingAnnouncement is not null)
+                {
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <InputCheckbox @bind-Value="_formModel.IsActive" class="rounded" />
+                        <span class="text-sm text-nebula-text-primary">Active</span>
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-3 mt-6">
+            <Button Variant="ButtonVariant.Secondary" OnClick="@CloseModal" Type="button">Cancel</Button>
+            <Button Variant="ButtonVariant.Primary" Type="submit" IsLoading="@_isSaving">
+                @(_editingAnnouncement is null ? "Create" : "Save")
+            </Button>
+        </div>
+    </EditForm>
+</Modal>
+
+@code {
+    private IReadOnlyList<AnnouncementDto> _announcements = [];
+    private bool _isLoading = true;
+    private bool _isModalOpen = false;
+    private bool _isSaving = false;
+    private AnnouncementDto? _editingAnnouncement;
+    private AnnouncementFormModel _formModel = new();
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAnnouncementsAsync();
+    }
+
+    private async Task LoadAnnouncementsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            _announcements = await AnnouncementService.GetAllAnnouncementsAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load announcements: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        _editingAnnouncement = null;
+        _formModel = new AnnouncementFormModel();
+        _isModalOpen = true;
+    }
+
+    private void ShowEditModal(AnnouncementDto announcement)
+    {
+        _editingAnnouncement = announcement;
+        _formModel = new AnnouncementFormModel
+        {
+            Title = announcement.Title,
+            Content = announcement.Content,
+            Type = announcement.Type,
+            IsPinned = announcement.IsPinned,
+            IsActive = true, // Assume active if shown
+            ExpiresAt = announcement.ExpiresAt
+        };
+        _isModalOpen = true;
+    }
+
+    private void CloseModal()
+    {
+        _isModalOpen = false;
+        _editingAnnouncement = null;
+    }
+
+    private async Task SaveAnnouncement()
+    {
+        _isSaving = true;
+        try
+        {
+            var authState = await AuthStateTask!;
+            var userId = Guid.Parse(authState.User.FindFirst("sub")?.Value ?? Guid.Empty.ToString());
+
+            if (_editingAnnouncement is null)
+            {
+                var request = new CreateAnnouncementRequest(
+                    Title: _formModel.Title,
+                    Content: _formModel.Content,
+                    Type: _formModel.Type,
+                    IsPinned: _formModel.IsPinned,
+                    ExpiresAt: _formModel.ExpiresAt
+                );
+
+                var result = await AnnouncementService.CreateAsync(request, userId);
+                if (result.IsSuccess)
+                {
+                    ToastService.ShowSuccess("Announcement created successfully");
+                    CloseModal();
+                    await LoadAnnouncementsAsync();
+                }
+                else
+                {
+                    ToastService.ShowError(result.Error ?? "Failed to create announcement");
+                }
+            }
+            else
+            {
+                var request = new UpdateAnnouncementRequest(
+                    Title: _formModel.Title,
+                    Content: _formModel.Content,
+                    Type: _formModel.Type,
+                    IsActive: _formModel.IsActive,
+                    IsPinned: _formModel.IsPinned,
+                    ExpiresAt: _formModel.ExpiresAt,
+                    DisplayOrder: 0
+                );
+
+                var result = await AnnouncementService.UpdateAsync(_editingAnnouncement.Id, request);
+                if (result.IsSuccess)
+                {
+                    ToastService.ShowSuccess("Announcement updated successfully");
+                    CloseModal();
+                    await LoadAnnouncementsAsync();
+                }
+                else
+                {
+                    ToastService.ShowError(result.Error ?? "Failed to update announcement");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteAnnouncement(Guid id)
+    {
+        try
+        {
+            var result = await AnnouncementService.DeleteAsync(id);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess("Announcement deleted");
+                await LoadAnnouncementsAsync();
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to delete announcement");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+    }
+
+    private static string GetBackgroundClass(string type) => type switch
+    {
+        "Success" => "bg-nebula-success/20",
+        "Warning" => "bg-nebula-warning/20",
+        "Error" => "bg-nebula-error/20",
+        "Maintenance" => "bg-nebula-accent/20",
+        _ => "bg-nebula-info/20"
+    };
+
+    private static string GetIconClass(string type) => type switch
+    {
+        "Success" => "text-nebula-success",
+        "Warning" => "text-nebula-warning",
+        "Error" => "text-nebula-error",
+        "Maintenance" => "text-nebula-accent",
+        _ => "text-nebula-info"
+    };
+
+    private static string GetIconName(string type) => type switch
+    {
+        "Success" => "check-circle",
+        "Warning" => "alert-triangle",
+        "Error" => "x-circle",
+        "Maintenance" => "wrench",
+        _ => "info"
+    };
+
+    private static string FormatDate(DateTime date) => date.ToString("MMM d, yyyy");
+
+    private class AnnouncementFormModel
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public string Type { get; set; } = "Info";
+        public bool IsPinned { get; set; }
+        public bool IsActive { get; set; } = true;
+        public DateTime? ExpiresAt { get; set; }
+    }
+}

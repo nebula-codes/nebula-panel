@@ -1,0 +1,875 @@
+@page "/users/{Id:guid}/edit"
+@attribute [Authorize(Policy = "EditUsers")]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using System.ComponentModel.DataAnnotations
+@inject IUserManagementService UserService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Edit User - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-5xl mx-auto">
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <span class="spinner w-8 h-8"></span>
+            <span class="ml-3 text-nebula-text-muted">Loading user...</span>
+        </div>
+    }
+    else if (_user is null)
+    {
+        <div class="text-center py-12">
+            <Icon Name="alert-circle" Size="IconSize.Large" Class="text-nebula-error mx-auto mb-4" />
+            <h2 class="text-xl font-medium text-nebula-text-primary mb-2">User Not Found</h2>
+            <p class="text-nebula-text-muted mb-6">The user you're looking for doesn't exist.</p>
+            <Button Variant="ButtonVariant.Secondary" Text="Back to Users" OnClick="@(() => Navigation.NavigateTo("/users"))" />
+        </div>
+    }
+    else
+    {
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+            <a href="/users" class="hover:text-nebula-text-primary transition-colors">Users</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">@_user.Username</span>
+        </nav>
+
+        <div class="flex items-start justify-between gap-4 mb-6">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-nebula-accent/20 rounded-full flex items-center justify-center">
+                    <span class="text-xl font-medium text-nebula-accent">@_user.Username[0].ToString().ToUpper()</span>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-semibold text-nebula-text-primary">@_user.Username</h1>
+                    <p class="text-nebula-text-muted">@_user.Email</p>
+                </div>
+            </div>
+            <StatusBadge Status="@(_user.IsActive ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Neutral)"
+                         Text="@(_user.IsActive ? "Active" : "Disabled")"
+                         ShowDot="true" />
+        </div>
+
+        <ErrorAlert Message="@_error" Class="mb-6" />
+        <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+        <TabNav TValue="string"
+                Tabs="@_tabs"
+                @bind-Value="_activeTab"
+                @bind-Value:after="OnTabChanged"
+                IconSelector="@GetTabIcon" />
+
+        <div class="mt-6">
+            @switch (_activeTab)
+            {
+                case "Details":
+                    @RenderDetailsTab()
+                    break;
+                case "Roles":
+                    @RenderRolesTab()
+                    break;
+                case "Servers":
+                    @RenderServersTab()
+                    break;
+                case "Permissions":
+                    @RenderPermissionsTab()
+                    break;
+                case "Activity":
+                    @RenderActivityTab()
+                    break;
+            }
+        </div>
+    }
+</div>
+
+@if (_showPasswordResetConfirm)
+{
+    <Modal IsOpen="true" OnClose="CancelPasswordReset" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Reset Password</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary mb-4">
+                Are you sure you want to reset the password for <strong class="text-nebula-text-primary">@_user?.Username</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted">This will log the user out of all sessions.</p>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelPasswordReset" />
+                <Button Variant="ButtonVariant.Danger" Text="Reset Password" Loading="_resettingPassword" OnClick="ResetPassword" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private readonly string[] _tabs = ["Details", "Roles", "Servers", "Permissions", "Activity"];
+    private string _activeTab = "Details";
+
+    private UserDetailDto? _user;
+    private List<RoleDto> _allRoles = [];
+    private List<UserActivityDto> _activities = [];
+    private bool _loading = true;
+    private bool _loadingRoles;
+    private bool _loadingActivity;
+    private string? _error;
+    private string? _success;
+
+    // Details form
+    private EditUserModel _editModel = new();
+    private PasswordResetModel _passwordModel = new();
+    private bool _saving;
+    private bool _showPasswordResetConfirm;
+    private bool _resettingPassword;
+
+    // Roles
+    private Guid? _selectedRoleToAdd;
+    private bool _addingRole;
+    private bool _removingRole;
+    private Guid? _roleBeingRemoved;
+
+    // Permissions tab
+    private Guid? _selectedServerForPermissions;
+    private EffectivePermissionsPanel? _effectivePermissionsPanel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserAsync();
+    }
+
+    private async Task LoadUserAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var result = await UserService.GetUserDetailAsync(Id);
+            if (result.IsSuccess)
+            {
+                _user = result.Value;
+                PopulateEditModel();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void PopulateEditModel()
+    {
+        if (_user is null) return;
+        _editModel = new EditUserModel
+        {
+            Username = _user.Username,
+            Email = _user.Email,
+            IsActive = _user.IsActive
+        };
+    }
+
+    private async Task OnTabChanged()
+    {
+        _success = null;
+        _error = null;
+
+        if (_activeTab == "Roles" && _allRoles.Count == 0)
+        {
+            await LoadRolesAsync();
+        }
+        else if (_activeTab == "Activity" && _activities.Count == 0)
+        {
+            await LoadActivityAsync();
+        }
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        try
+        {
+            _loadingRoles = true;
+            _allRoles = (await UserService.GetAllRolesAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingRoles = false;
+        }
+    }
+
+    private async Task LoadActivityAsync()
+    {
+        try
+        {
+            _loadingActivity = true;
+            _activities = (await UserService.GetUserActivityAsync(Id, 100)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingActivity = false;
+        }
+    }
+
+    private static string? GetTabIcon(string tab) => tab switch
+    {
+        "Details" => "user",
+        "Roles" => "shield",
+        "Servers" => "server",
+        "Permissions" => "key",
+        "Activity" => "activity",
+        _ => null
+    };
+
+    private async Task SaveDetails()
+    {
+        if (_user is null) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateUserRequest(
+                _editModel.Username != _user.Username ? _editModel.Username : null,
+                _editModel.Email != _user.Email ? _editModel.Email : null,
+                _editModel.IsActive != _user.IsActive ? _editModel.IsActive : null,
+                null
+            );
+
+            var result = await UserService.UpdateUserAsync(Id, request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "User details updated successfully.";
+                await LoadUserAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void ShowPasswordResetConfirm()
+    {
+        if (string.IsNullOrEmpty(_passwordModel.NewPassword))
+        {
+            _error = "Please enter a new password";
+            return;
+        }
+        if (_passwordModel.NewPassword != _passwordModel.ConfirmPassword)
+        {
+            _error = "Passwords do not match";
+            return;
+        }
+        _error = null;
+        _showPasswordResetConfirm = true;
+    }
+
+    private void CancelPasswordReset()
+    {
+        _showPasswordResetConfirm = false;
+    }
+
+    private async Task ResetPassword()
+    {
+        try
+        {
+            _resettingPassword = true;
+            _error = null;
+
+            var result = await UserService.AdminResetPasswordAsync(Id, _passwordModel.NewPassword, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Password reset successfully.";
+                _passwordModel = new();
+                _showPasswordResetConfirm = false;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _resettingPassword = false;
+        }
+    }
+
+    private async Task AddRole()
+    {
+        if (_selectedRoleToAdd is null) return;
+
+        try
+        {
+            _addingRole = true;
+            _error = null;
+
+            var result = await UserService.AssignRoleAsync(Id, _selectedRoleToAdd.Value, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Role assigned successfully.";
+                _selectedRoleToAdd = null;
+                await LoadUserAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _addingRole = false;
+        }
+    }
+
+    private async Task RemoveRole(Guid roleId)
+    {
+        try
+        {
+            _removingRole = true;
+            _roleBeingRemoved = roleId;
+            _error = null;
+
+            var result = await UserService.RemoveRoleAsync(Id, roleId, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Role removed successfully.";
+                await LoadUserAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _removingRole = false;
+            _roleBeingRemoved = null;
+        }
+    }
+
+    private async Task ToggleUserStatus()
+    {
+        if (_user is null) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+
+            var result = await UserService.SetUserActiveStatusAsync(Id, !_user.IsActive, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = $"User {(!_user.IsActive ? "enabled" : "disabled")} successfully.";
+                await LoadUserAsync();
+                PopulateEditModel();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private RenderFragment RenderDetailsTab() => __builder =>
+    {
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Account Information</h2>
+                </Header>
+                <ChildContent>
+                    <EditForm Model="_editModel" OnValidSubmit="SaveDetails">
+                        <DataAnnotationsValidator />
+                        <div class="space-y-4">
+                            <div class="form-group">
+                                <label for="username" class="label">Username</label>
+                                <InputText id="username" @bind-Value="_editModel.Username" class="input" />
+                                <ValidationMessage For="@(() => _editModel.Username)" class="text-nebula-error text-xs mt-1" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="email" class="label">Email</label>
+                                <InputText id="email" @bind-Value="_editModel.Email" class="input" type="email" />
+                                <ValidationMessage For="@(() => _editModel.Email)" class="text-nebula-error text-xs mt-1" />
+                            </div>
+
+                            <div class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula">
+                                <div>
+                                    <p class="font-medium text-nebula-text-primary">Account Status</p>
+                                    <p class="text-sm text-nebula-text-muted">@(_editModel.IsActive ? "User can log in" : "User cannot log in")</p>
+                                </div>
+                                <Button Variant="@(_editModel.IsActive ? ButtonVariant.Secondary : ButtonVariant.Primary)"
+                                        Text="@(_editModel.IsActive ? "Disable" : "Enable")"
+                                        Size="ButtonSize.Small"
+                                        Loading="_saving"
+                                        OnClick="ToggleUserStatus" />
+                            </div>
+
+                            <div class="flex justify-end">
+                                <Button Type="submit" Variant="ButtonVariant.Primary" Text="Save Changes" Loading="_saving" />
+                            </div>
+                        </div>
+                    </EditForm>
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Reset Password</h2>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-4">
+                        <p class="text-sm text-nebula-text-muted">Set a new password for this user. They will be logged out of all sessions.</p>
+
+                        <div class="form-group">
+                            <label for="newPassword" class="label">New Password</label>
+                            <input id="newPassword" @bind="_passwordModel.NewPassword" class="input" type="password" placeholder="Enter new password" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="confirmNewPassword" class="label">Confirm Password</label>
+                            <input id="confirmNewPassword" @bind="_passwordModel.ConfirmPassword" class="input" type="password" placeholder="Confirm new password" />
+                        </div>
+
+                        <div class="flex justify-end">
+                            <Button Variant="ButtonVariant.Danger" Text="Reset Password" OnClick="ShowPasswordResetConfirm" />
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <Card Class="lg:col-span-2">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Account Details</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Created</p>
+                            <p class="font-medium text-nebula-text-primary">@_user?.CreatedAt.ToString("MMM d, yyyy")</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Last Login</p>
+                            <p class="font-medium text-nebula-text-primary">@(_user?.LastLoginAt?.ToString("MMM d, yyyy h:mm tt") ?? "Never")</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Owned Servers</p>
+                            <p class="font-medium text-nebula-text-primary">@(_user?.OwnedServers.Count ?? 0)</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">User ID</p>
+                            <p class="font-mono text-sm text-nebula-text-muted">@Id.ToString()[..8]...</p>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+        </div>
+    };
+
+    private RenderFragment RenderRolesTab() => __builder =>
+    {
+        if (_loadingRoles)
+        {
+            <div class="flex items-center justify-center py-12">
+                <span class="spinner w-8 h-8"></span>
+            </div>
+        }
+        else
+        {
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Assigned Roles</h2>
+                    </Header>
+                    <ChildContent>
+                        @if (_user?.Roles.Count == 0)
+                        {
+                            <p class="text-nebula-text-muted py-4">No roles assigned.</p>
+                        }
+                        else
+                        {
+                            <div class="space-y-3">
+                                @foreach (var role in _user?.Roles ?? [])
+                                {
+                                    <div class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula">
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-medium text-nebula-text-primary">@role.Name</span>
+                                                @if (role.IsSystemRole)
+                                                {
+                                                    <span class="px-1.5 py-0.5 text-xs rounded bg-nebula-bg-tertiary text-nebula-text-muted">System</span>
+                                                }
+                                            </div>
+                                            <p class="text-xs text-nebula-text-muted mt-0.5">
+                                                Assigned @role.AssignedAt.ToString("MMM d, yyyy")
+                                                @if (!string.IsNullOrEmpty(role.AssignedByUsername))
+                                                {
+                                                    <span> by @role.AssignedByUsername</span>
+                                                }
+                                            </p>
+                                        </div>
+                                        <AuthorizeView Policy="ManageRoles">
+                                            <Button Variant="ButtonVariant.Ghost"
+                                                    Size="ButtonSize.Small"
+                                                    IconName="x"
+                                                    IconOnly="true"
+                                                    Loading="@(_removingRole && _roleBeingRemoved == role.Id)"
+                                                    OnClick="@(() => RemoveRole(role.Id))"
+                                                    title="Remove role" />
+                                        </AuthorizeView>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </ChildContent>
+                </Card>
+
+                <AuthorizeView Policy="ManageRoles">
+                    <Card>
+                        <Header>
+                            <h2 class="text-lg font-medium text-nebula-text-primary">Add Role</h2>
+                        </Header>
+                        <ChildContent>
+                            @{
+                                var assignedRoleIds = _user?.Roles.Select(r => r.Id).ToHashSet() ?? [];
+                                var availableRoles = _allRoles.Where(r => !assignedRoleIds.Contains(r.Id)).ToList();
+                            }
+
+                            @if (availableRoles.Count == 0)
+                            {
+                                <p class="text-nebula-text-muted py-4">All roles have been assigned.</p>
+                            }
+                            else
+                            {
+                                <div class="space-y-4">
+                                    <div class="form-group">
+                                        <label class="label">Select Role</label>
+                                        <select @bind="_selectedRoleToAdd" class="input">
+                                            <option value="">-- Select a role --</option>
+                                            @foreach (var role in availableRoles)
+                                            {
+                                                <option value="@role.Id">@role.Name</option>
+                                            }
+                                        </select>
+                                    </div>
+
+                                    @if (_selectedRoleToAdd.HasValue)
+                                    {
+                                        var selectedRole = availableRoles.FirstOrDefault(r => r.Id == _selectedRoleToAdd.Value);
+                                        if (selectedRole is not null && !string.IsNullOrEmpty(selectedRole.Description))
+                                        {
+                                            <p class="text-sm text-nebula-text-muted">@selectedRole.Description</p>
+                                        }
+                                    }
+
+                                    <div class="flex justify-end">
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Add Role"
+                                                Loading="_addingRole"
+                                                Disabled="@(!_selectedRoleToAdd.HasValue)"
+                                                OnClick="AddRole" />
+                                    </div>
+                                </div>
+                            }
+                        </ChildContent>
+                    </Card>
+                </AuthorizeView>
+            </div>
+        }
+    };
+
+    private RenderFragment RenderServersTab() => __builder =>
+    {
+        <div class="grid grid-cols-1 gap-6">
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Owned Servers</h2>
+                </Header>
+                <ChildContent>
+                    @if (_user?.OwnedServers.Count == 0)
+                    {
+                        <p class="text-nebula-text-muted py-4">This user doesn't own any servers.</p>
+                    }
+                    else
+                    {
+                        <div class="space-y-2">
+                            @foreach (var server in _user?.OwnedServers ?? [])
+                            {
+                                <a href="/servers/@server.Id" class="flex items-center gap-3 p-3 bg-nebula-bg-secondary rounded-nebula hover:bg-nebula-bg-tertiary transition-colors">
+                                    @if (!string.IsNullOrEmpty(server.GameIcon))
+                                    {
+                                        <img src="@server.GameIcon" alt="@server.GameName" class="w-8 h-8 object-contain rounded" />
+                                    }
+                                    else
+                                    {
+                                        <div class="w-8 h-8 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                                            <Icon Name="server" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                        </div>
+                                    }
+                                    <div>
+                                        <p class="font-medium text-nebula-text-primary">@server.Name</p>
+                                        <p class="text-sm text-nebula-text-muted">@server.GameName</p>
+                                    </div>
+                                </a>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Server Permission Overrides</h2>
+                </Header>
+                <ChildContent>
+                    @if (_user?.ServerPermissions.Count == 0)
+                    {
+                        <p class="text-nebula-text-muted py-4">No per-server permission overrides.</p>
+                    }
+                    else
+                    {
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-nebula-border">
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">Server</th>
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">Permission</th>
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var perm in _user?.ServerPermissions ?? [])
+                                    {
+                                        <tr class="border-b border-nebula-border/50">
+                                            <td class="py-2 text-nebula-text-primary">@perm.ServerName</td>
+                                            <td class="py-2">
+                                                <code class="text-sm bg-nebula-bg-tertiary px-2 py-0.5 rounded">@perm.PermissionCode</code>
+                                            </td>
+                                            <td class="py-2">
+                                                <StatusBadge Status="@(perm.IsGranted ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Error)"
+                                                             Text="@(perm.IsGranted ? "Granted" : "Denied")"
+                                                             ShowDot="true" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+        </div>
+    };
+
+    private RenderFragment RenderPermissionsTab() => __builder =>
+    {
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+                <ChildContent>
+                    <ServerPermissionOverrides UserId="Id"
+                                               OnPermissionsChanged="OnServerPermissionsChanged" />
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <ChildContent>
+                    <EffectivePermissionsPanel @ref="_effectivePermissionsPanel"
+                                               UserId="Id"
+                                               @bind-SelectedServerId="_selectedServerForPermissions" />
+                </ChildContent>
+            </Card>
+        </div>
+    };
+
+    private async Task OnServerPermissionsChanged()
+    {
+        // Refresh effective permissions when overrides change
+        if (_effectivePermissionsPanel is not null)
+        {
+            await _effectivePermissionsPanel.RefreshAsync();
+        }
+        // Also reload user data to update the server permissions summary
+        await LoadUserAsync();
+    }
+
+    private RenderFragment RenderActivityTab() => __builder =>
+    {
+        if (_loadingActivity)
+        {
+            <div class="flex items-center justify-center py-12">
+                <span class="spinner w-8 h-8"></span>
+            </div>
+        }
+        else
+        {
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Activity Log</h2>
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="refresh-cw"
+                                Text="Refresh"
+                                OnClick="LoadActivityAsync" />
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_activities.Count == 0)
+                    {
+                        <p class="text-nebula-text-muted py-4">No activity recorded.</p>
+                    }
+                    else
+                    {
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead>
+                                    <tr class="border-b border-nebula-border">
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">Timestamp</th>
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">Activity</th>
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">Description</th>
+                                        <th class="text-left py-2 text-sm font-medium text-nebula-text-muted">IP Address</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var activity in _activities)
+                                    {
+                                        <tr class="border-b border-nebula-border/50">
+                                            <td class="py-2 text-sm text-nebula-text-muted whitespace-nowrap">
+                                                @activity.Timestamp.ToString("MMM d, yyyy h:mm tt")
+                                            </td>
+                                            <td class="py-2">
+                                                <span class="px-2 py-0.5 text-xs rounded-full @GetActivityBadgeClass(activity.ActivityType)">
+                                                    @FormatActivityType(activity.ActivityType)
+                                                </span>
+                                            </td>
+                                            <td class="py-2 text-sm text-nebula-text-secondary">@activity.Description</td>
+                                            <td class="py-2 text-sm text-nebula-text-muted font-mono">@(activity.IpAddress ?? "-")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+        }
+    };
+
+    private static string GetActivityBadgeClass(UserActivityType type) => type switch
+    {
+        UserActivityType.Login => "bg-nebula-success/20 text-nebula-success",
+        UserActivityType.Logout => "bg-nebula-bg-tertiary text-nebula-text-muted",
+        UserActivityType.FailedLogin => "bg-nebula-error/20 text-nebula-error",
+        UserActivityType.PasswordChanged or UserActivityType.PasswordResetByAdmin => "bg-nebula-warning/20 text-nebula-warning",
+        UserActivityType.RoleAssigned or UserActivityType.RoleRemoved => "bg-nebula-accent/20 text-nebula-accent",
+        UserActivityType.AccountEnabled => "bg-nebula-success/20 text-nebula-success",
+        UserActivityType.AccountDisabled => "bg-nebula-error/20 text-nebula-error",
+        UserActivityType.AccountCreated => "bg-nebula-info/20 text-nebula-info",
+        UserActivityType.AccountDeleted => "bg-nebula-error/20 text-nebula-error",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static string FormatActivityType(UserActivityType type) => type switch
+    {
+        UserActivityType.Login => "Login",
+        UserActivityType.Logout => "Logout",
+        UserActivityType.FailedLogin => "Failed Login",
+        UserActivityType.PasswordChanged => "Password Changed",
+        UserActivityType.PasswordResetByAdmin => "Password Reset",
+        UserActivityType.ProfileUpdated => "Profile Updated",
+        UserActivityType.RoleAssigned => "Role Assigned",
+        UserActivityType.RoleRemoved => "Role Removed",
+        UserActivityType.AccountEnabled => "Enabled",
+        UserActivityType.AccountDisabled => "Disabled",
+        UserActivityType.AccountCreated => "Created",
+        UserActivityType.AccountDeleted => "Deleted",
+        _ => type.ToString()
+    };
+
+    private class EditUserModel
+    {
+        [Required(ErrorMessage = "Username is required")]
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email address")]
+        public string Email { get; set; } = string.Empty;
+
+        public bool IsActive { get; set; }
+    }
+
+    private class PasswordResetModel
+    {
+        public string NewPassword { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

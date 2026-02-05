@@ -1,0 +1,487 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
+@inject IToastService ToastService
+@implements IAsyncDisposable
+
+@* Screen reader announcement for notification count changes *@
+<span class="sr-only" aria-live="polite" aria-atomic="true">
+    @(_unreadCount > 0 ? $"{_unreadCount} unread notification{(_unreadCount != 1 ? "s" : "")}" : "")
+</span>
+
+<div class="relative" @onclick:stopPropagation="true">
+    <button type="button"
+            id="notification-trigger"
+            class="btn-ghost btn-icon"
+            @onclick="ToggleDropdown"
+            @onkeydown="HandleTriggerKeyDown"
+            aria-label="@($"Notifications{(_unreadCount > 0 ? $", {_unreadCount} unread" : "")}")"
+            aria-expanded="@_isOpen"
+            aria-haspopup="true"
+            aria-controls="notification-menu">
+        <Icon Name="bell" Size="IconSize.Small" />
+        @if (_unreadCount > 0)
+        {
+            <span class="notification-badge" aria-hidden="true">
+                @(_unreadCount > 9 ? "9+" : _unreadCount.ToString())
+            </span>
+        }
+    </button>
+
+    @if (_isOpen)
+    {
+        <div id="notification-menu"
+             class="notification-dropdown"
+             role="menu"
+             aria-orientation="vertical"
+             aria-labelledby="notification-trigger"
+             @onkeydown="HandleDropdownKeyDown">
+            <div class="notification-dropdown-header">
+                <h3 id="notification-menu-label">Notifications</h3>
+                @if (_unreadCount > 0)
+                {
+                    <button type="button"
+                            class="text-xs text-[var(--nebula-primary)] hover:underline"
+                            @onclick="MarkAllAsRead"
+                            role="menuitem">
+                        Mark all as read
+                    </button>
+                }
+            </div>
+
+            <div class="notification-dropdown-content" role="group" aria-label="Notification list">
+                @if (_loading)
+                {
+                    <div class="notification-empty" role="status" aria-live="polite">
+                        <Icon Name="loader" Size="IconSize.Small" Class="animate-spin" aria-hidden="true" />
+                        <span>Loading...</span>
+                    </div>
+                }
+                else if (_notifications.Count == 0)
+                {
+                    <div class="notification-empty">
+                        <Icon Name="bell-off" Size="IconSize.Medium" Class="opacity-50" aria-hidden="true" />
+                        <span>No notifications</span>
+                    </div>
+                }
+                else
+                {
+                    @for (var i = 0; i < _notifications.Count; i++)
+                    {
+                        var notification = _notifications[i];
+                        var index = i;
+                        <div class="notification-item @(notification.IsRead ? "read" : "unread") @(index == _focusedIndex ? "focused" : "")"
+                             role="menuitem"
+                             tabindex="@(index == _focusedIndex ? 0 : -1)"
+                             @ref="@(_notificationRefs[index])"
+                             @onclick="() => HandleNotificationClick(notification)"
+                             @onkeydown="@(e => HandleItemKeyDown(e, notification, index))">
+                            <div class="notification-icon @GetNotificationIconClass(notification.Type)" aria-hidden="true">
+                                <Icon Name="@GetNotificationIcon(notification.Type)" Size="IconSize.Small" />
+                            </div>
+                            <div class="notification-content">
+                                <div class="notification-title">@notification.Title</div>
+                                <div class="notification-message">@notification.Message</div>
+                                <div class="notification-time">@FormatTime(notification.CreatedAt)</div>
+                            </div>
+                            @if (!notification.IsRead)
+                            {
+                                <div class="notification-unread-dot" aria-label="Unread"></div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (_notifications.Count > 0)
+            {
+                <div class="notification-dropdown-footer">
+                    <button type="button"
+                            class="text-xs text-[var(--nebula-text-secondary)] hover:text-[var(--nebula-text)]"
+                            @onclick="ClearAll"
+                            role="menuitem">
+                        Clear all
+                    </button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private HubConnection? _hubConnection;
+    private bool _isOpen;
+    private bool _loading = true;
+    private int _unreadCount;
+    private List<NotificationDto> _notifications = [];
+    private DotNetObjectReference<NotificationBell>? _dotNetRef;
+    private int _focusedIndex = -1;
+    private Dictionary<int, ElementReference> _notificationRefs = [];
+
+    private const int MaxNotifications = 20;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("window.registerClickOutside", _dotNetRef, "closeNotificationDropdown");
+            await InitializeHubConnectionAsync();
+        }
+    }
+
+    [JSInvokable("closeNotificationDropdown")]
+    public void CloseDropdown()
+    {
+        if (_isOpen)
+        {
+            _isOpen = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task InitializeHubConnectionAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null)
+            {
+                _loading = false;
+                return;
+            }
+
+            // Get the JWT token for SignalR authentication
+            var token = await GetAccessTokenAsync();
+            if (string.IsNullOrEmpty(token))
+            {
+                _loading = false;
+                return;
+            }
+
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/notifications"), options =>
+                {
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                })
+                .WithAutomaticReconnect()
+                .Build();
+
+            _hubConnection.On<NotificationDto>("ReceiveNotification", notification =>
+            {
+                _notifications.Insert(0, notification);
+                if (_notifications.Count > 20)
+                {
+                    _notifications.RemoveAt(_notifications.Count - 1);
+                }
+                _unreadCount++;
+                InvokeAsync(StateHasChanged);
+            });
+
+            _hubConnection.On<int>("UnreadCountChanged", count =>
+            {
+                _unreadCount = count;
+                InvokeAsync(StateHasChanged);
+            });
+
+            await _hubConnection.StartAsync();
+
+            // Load initial data
+            _unreadCount = await _hubConnection.InvokeAsync<int>("GetUnreadCount");
+            _loading = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to connect to notification hub: {ex.Message}");
+            ToastService.ShowError("Failed to connect to notification service");
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string?> GetAccessTokenAsync()
+    {
+        // Try to get the token from local storage or auth state
+        try
+        {
+            return await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ToggleDropdown()
+    {
+        _isOpen = !_isOpen;
+
+        if (_isOpen)
+        {
+            // Initialize refs dictionary for notification items
+            _notificationRefs = [];
+            _focusedIndex = -1;
+
+            if (_hubConnection?.State == HubConnectionState.Connected)
+            {
+                // Load notifications when opening the dropdown
+                try
+                {
+                    _loading = true;
+                    StateHasChanged();
+
+                    _notifications = (await _hubConnection.InvokeAsync<IReadOnlyList<NotificationDto>>("GetNotifications", MaxNotifications, true)).ToList();
+
+                    // Initialize refs for all notifications
+                    for (var i = 0; i < _notifications.Count; i++)
+                    {
+                        _notificationRefs[i] = default;
+                    }
+
+                    _loading = false;
+
+                    // Set focus to first item if there are notifications
+                    if (_notifications.Count > 0)
+                    {
+                        _focusedIndex = 0;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to load notifications: {ex.Message}");
+                    ToastService.ShowError("Failed to load notifications");
+                    _loading = false;
+                }
+            }
+        }
+        else
+        {
+            _focusedIndex = -1;
+        }
+    }
+
+    private void HandleTriggerKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _isOpen)
+        {
+            _isOpen = false;
+            _focusedIndex = -1;
+        }
+        else if ((e.Key == "ArrowDown" || e.Key == "Enter" || e.Key == " ") && !_isOpen)
+        {
+            // Will be handled by onclick
+        }
+    }
+
+    private async Task HandleDropdownKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await CloseAndFocusTrigger();
+                break;
+            case "ArrowDown":
+                await MoveFocus(1);
+                break;
+            case "ArrowUp":
+                await MoveFocus(-1);
+                break;
+            case "Home":
+                await SetFocus(0);
+                break;
+            case "End":
+                await SetFocus(_notifications.Count - 1);
+                break;
+            case "Tab":
+                // Allow tab to close the dropdown naturally
+                _isOpen = false;
+                _focusedIndex = -1;
+                break;
+        }
+    }
+
+    private async Task HandleItemKeyDown(KeyboardEventArgs e, NotificationDto notification, int index)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+            case " ":
+                await HandleNotificationClick(notification);
+                break;
+            case "Escape":
+                await CloseAndFocusTrigger();
+                break;
+            case "ArrowDown":
+                await MoveFocus(1);
+                break;
+            case "ArrowUp":
+                await MoveFocus(-1);
+                break;
+            case "Home":
+                await SetFocus(0);
+                break;
+            case "End":
+                await SetFocus(_notifications.Count - 1);
+                break;
+        }
+    }
+
+    private async Task MoveFocus(int direction)
+    {
+        if (_notifications.Count == 0) return;
+
+        var newIndex = _focusedIndex + direction;
+        if (newIndex < 0) newIndex = _notifications.Count - 1;
+        if (newIndex >= _notifications.Count) newIndex = 0;
+
+        await SetFocus(newIndex);
+    }
+
+    private async Task SetFocus(int index)
+    {
+        if (index < 0 || index >= _notifications.Count) return;
+
+        _focusedIndex = index;
+        StateHasChanged();
+
+        // Focus the element via JS interop
+        await Task.Delay(10); // Small delay for DOM update
+        if (_notificationRefs.TryGetValue(index, out var elementRef))
+        {
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("focusElement", elementRef);
+            }
+            catch
+            {
+                // Element may not be rendered yet
+            }
+        }
+    }
+
+    private async Task CloseAndFocusTrigger()
+    {
+        _isOpen = false;
+        _focusedIndex = -1;
+        StateHasChanged();
+
+        // Return focus to trigger button
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("document.getElementById", "notification-trigger")
+                .AsTask()
+                .ContinueWith(_ => JSRuntime.InvokeVoidAsync("focusElementById", "notification-trigger"));
+        }
+        catch
+        {
+            // Ignore focus errors
+        }
+    }
+
+    private async Task HandleNotificationClick(NotificationDto notification)
+    {
+        // Mark as read
+        if (!notification.IsRead && _hubConnection?.State == HubConnectionState.Connected)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("MarkAsRead", notification.Id);
+                var index = _notifications.FindIndex(n => n.Id == notification.Id);
+                if (index >= 0)
+                {
+                    _notifications[index] = notification with { IsRead = true, ReadAt = DateTime.UtcNow };
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to mark notification as read: {ex.Message}");
+                ToastService.ShowError("Failed to mark notification as read");
+            }
+        }
+
+        // Navigate if there's an action URL
+        if (!string.IsNullOrEmpty(notification.ActionUrl))
+        {
+            _isOpen = false;
+            NavigationManager.NavigateTo(notification.ActionUrl);
+        }
+    }
+
+    private async Task MarkAllAsRead()
+    {
+        if (_hubConnection?.State == HubConnectionState.Connected)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("MarkAllAsRead");
+                _notifications = _notifications.Select(n => n with { IsRead = true, ReadAt = DateTime.UtcNow }).ToList();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to mark all as read: {ex.Message}");
+                ToastService.ShowError("Failed to mark all as read");
+            }
+        }
+    }
+
+    private async Task ClearAll()
+    {
+        _notifications.Clear();
+        _isOpen = false;
+    }
+
+    private static string GetNotificationIcon(NotificationType type) => type switch
+    {
+        NotificationType.Info => "info",
+        NotificationType.Success => "check-circle",
+        NotificationType.Warning => "alert-triangle",
+        NotificationType.Error => "alert-circle",
+        NotificationType.ServerStatus => "server",
+        NotificationType.BackupCompleted => "archive",
+        NotificationType.BackupFailed => "archive",
+        NotificationType.UpdateAvailable => "download",
+        NotificationType.InstallCompleted => "package",
+        NotificationType.InstallFailed => "package",
+        _ => "bell"
+    };
+
+    private static string GetNotificationIconClass(NotificationType type) => type switch
+    {
+        NotificationType.Success or NotificationType.BackupCompleted or NotificationType.InstallCompleted => "icon-success",
+        NotificationType.Warning => "icon-warning",
+        NotificationType.Error or NotificationType.BackupFailed or NotificationType.InstallFailed => "icon-error",
+        NotificationType.UpdateAvailable => "icon-info",
+        _ => "icon-default"
+    };
+
+    private static string FormatTime(DateTime createdAt)
+    {
+        var diff = DateTime.UtcNow - createdAt;
+
+        if (diff.TotalMinutes < 1)
+            return "Just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return createdAt.ToString("MMM d");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+        _dotNetRef?.Dispose();
+    }
+}

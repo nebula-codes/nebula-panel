@@ -1,0 +1,116 @@
+.install-content {
+    min-height: 300px;
+}
+
+.mod-icon {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+    border-radius: var(--nebula-radius-lg);
+    overflow: hidden;
+    background-color: var(--nebula-bg-tertiary);
+}
+
+/* Version list */
+.version-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.version-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background-color: var(--nebula-bg-secondary);
+    border: 1px solid var(--nebula-border-subtle);
+    border-radius: var(--nebula-radius);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.version-item:hover {
+    border-color: rgba(168, 85, 247, 0.3);
+    background-color: var(--nebula-bg-tertiary);
+}
+
+.version-item.selected {
+    border-color: var(--nebula-accent);
+    background-color: rgba(168, 85, 247, 0.05);
+}
+
+.version-item input[type="radio"] {
+    accent-color: var(--nebula-accent);
+}
+
+/* Badges */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--nebula-radius);
+    font-size: 0.6875rem;
+    font-weight: 600;
+}
+
+.badge-success {
+    background-color: var(--nebula-success-subtle);
+    color: var(--nebula-success);
+}
+
+.badge-warning {
+    background-color: var(--nebula-warning-subtle);
+    color: var(--nebula-warning);
+}
+
+.badge-neutral {
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-secondary);
+}
+
+/* Install progress */
+.install-progress {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    padding: 2rem;
+    text-align: center;
+}
+
+.progress-icon {
+    margin-bottom: 1.5rem;
+}
+
+.progress-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--nebula-text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.progress-message {
+    font-size: 0.875rem;
+    color: var(--nebula-text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.progress-bar {
+    width: 100%;
+    max-width: 300px;
+    height: 6px;
+    background-color: var(--nebula-bg-tertiary);
+    border-radius: 9999px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--nebula-accent) 0%, var(--nebula-info) 100%);
+    border-radius: 9999px;
+    transition: width 0.3s ease;
+}

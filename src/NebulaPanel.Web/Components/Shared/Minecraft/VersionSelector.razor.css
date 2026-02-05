@@ -1,0 +1,5 @@
+.version-summary {
+    padding: 1rem;
+    border-radius: var(--nebula-radius);
+    background-color: var(--nebula-bg-tertiary);
+}

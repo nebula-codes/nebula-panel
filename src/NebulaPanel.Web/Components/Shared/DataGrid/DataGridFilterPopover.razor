@@ -1,0 +1,164 @@
+@typeparam TItem
+
+<div class="filter-popover-content">
+    <div class="filter-popover-header">
+        <span class="text-sm font-medium text-nebula-text-primary">Filter: @Column.Title</span>
+        <button type="button" class="filter-popover-close" @onclick="OnClose">
+            <Icon Name="x" Size="IconSize.Small" />
+        </button>
+    </div>
+
+    <div class="filter-popover-body">
+        @switch (Column.FilterType)
+        {
+            case ColumnFilterType.Text:
+                <Input @bind-Value="_textValue"
+                       Placeholder="Type to filter..."
+                       Class="filter-input" />
+                break;
+
+            case ColumnFilterType.Select:
+                @if (Column.FilterOptions != null)
+                {
+                    <div class="filter-options">
+                        <button type="button"
+                                class="filter-option @(_selectedValue == null ? "active" : "")"
+                                @onclick="() => SelectOption(null)">
+                            <span>All</span>
+                        </button>
+                        @foreach (var option in Column.FilterOptions)
+                        {
+                            <button type="button"
+                                    class="filter-option @(Equals(_selectedValue, option.Value) ? "active" : "")"
+                                    @onclick="() => SelectOption(option.Value)">
+                                @if (option.Icon != null)
+                                {
+                                    <Icon Name="@option.Icon" Size="IconSize.Small" />
+                                }
+                                <span>@option.Label</span>
+                            </button>
+                        }
+                    </div>
+                }
+                break;
+
+            case ColumnFilterType.MultiSelect:
+                @if (Column.FilterOptions != null)
+                {
+                    <div class="filter-options filter-options-multi">
+                        @foreach (var option in Column.FilterOptions)
+                        {
+                            <label class="filter-option-multi">
+                                <Checkbox Value="@IsMultiSelected(option.Value)"
+                                          ValueChanged="@(_ => ToggleMultiSelect(option.Value))"
+                                          Size="Checkbox.CheckboxSize.Small" />
+                                @if (option.Icon != null)
+                                {
+                                    <Icon Name="@option.Icon" Size="IconSize.Small" />
+                                }
+                                <span>@option.Label</span>
+                            </label>
+                        }
+                    </div>
+                }
+                break;
+        }
+    </div>
+
+    <div class="filter-popover-footer">
+        <Button Variant="Button.ButtonVariant.Ghost"
+                Size="Button.ButtonSize.Small"
+                Text="Clear"
+                OnClick="ClearFilter" />
+        <Button Variant="Button.ButtonVariant.Primary"
+                Size="Button.ButtonSize.Small"
+                Text="Apply"
+                OnClick="ApplyFilter" />
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public DataGridColumn<TItem> Column { get; set; } = default!;
+
+    [Parameter]
+    public object? CurrentValue { get; set; }
+
+    [Parameter]
+    public EventCallback<object?> OnFilterChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private string _textValue = "";
+    private object? _selectedValue;
+    private HashSet<object> _multiSelectedValues = [];
+
+    protected override void OnInitialized()
+    {
+        // Initialize from current value
+        if (CurrentValue != null)
+        {
+            switch (Column.FilterType)
+            {
+                case ColumnFilterType.Text:
+                    _textValue = CurrentValue.ToString() ?? "";
+                    break;
+
+                case ColumnFilterType.Select:
+                    _selectedValue = CurrentValue;
+                    break;
+
+                case ColumnFilterType.MultiSelect:
+                    if (CurrentValue is IEnumerable<object> multi)
+                    {
+                        _multiSelectedValues = multi.ToHashSet();
+                    }
+                    break;
+            }
+        }
+    }
+
+    private void SelectOption(object? value)
+    {
+        _selectedValue = value;
+    }
+
+    private bool IsMultiSelected(object value)
+    {
+        return _multiSelectedValues.Contains(value);
+    }
+
+    private void ToggleMultiSelect(object value)
+    {
+        if (_multiSelectedValues.Contains(value))
+        {
+            _multiSelectedValues.Remove(value);
+        }
+        else
+        {
+            _multiSelectedValues.Add(value);
+        }
+    }
+
+    private async Task ApplyFilter()
+    {
+        object? filterValue = Column.FilterType switch
+        {
+            ColumnFilterType.Text => string.IsNullOrWhiteSpace(_textValue) ? null : _textValue,
+            ColumnFilterType.Select => _selectedValue,
+            ColumnFilterType.MultiSelect => _multiSelectedValues.Any() ? _multiSelectedValues.ToList() : null,
+            _ => null
+        };
+
+        await OnFilterChanged.InvokeAsync(filterValue);
+    }
+
+    private async Task ClearFilter()
+    {
+        _textValue = "";
+        _selectedValue = null;
+        _multiSelectedValues.Clear();
+        await OnFilterChanged.InvokeAsync(null);
+    }
+}

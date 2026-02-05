@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\NebulaPanel.Domain\NebulaPanel.Domain.csproj" />
+    <ProjectReference Include="..\NebulaPanel.Application\NebulaPanel.Application.csproj" />
+    <ProjectReference Include="..\NebulaPanel.Shared\NebulaPanel.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.22" />
+    <PackageReference Include="Docker.DotNet" Version="3.125.15" />
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.5" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.1" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.1" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Embedded resources for configuration schemas (explicit paths for SDK compatibility) -->
+  <ItemGroup>
+    <EmbeddedResource Include="OfficialGames/Minecraft/Schemas/bukkit.yml.schema.json" />
+    <EmbeddedResource Include="OfficialGames/Minecraft/Schemas/eula.txt.schema.json" />
+    <EmbeddedResource Include="OfficialGames/Minecraft/Schemas/paper-global.yml.schema.json" />
+    <EmbeddedResource Include="OfficialGames/Minecraft/Schemas/server.properties.schema.json" />
+    <EmbeddedResource Include="OfficialGames/Minecraft/Schemas/spigot.yml.schema.json" />
+    <EmbeddedResource Include="OfficialGames/_Template/Schemas/example-config.schema.json" />
+  </ItemGroup>
+
+</Project>

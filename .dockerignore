@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vs
+.vscode
+.idea
+*.user
+*.suo
+
+# Build outputs
+**/bin
+**/obj
+**/publish
+
+# Test results
+**/TestResults
+
+# Documentation
+docs
+*.md
+!README.md
+
+# CI/CD
+.github
+
+# Local development
+.claude
+*.local.json
+appsettings.Development.json
+
+# Misc
+*.log
+*.tmp
+Thumbs.db
+.DS_Store

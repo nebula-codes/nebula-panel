@@ -1,0 +1,219 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IRoleService RoleService
+@inject IGameServerService GameServerService
+
+<div class="effective-permissions-panel @Class">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-medium text-nebula-text-primary">Effective Permissions</h3>
+    </div>
+
+    <div class="mb-4">
+        <label class="label">Select Server</label>
+        <select @bind="SelectedServerId" @bind:after="OnServerChanged" class="input">
+            <option value="">-- Select a server to view permissions --</option>
+            @foreach (var server in _servers)
+            {
+                <option value="@server.Id">@server.Name (@server.GameName)</option>
+            }
+        </select>
+    </div>
+
+    @if (_loadingServers)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else if (!SelectedServerId.HasValue)
+    {
+        <div class="text-center py-8 bg-nebula-bg-secondary rounded-nebula">
+            <Icon Name="server" Size="IconSize.Large" Class="mx-auto mb-2 text-nebula-text-muted opacity-50" />
+            <p class="text-nebula-text-muted">Select a server to view effective permissions.</p>
+            <p class="text-sm text-nebula-text-muted mt-1">Effective permissions show what actions the user can perform on a specific server.</p>
+        </div>
+    }
+    else if (_loadingPermissions)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-3 text-sm">
+            <div class="flex items-center gap-2">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                <span>@_error</span>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="border border-nebula-border-subtle rounded-lg overflow-hidden">
+            <div class="divide-y divide-nebula-border-subtle">
+                @foreach (var perm in _effectivePermissions)
+                {
+                    <div class="flex items-center justify-between px-4 py-3 @(perm.IsGranted ? "" : "bg-nebula-error/5")">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center @(perm.IsGranted ? "bg-nebula-success/20" : "bg-nebula-error/20")">
+                                <Icon Name="@(perm.IsGranted ? "check" : "x")"
+                                      Size="IconSize.Small"
+                                      Class="@(perm.IsGranted ? "text-nebula-success" : "text-nebula-error")" />
+                            </div>
+                            <div>
+                                <span class="font-medium text-nebula-text-primary">@perm.PermissionName</span>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <code class="text-xs text-nebula-text-muted">@perm.PermissionCode</code>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 text-xs rounded-full @GetSourceBadgeClass(perm.Source)" title="@GetSourceTooltip(perm.Source)">
+                                @GetSourceLabel(perm.Source)
+                            </span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="mt-4 p-3 bg-nebula-bg-secondary rounded-nebula">
+            <h4 class="text-sm font-medium text-nebula-text-primary mb-2">Permission Source Legend</h4>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400">Admin</span>
+                    <span class="text-nebula-text-muted">Admin role bypasses all checks</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">Owner</span>
+                    <span class="text-nebula-text-muted">User owns this server</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-nebula-accent/20 text-nebula-accent">Role</span>
+                    <span class="text-nebula-text-muted">Granted via role assignment</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded-full bg-nebula-warning/20 text-nebula-warning">Override</span>
+                    <span class="text-nebula-text-muted">Per-server override</span>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    [Parameter]
+    public Guid? SelectedServerId { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid?> SelectedServerIdChanged { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private List<GameServerListItemDto> _servers = [];
+    private List<EffectivePermissionDto> _effectivePermissions = [];
+    private bool _loadingServers = true;
+    private bool _loadingPermissions;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadServersAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (SelectedServerId.HasValue && _effectivePermissions.Count == 0)
+        {
+            await LoadEffectivePermissionsAsync();
+        }
+    }
+
+    private async Task LoadServersAsync()
+    {
+        try
+        {
+            _loadingServers = true;
+            _servers = (await GameServerService.GetAllServersAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingServers = false;
+        }
+    }
+
+    private async Task OnServerChanged()
+    {
+        await SelectedServerIdChanged.InvokeAsync(SelectedServerId);
+
+        if (SelectedServerId.HasValue)
+        {
+            await LoadEffectivePermissionsAsync();
+        }
+        else
+        {
+            _effectivePermissions = [];
+        }
+    }
+
+    private async Task LoadEffectivePermissionsAsync()
+    {
+        if (!SelectedServerId.HasValue) return;
+
+        try
+        {
+            _loadingPermissions = true;
+            _error = null;
+            _effectivePermissions = (await RoleService.GetEffectivePermissionsAsync(UserId, SelectedServerId.Value)).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingPermissions = false;
+        }
+    }
+
+    public async Task RefreshAsync()
+    {
+        await LoadEffectivePermissionsAsync();
+    }
+
+    private static string GetSourceBadgeClass(PermissionSource source) => source switch
+    {
+        PermissionSource.Admin => "bg-purple-500/20 text-purple-400",
+        PermissionSource.Ownership => "bg-blue-500/20 text-blue-400",
+        PermissionSource.Role => "bg-nebula-accent/20 text-nebula-accent",
+        PermissionSource.ServerOverride => "bg-nebula-warning/20 text-nebula-warning",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static string GetSourceLabel(PermissionSource source) => source switch
+    {
+        PermissionSource.Admin => "Admin",
+        PermissionSource.Ownership => "Owner",
+        PermissionSource.Role => "Role",
+        PermissionSource.ServerOverride => "Override",
+        _ => "Unknown"
+    };
+
+    private static string GetSourceTooltip(PermissionSource source) => source switch
+    {
+        PermissionSource.Admin => "Granted because user has Admin role (bypasses all permission checks)",
+        PermissionSource.Ownership => "Granted because user owns this server",
+        PermissionSource.Role => "Granted via assigned role permissions",
+        PermissionSource.ServerOverride => "Explicitly set via per-server permission override",
+        _ => ""
+    };
+}

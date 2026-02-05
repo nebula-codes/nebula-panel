@@ -1,0 +1,562 @@
+{
+  "$schema": "https://nebula-panel.dev/schemas/config-schema-v1.json",
+  "schemaVersion": "1.0",
+  "fileName": "server.properties",
+  "fileType": "Properties",
+  "fields": [
+    {
+      "key": "motd",
+      "displayName": "Server Message (MOTD)",
+      "description": "Message displayed in the server list. Supports color codes with section symbol.",
+      "type": "String",
+      "defaultValue": "A Minecraft Server",
+      "validation": { "maxLength": 59 },
+      "category": "Server"
+    },
+    {
+      "key": "max-players",
+      "displayName": "Max Players",
+      "description": "Maximum number of players that can join the server simultaneously.",
+      "type": "Int",
+      "defaultValue": 20,
+      "validation": { "minValue": 0, "maxValue": 2147483647 },
+      "category": "Server"
+    },
+    {
+      "key": "gamemode",
+      "displayName": "Default Game Mode",
+      "description": "Default game mode for new players joining the server.",
+      "type": "Select",
+      "defaultValue": "survival",
+      "options": [
+        { "value": "survival", "label": "Survival" },
+        { "value": "creative", "label": "Creative" },
+        { "value": "adventure", "label": "Adventure" },
+        { "value": "spectator", "label": "Spectator" }
+      ],
+      "category": "Server"
+    },
+    {
+      "key": "force-gamemode",
+      "displayName": "Force Game Mode",
+      "description": "Force players to join in the default game mode instead of their previous mode.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Server"
+    },
+    {
+      "key": "difficulty",
+      "displayName": "Difficulty",
+      "description": "Server difficulty level affecting mob damage and hunger.",
+      "type": "Select",
+      "defaultValue": "easy",
+      "options": [
+        { "value": "peaceful", "label": "Peaceful" },
+        { "value": "easy", "label": "Easy" },
+        { "value": "normal", "label": "Normal" },
+        { "value": "hard", "label": "Hard" }
+      ],
+      "category": "Server"
+    },
+    {
+      "key": "hardcore",
+      "displayName": "Hardcore Mode",
+      "description": "Enable hardcore mode (players are banned on death, difficulty locked to hard).",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Server"
+    },
+    {
+      "key": "pvp",
+      "displayName": "PvP Combat",
+      "description": "Allow players to deal damage to each other.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Server"
+    },
+    {
+      "key": "enable-status",
+      "displayName": "Enable Status",
+      "description": "Allow the server to appear in the server list.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Server"
+    },
+    {
+      "key": "hide-online-players",
+      "displayName": "Hide Online Players",
+      "description": "Hide the player list from the server status response.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Server"
+    },
+    {
+      "key": "player-idle-timeout",
+      "displayName": "Player Idle Timeout",
+      "description": "Minutes before idle players are kicked (0 = disabled).",
+      "type": "Int",
+      "defaultValue": 0,
+      "validation": { "minValue": 0 },
+      "category": "Server"
+    },
+    {
+      "key": "op-permission-level",
+      "displayName": "Default OP Level",
+      "description": "Default permission level for operators (1-4).",
+      "type": "Select",
+      "defaultValue": "4",
+      "options": [
+        { "value": "1", "label": "Level 1 - Bypass spawn protection" },
+        { "value": "2", "label": "Level 2 - Use cheat commands" },
+        { "value": "3", "label": "Level 3 - Manage players" },
+        { "value": "4", "label": "Level 4 - Full access" }
+      ],
+      "category": "Server"
+    },
+    {
+      "key": "function-permission-level",
+      "displayName": "Function Permission Level",
+      "description": "Permission level required to run functions.",
+      "type": "Select",
+      "defaultValue": "2",
+      "options": [
+        { "value": "1", "label": "Level 1" },
+        { "value": "2", "label": "Level 2" },
+        { "value": "3", "label": "Level 3" },
+        { "value": "4", "label": "Level 4" }
+      ],
+      "category": "Server"
+    },
+    {
+      "key": "resource-pack",
+      "displayName": "Resource Pack URL",
+      "description": "URL to a resource pack for clients to download.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Server"
+    },
+    {
+      "key": "resource-pack-sha1",
+      "displayName": "Resource Pack SHA1",
+      "description": "SHA1 hash of the resource pack for verification.",
+      "type": "String",
+      "defaultValue": "",
+      "validation": { "pattern": "^([a-fA-F0-9]{40})?$", "errorMessage": "Must be a valid 40-character SHA1 hash or empty" },
+      "category": "Server"
+    },
+    {
+      "key": "require-resource-pack",
+      "displayName": "Require Resource Pack",
+      "description": "Kick players who decline the resource pack.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Server"
+    },
+    {
+      "key": "resource-pack-prompt",
+      "displayName": "Resource Pack Prompt",
+      "description": "Custom message shown when prompting for resource pack.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Server"
+    },
+    {
+      "key": "level-name",
+      "displayName": "World Name",
+      "description": "Name of the world folder.",
+      "type": "String",
+      "defaultValue": "world",
+      "category": "World"
+    },
+    {
+      "key": "level-seed",
+      "displayName": "World Seed",
+      "description": "Seed for world generation (leave empty for random).",
+      "type": "String",
+      "defaultValue": "",
+      "category": "World"
+    },
+    {
+      "key": "level-type",
+      "displayName": "World Type",
+      "description": "Type of world generation.",
+      "type": "Select",
+      "defaultValue": "minecraft:normal",
+      "options": [
+        { "value": "minecraft:normal", "label": "Normal" },
+        { "value": "minecraft:flat", "label": "Superflat" },
+        { "value": "minecraft:large_biomes", "label": "Large Biomes" },
+        { "value": "minecraft:amplified", "label": "Amplified" },
+        { "value": "minecraft:single_biome_surface", "label": "Single Biome" }
+      ],
+      "category": "World"
+    },
+    {
+      "key": "generator-settings",
+      "displayName": "Generator Settings",
+      "description": "JSON settings for superflat/custom world generation.",
+      "type": "String",
+      "defaultValue": "{}",
+      "category": "World"
+    },
+    {
+      "key": "generate-structures",
+      "displayName": "Generate Structures",
+      "description": "Generate villages, temples, and other structures.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "World"
+    },
+    {
+      "key": "spawn-protection",
+      "displayName": "Spawn Protection Radius",
+      "description": "Radius around spawn where non-ops cannot build (0 = disabled).",
+      "type": "Int",
+      "defaultValue": 16,
+      "validation": { "minValue": 0 },
+      "category": "World"
+    },
+    {
+      "key": "spawn-animals",
+      "displayName": "Spawn Animals",
+      "description": "Allow passive mobs to spawn naturally.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "World"
+    },
+    {
+      "key": "spawn-monsters",
+      "displayName": "Spawn Monsters",
+      "description": "Allow hostile mobs to spawn naturally.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "World"
+    },
+    {
+      "key": "spawn-npcs",
+      "displayName": "Spawn NPCs",
+      "description": "Allow villagers and other NPCs to spawn.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "World"
+    },
+    {
+      "key": "allow-nether",
+      "displayName": "Allow Nether",
+      "description": "Allow players to travel to the Nether dimension.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "World"
+    },
+    {
+      "key": "max-world-size",
+      "displayName": "Max World Size",
+      "description": "Maximum world border radius in blocks.",
+      "type": "Int",
+      "defaultValue": 29999984,
+      "validation": { "minValue": 1, "maxValue": 29999984 },
+      "category": "World"
+    },
+    {
+      "key": "initial-enabled-packs",
+      "displayName": "Initial Enabled Packs",
+      "description": "Data packs to enable by default.",
+      "type": "String",
+      "defaultValue": "vanilla",
+      "category": "World"
+    },
+    {
+      "key": "initial-disabled-packs",
+      "displayName": "Initial Disabled Packs",
+      "description": "Data packs to disable by default.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "World"
+    },
+    {
+      "key": "server-ip",
+      "displayName": "Server IP",
+      "description": "IP address to bind to (leave empty for all interfaces).",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Network"
+    },
+    {
+      "key": "server-port",
+      "displayName": "Server Port",
+      "description": "Port the server listens on for client connections.",
+      "type": "Port",
+      "defaultValue": 25565,
+      "category": "Network"
+    },
+    {
+      "key": "enable-query",
+      "displayName": "Enable Query",
+      "description": "Enable GameSpy4 query protocol for server information.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Network"
+    },
+    {
+      "key": "query.port",
+      "displayName": "Query Port",
+      "description": "Port for query protocol.",
+      "type": "Port",
+      "defaultValue": 25565,
+      "category": "Network"
+    },
+    {
+      "key": "enable-rcon",
+      "displayName": "Enable RCON",
+      "description": "Enable remote console access for server management.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Network"
+    },
+    {
+      "key": "rcon.port",
+      "displayName": "RCON Port",
+      "description": "Port for RCON connections.",
+      "type": "Port",
+      "defaultValue": 25575,
+      "category": "Network"
+    },
+    {
+      "key": "rcon.password",
+      "displayName": "RCON Password",
+      "description": "Password for RCON authentication (required if RCON enabled).",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Network"
+    },
+    {
+      "key": "broadcast-rcon-to-ops",
+      "displayName": "Broadcast RCON to OPs",
+      "description": "Show RCON command output to online operators.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Network"
+    },
+    {
+      "key": "broadcast-console-to-ops",
+      "displayName": "Broadcast Console to OPs",
+      "description": "Show console command output to online operators.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Network"
+    },
+    {
+      "key": "view-distance",
+      "displayName": "View Distance",
+      "description": "Render distance in chunks (3-32). Lower values improve performance.",
+      "type": "Int",
+      "defaultValue": 10,
+      "validation": { "minValue": 3, "maxValue": 32 },
+      "category": "Performance"
+    },
+    {
+      "key": "simulation-distance",
+      "displayName": "Simulation Distance",
+      "description": "Distance in chunks where entities and blocks are ticked.",
+      "type": "Int",
+      "defaultValue": 10,
+      "validation": { "minValue": 3, "maxValue": 32 },
+      "category": "Performance"
+    },
+    {
+      "key": "max-tick-time",
+      "displayName": "Max Tick Time",
+      "description": "Maximum milliseconds per tick before server watchdog intervenes (-1 = disable).",
+      "type": "Int",
+      "defaultValue": 60000,
+      "validation": { "minValue": -1 },
+      "category": "Performance"
+    },
+    {
+      "key": "network-compression-threshold",
+      "displayName": "Network Compression Threshold",
+      "description": "Minimum packet size for compression (-1 = disable, 0 = compress all).",
+      "type": "Int",
+      "defaultValue": 256,
+      "validation": { "minValue": -1, "maxValue": 65535 },
+      "category": "Performance"
+    },
+    {
+      "key": "rate-limit",
+      "displayName": "Rate Limit",
+      "description": "Maximum packets per second before kicking (0 = disabled).",
+      "type": "Int",
+      "defaultValue": 0,
+      "validation": { "minValue": 0 },
+      "category": "Performance"
+    },
+    {
+      "key": "max-chained-neighbor-updates",
+      "displayName": "Max Chained Neighbor Updates",
+      "description": "Limit chain reaction block updates (-1 = unlimited).",
+      "type": "Int",
+      "defaultValue": 1000000,
+      "validation": { "minValue": -1 },
+      "category": "Performance"
+    },
+    {
+      "key": "entity-broadcast-range-percentage",
+      "displayName": "Entity Broadcast Range %",
+      "description": "Percentage of default entity tracking range (10-1000).",
+      "type": "Int",
+      "defaultValue": 100,
+      "validation": { "minValue": 10, "maxValue": 1000 },
+      "category": "Performance"
+    },
+    {
+      "key": "sync-chunk-writes",
+      "displayName": "Sync Chunk Writes",
+      "description": "Write chunks synchronously to disk for data integrity.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Performance"
+    },
+    {
+      "key": "region-file-compression",
+      "displayName": "Region File Compression",
+      "description": "Compression algorithm for region files.",
+      "type": "Select",
+      "defaultValue": "deflate",
+      "options": [
+        { "value": "deflate", "label": "Deflate (Default)" },
+        { "value": "lz4", "label": "LZ4 (Faster)" },
+        { "value": "none", "label": "None" }
+      ],
+      "category": "Performance"
+    },
+    {
+      "key": "online-mode",
+      "displayName": "Online Mode",
+      "description": "Authenticate players with Mojang servers. Disable only for offline/LAN.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Security"
+    },
+    {
+      "key": "white-list",
+      "displayName": "Enable Whitelist",
+      "description": "Only allow whitelisted players to join.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Security"
+    },
+    {
+      "key": "enforce-whitelist",
+      "displayName": "Enforce Whitelist",
+      "description": "Kick non-whitelisted players when whitelist is reloaded.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Security"
+    },
+    {
+      "key": "prevent-proxy-connections",
+      "displayName": "Prevent Proxy Connections",
+      "description": "Block connections through known VPNs/proxies.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Security"
+    },
+    {
+      "key": "enforce-secure-profile",
+      "displayName": "Enforce Secure Profile",
+      "description": "Require players to have a Mojang-signed public key.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Security"
+    },
+    {
+      "key": "enable-command-block",
+      "displayName": "Enable Command Blocks",
+      "description": "Allow command blocks to execute commands.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Gameplay"
+    },
+    {
+      "key": "allow-flight",
+      "displayName": "Allow Flight",
+      "description": "Allow players to use flight mods without being kicked.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Gameplay"
+    },
+    {
+      "key": "enable-jmx-monitoring",
+      "displayName": "Enable JMX Monitoring",
+      "description": "Enable Java Management Extensions for monitoring.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Advanced"
+    },
+    {
+      "key": "use-native-transport",
+      "displayName": "Use Native Transport",
+      "description": "Use optimized native network transport on Linux.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Advanced"
+    },
+    {
+      "key": "text-filtering-config",
+      "displayName": "Text Filtering Config",
+      "description": "Path to text filtering configuration file.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Advanced"
+    },
+    {
+      "key": "previews-chat",
+      "displayName": "Previews Chat",
+      "description": "Enable chat preview feature.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Advanced"
+    },
+    {
+      "key": "log-ips",
+      "displayName": "Log IPs",
+      "description": "Log player IP addresses to server log.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Advanced"
+    },
+    {
+      "key": "debug",
+      "displayName": "Debug Mode",
+      "description": "Enable debug output (development only).",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Advanced"
+    },
+    {
+      "key": "pause-when-empty-seconds",
+      "displayName": "Pause When Empty (Seconds)",
+      "description": "Seconds to wait before pausing server when empty (0 = disabled).",
+      "type": "Int",
+      "defaultValue": 60,
+      "validation": { "minValue": 0 },
+      "category": "Advanced"
+    },
+    {
+      "key": "bug-report-link",
+      "displayName": "Bug Report Link",
+      "description": "Custom URL for bug reports shown in crash screens.",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Advanced"
+    },
+    {
+      "key": "accept-transfers",
+      "displayName": "Accept Transfers",
+      "description": "Accept player transfers from other servers (1.20.5+).",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Advanced"
+    }
+  ]
+}

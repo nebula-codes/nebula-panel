@@ -1,0 +1,224 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+
+<Card Variant="Card.CardVariant.Elevated" Class="@ComputedClasses">
+    <div class="flex items-start justify-between gap-4">
+        <div class="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" @onclick="HandleCardClick">
+            @if (!string.IsNullOrEmpty(Server.EffectiveIcon))
+            {
+                <img src="@Server.EffectiveIcon" alt="@Server.GameName" class="w-12 h-12 object-contain rounded-lg flex-shrink-0" />
+            }
+            else
+            {
+                <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Icon Name="server" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+                </div>
+            }
+            <div class="min-w-0">
+                <h3 class="font-medium text-nebula-text-primary truncate">@Server.Name</h3>
+                <p class="text-sm text-nebula-text-muted truncate">@Server.GameName</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 flex-shrink-0">
+            <StatusBadge Status="@GetStatusType(Server.Status)"
+                         Text="@Server.Status.ToString()"
+                         ShowDot="true" />
+
+            <Dropdown TriggerIcon="more-vertical">
+                <DropdownItem Text="Console" IconName="terminal" OnClick="@(() => OnConsoleClick.InvokeAsync(Server))" />
+                <DropdownItem Text="Files" IconName="folder" OnClick="@(() => OnFilesClick.InvokeAsync(Server))" />
+                <DropdownItem Text="Settings" IconName="settings" OnClick="@(() => OnSettingsClick.InvokeAsync(Server))" />
+                <DropdownItem IsDivider="true" />
+                <DropdownItem Text="Delete"
+                              IconName="trash-2"
+                              Danger="true"
+                              Disabled="@(Server.Status != ServerStatus.Stopped && Server.Status != ServerStatus.Unknown)"
+                              OnClick="@(() => OnDeleteClick.InvokeAsync(Server))" />
+            </Dropdown>
+        </div>
+    </div>
+
+    <div class="mt-4 flex items-center gap-4 text-sm">
+        <div class="flex items-center gap-1.5 text-nebula-text-muted">
+            <Icon Name="@(Server.DeploymentType == ServerDeploymentType.Docker ? "box" : "terminal")" Size="IconSize.Small" />
+            <span>@Server.DeploymentType</span>
+        </div>
+
+        <div class="flex items-center gap-1.5 text-nebula-text-muted">
+            <Icon Name="network" Size="IconSize.Small" />
+            <code class="bg-nebula-bg-tertiary px-1.5 py-0.5 rounded text-xs">@Server.BindAddress:@Server.PrimaryPort</code>
+        </div>
+    </div>
+
+    @if (ShowControls)
+    {
+        <div class="mt-4 pt-4 border-t border-nebula-border-subtle flex items-center gap-2">
+            @if (Server.Status == ServerStatus.Running)
+            {
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Size="Button.ButtonSize.Small"
+                        Text="Stop"
+                        IconName="square"
+                        Loading="_stopping"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleStop" />
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Size="Button.ButtonSize.Small"
+                        Text="Restart"
+                        IconName="refresh-cw"
+                        Loading="_restarting"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleRestart" />
+            }
+            else if (Server.Status == ServerStatus.Stopped || Server.Status == ServerStatus.Unknown || Server.Status == ServerStatus.Crashed)
+            {
+                <Button Variant="Button.ButtonVariant.Primary"
+                        Size="Button.ButtonSize.Small"
+                        Text="Start"
+                        IconName="play"
+                        Loading="_starting"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleStart" />
+            }
+            else if (Server.Status == ServerStatus.Starting || Server.Status == ServerStatus.Stopping)
+            {
+                <Button Variant="Button.ButtonVariant.Danger"
+                        Size="Button.ButtonSize.Small"
+                        Text="Kill"
+                        IconName="x"
+                        Loading="_killing"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleKill" />
+            }
+        </div>
+    }
+</Card>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameServerListItemDto Server { get; set; } = default!;
+
+    [Parameter]
+    public bool ShowControls { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnConsoleClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnFilesClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnSettingsClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnDeleteClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnStartClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnStopClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnRestartClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnKillClick { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private bool _starting;
+    private bool _stopping;
+    private bool _restarting;
+    private bool _killing;
+
+    private bool _actionInProgress => _starting || _stopping || _restarting || _killing;
+
+    private string ComputedClasses
+    {
+        get
+        {
+            var classes = new List<string>();
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+            return string.Join(" ", classes);
+        }
+    }
+
+    private void HandleCardClick()
+    {
+        if (OnClick.HasDelegate)
+        {
+            OnClick.InvokeAsync(Server);
+        }
+    }
+
+    private async Task HandleStart()
+    {
+        _starting = true;
+        try
+        {
+            await OnStartClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    private async Task HandleStop()
+    {
+        _stopping = true;
+        try
+        {
+            await OnStopClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _stopping = false;
+        }
+    }
+
+    private async Task HandleRestart()
+    {
+        _restarting = true;
+        try
+        {
+            await OnRestartClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _restarting = false;
+        }
+    }
+
+    private async Task HandleKill()
+    {
+        _killing = true;
+        try
+        {
+            await OnKillClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _killing = false;
+        }
+    }
+
+    private static StatusBadge.StatusType GetStatusType(ServerStatus status) => status switch
+    {
+        ServerStatus.Running => StatusBadge.StatusType.Success,
+        ServerStatus.Starting => StatusBadge.StatusType.Warning,
+        ServerStatus.Stopping => StatusBadge.StatusType.Warning,
+        ServerStatus.Stopped => StatusBadge.StatusType.Neutral,
+        ServerStatus.Crashed => StatusBadge.StatusType.Error,
+        ServerStatus.Updating => StatusBadge.StatusType.Info,
+        ServerStatus.Installing => StatusBadge.StatusType.Info,
+        _ => StatusBadge.StatusType.Neutral
+    };
+}

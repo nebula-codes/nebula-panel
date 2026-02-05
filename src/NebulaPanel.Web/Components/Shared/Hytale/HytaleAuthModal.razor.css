@@ -1,0 +1,69 @@
+/* Ensure modal content doesn't overflow horizontally */
+::deep .space-y-6 {
+    overflow: hidden;
+}
+
+.auth-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    min-width: 0; /* Allow flex container to shrink */
+    overflow: hidden;
+}
+
+.auth-step .flex-1 {
+    min-width: 0; /* Required for truncate to work in flexbox */
+    overflow: hidden;
+}
+
+.step-number {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background: var(--nebula-accent);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+}
+
+.device-code-display {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: clamp(1.25rem, 5vw, 2rem); /* Responsive font size */
+    letter-spacing: 0.15rem;
+    text-align: center;
+    padding: 1rem 0.75rem;
+    background: var(--nebula-bg-tertiary);
+    border-radius: var(--nebula-radius-lg, 0.75rem);
+    color: var(--nebula-accent);
+    font-weight: 600;
+    border: 2px dashed var(--nebula-border);
+    word-break: break-all; /* Break long codes if necessary */
+    overflow-wrap: break-word;
+}
+
+.countdown-timer {
+    text-align: center;
+    color: var(--nebula-text-muted);
+}
+
+.countdown-timer.warning {
+    color: var(--nebula-warning);
+}
+
+.countdown-timer.danger {
+    color: var(--nebula-error);
+    animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}

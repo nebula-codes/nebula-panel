@@ -1,0 +1,194 @@
+{
+  "$schema": "https://nebula-panel.dev/schemas/config-schema-v1.json",
+  "schemaVersion": "1.0",
+  "fileName": "config/paper-global.yml",
+  "fileType": "Yaml",
+  "fields": [
+    {
+      "key": "messages.no-permission",
+      "displayName": "No Permission Message",
+      "description": "Message shown when player lacks permission.",
+      "type": "String",
+      "defaultValue": "I'm sorry, but you do not have permission to perform this command.",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.kick.authentication-servers-down",
+      "displayName": "Auth Servers Down Message",
+      "description": "Kick message when Mojang authentication is unavailable.",
+      "type": "String",
+      "defaultValue": "Authentication servers are down. Please try again later, sorry!",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.kick.connection-throttle",
+      "displayName": "Connection Throttle Message",
+      "description": "Kick message for connecting too frequently.",
+      "type": "String",
+      "defaultValue": "Connection throttled! Please wait before reconnecting.",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.kick.flying-player",
+      "displayName": "Flying Player Message",
+      "description": "Kick message for detected flying without permission.",
+      "type": "String",
+      "defaultValue": "Flying is not enabled on this server",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.kick.flying-vehicle",
+      "displayName": "Flying Vehicle Message",
+      "description": "Kick message for flying vehicle detected.",
+      "type": "String",
+      "defaultValue": "Flying is not enabled on this server",
+      "category": "Messages"
+    },
+    {
+      "key": "timings.enabled",
+      "displayName": "Timings Enabled",
+      "description": "Enable server performance timings.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Timings"
+    },
+    {
+      "key": "timings.server-name-privacy",
+      "displayName": "Server Name Privacy",
+      "description": "Hide server name in timings reports.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Timings"
+    },
+    {
+      "key": "timings.verbose",
+      "displayName": "Verbose Timings",
+      "description": "Include detailed timing information.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Timings"
+    },
+    {
+      "key": "chunk-loading-basic.player-max-chunk-generate-rate",
+      "displayName": "Max Chunk Generate Rate",
+      "description": "Maximum chunks per second to generate per player (-1 = unlimited).",
+      "type": "Float",
+      "defaultValue": -1.0,
+      "category": "Chunk Loading"
+    },
+    {
+      "key": "chunk-loading-basic.player-max-chunk-load-rate",
+      "displayName": "Max Chunk Load Rate",
+      "description": "Maximum chunks per second to load per player (-1 = unlimited).",
+      "type": "Float",
+      "defaultValue": 100.0,
+      "category": "Chunk Loading"
+    },
+    {
+      "key": "chunk-loading-basic.player-max-chunk-send-rate",
+      "displayName": "Max Chunk Send Rate",
+      "description": "Maximum chunks per second to send per player (-1 = unlimited).",
+      "type": "Float",
+      "defaultValue": 75.0,
+      "category": "Chunk Loading"
+    },
+    {
+      "key": "misc.max-joins-per-tick",
+      "displayName": "Max Joins Per Tick",
+      "description": "Maximum player joins processed per tick.",
+      "type": "Int",
+      "defaultValue": 5,
+      "validation": { "minValue": 1 },
+      "category": "Misc"
+    },
+    {
+      "key": "misc.fix-entity-position-desync",
+      "displayName": "Fix Entity Position Desync",
+      "description": "Fix entity position synchronization issues.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Misc"
+    },
+    {
+      "key": "misc.use-alternative-luck-formula",
+      "displayName": "Alternative Luck Formula",
+      "description": "Use alternative luck calculation for better results.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Misc"
+    },
+    {
+      "key": "packet-limiter.kick-message",
+      "displayName": "Packet Limiter Kick Message",
+      "description": "Kick message when packet limit exceeded.",
+      "type": "String",
+      "defaultValue": "Sent too many packets",
+      "category": "Packet Limiter"
+    },
+    {
+      "key": "packet-limiter.all-packets.max-packet-rate",
+      "displayName": "Max Packet Rate",
+      "description": "Maximum packets per second allowed.",
+      "type": "Float",
+      "defaultValue": 500.0,
+      "category": "Packet Limiter"
+    },
+    {
+      "key": "async-chunks.threads",
+      "displayName": "Async Chunk Threads",
+      "description": "Threads for async chunk operations (-1 = auto).",
+      "type": "Int",
+      "defaultValue": -1,
+      "validation": { "minValue": -1 },
+      "category": "Async"
+    },
+    {
+      "key": "unsupported-settings.allow-headless-pistons",
+      "displayName": "Allow Headless Pistons",
+      "description": "Allow creation of headless pistons (technical Minecraft).",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Unsupported"
+    },
+    {
+      "key": "unsupported-settings.allow-permanent-block-break-exploits",
+      "displayName": "Allow Block Break Exploits",
+      "description": "Allow exploits that break normally unbreakable blocks.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Unsupported"
+    },
+    {
+      "key": "unsupported-settings.allow-piston-duplication",
+      "displayName": "Allow Piston Duplication",
+      "description": "Allow TNT and carpet duplication via pistons.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Unsupported"
+    },
+    {
+      "key": "proxies.velocity.enabled",
+      "displayName": "Velocity Support",
+      "description": "Enable Velocity proxy modern forwarding.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Proxies"
+    },
+    {
+      "key": "proxies.velocity.online-mode",
+      "displayName": "Velocity Online Mode",
+      "description": "Require Velocity to use online-mode authentication.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Proxies"
+    },
+    {
+      "key": "proxies.velocity.secret",
+      "displayName": "Velocity Secret",
+      "description": "Secret key for Velocity forwarding (must match proxy config).",
+      "type": "String",
+      "defaultValue": "",
+      "category": "Proxies"
+    }
+  ]
+}

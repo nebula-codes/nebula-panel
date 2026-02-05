@@ -1,0 +1,141 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Web.Hubs
+@implements IAsyncDisposable
+
+@if (_isVisible && _secondsRemaining > 0)
+{
+    <div class="fixed bottom-0 left-0 right-0 z-50 bg-amber-600 text-white px-4 py-3 shadow-lg">
+        <div class="container mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <Icon Name="alert-triangle" Size="IconSize.Medium" class="animate-pulse" />
+                <span class="font-medium">
+                    Scheduled update to <strong>v@(_version)</strong> in @FormatTime(_secondsRemaining)
+                </span>
+            </div>
+            <div class="flex items-center gap-3">
+                @if (_canCancel)
+                {
+                    <button class="px-4 py-1.5 bg-white/20 hover:bg-white/30 rounded text-sm font-medium transition-colors"
+                            @onclick="HandleCancel"
+                            disabled="@_isCancelling">
+                        @if (_isCancelling)
+                        {
+                            <span>Cancelling...</span>
+                        }
+                        else
+                        {
+                            <span>Cancel Update</span>
+                        }
+                    </button>
+                }
+                <span class="text-2xl font-bold tabular-nums">
+                    @FormatTime(_secondsRemaining)
+                </span>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Inject]
+    private NavigationManager Navigation { get; set; } = null!;
+
+    [Parameter]
+    public bool CanCancel { get; set; } = true;
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private HubConnection? _hubConnection;
+    private bool _isVisible;
+    private int _secondsRemaining;
+    private string _version = string.Empty;
+    private bool _canCancel = true;
+    private bool _isCancelling;
+    private System.Timers.Timer? _countdownTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/update"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<int, string>("UpdateCountdown", HandleCountdown);
+
+        await _hubConnection.StartAsync();
+    }
+
+    private void HandleCountdown(int secondsRemaining, string version)
+    {
+        _secondsRemaining = secondsRemaining;
+        _version = version;
+        _isVisible = true;
+        _canCancel = CanCancel && secondsRemaining > 30; // Can't cancel in final 30 seconds
+
+        // Start local countdown timer for smoother display
+        StartCountdownTimer();
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void StartCountdownTimer()
+    {
+        _countdownTimer?.Stop();
+        _countdownTimer?.Dispose();
+
+        _countdownTimer = new System.Timers.Timer(1000);
+        _countdownTimer.Elapsed += (_, _) =>
+        {
+            if (_secondsRemaining > 0)
+            {
+                _secondsRemaining--;
+                _canCancel = CanCancel && _secondsRemaining > 30;
+
+                InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                _countdownTimer?.Stop();
+            }
+        };
+        _countdownTimer.AutoReset = true;
+        _countdownTimer.Start();
+    }
+
+    private async Task HandleCancel()
+    {
+        _isCancelling = true;
+        await OnCancel.InvokeAsync();
+        // The parent component should handle the actual cancellation
+        // If successful, the hub will send a cancel notification
+    }
+
+    private static string FormatTime(int seconds)
+    {
+        if (seconds >= 3600)
+        {
+            var hours = seconds / 3600;
+            var mins = (seconds % 3600) / 60;
+            return $"{hours}h {mins}m";
+        }
+        if (seconds >= 60)
+        {
+            var mins = seconds / 60;
+            var secs = seconds % 60;
+            return $"{mins}:{secs:D2}";
+        }
+        return $"0:{seconds:D2}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _countdownTimer?.Stop();
+        _countdownTimer?.Dispose();
+
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

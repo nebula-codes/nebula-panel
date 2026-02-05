@@ -1,0 +1,47 @@
+@implements IDisposable
+
+<span class="@Class" title="@DateTime.ToLocalTime().ToString("f")">@FormatRelativeTime(DateTime)</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public DateTime DateTime { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public int RefreshIntervalSeconds { get; set; } = 30;
+
+    private Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        _timer = new Timer(_ =>
+        {
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(RefreshIntervalSeconds), TimeSpan.FromSeconds(RefreshIntervalSeconds));
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = System.DateTime.UtcNow - dateTime;
+
+        if (diff.TotalSeconds < 10)
+            return "Just now";
+        if (diff.TotalSeconds < 60)
+            return $"{(int)diff.TotalSeconds}s ago";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+}

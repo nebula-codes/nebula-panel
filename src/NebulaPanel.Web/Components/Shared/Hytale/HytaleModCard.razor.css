@@ -1,0 +1,189 @@
+.hytale-mod-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    background-color: var(--nebula-bg-secondary);
+    border: 1px solid var(--nebula-border-subtle);
+    border-radius: var(--nebula-radius-lg);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.hytale-mod-card:hover {
+    border-color: rgba(168, 85, 247, 0.5);
+    box-shadow: var(--nebula-glow);
+    background-color: var(--nebula-bg-tertiary);
+    transform: translateY(-2px);
+}
+
+/* Install Button Overlay */
+.install-overlay {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 10;
+}
+
+.hytale-mod-card:hover .install-overlay {
+    opacity: 1;
+}
+
+.install-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--nebula-radius);
+    background-color: var(--nebula-accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.install-btn:hover {
+    background-color: var(--nebula-accent-hover);
+    transform: scale(1.1);
+}
+
+.install-btn:active {
+    transform: scale(0.95);
+}
+
+/* Icon */
+.card-icon {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    margin-bottom: 0.75rem;
+    border-radius: var(--nebula-radius);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.card-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.icon-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-muted);
+}
+
+.provider-badge {
+    position: absolute;
+    bottom: -4px;
+    right: -4px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--nebula-radius-sm);
+    font-size: 0.625rem;
+    font-weight: 700;
+    border: 2px solid var(--nebula-bg-secondary);
+}
+
+.provider-modtale {
+    background-color: var(--nebula-accent);
+    color: white;
+}
+
+.provider-curseforge {
+    background-color: #f67737;
+    color: white;
+}
+
+.provider-modrinth {
+    background-color: #1ec97a;
+    color: white;
+}
+
+.provider-local {
+    background-color: var(--nebula-bg-elevated);
+    color: var(--nebula-text-secondary);
+}
+
+/* Content */
+.card-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mod-name {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--nebula-text-primary);
+    margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mod-author {
+    font-size: 0.8125rem;
+    color: var(--nebula-text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.mod-summary {
+    font-size: 0.8125rem;
+    color: var(--nebula-text-secondary);
+    line-height: 1.4;
+    margin-bottom: 0.75rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.mod-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--nebula-text-muted);
+}
+
+.mod-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: auto;
+}
+
+.tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--nebula-bg-tertiary);
+    border-radius: 9999px;
+    font-size: 0.6875rem;
+    color: var(--nebula-text-secondary);
+}
+
+.tag-more {
+    background-color: var(--nebula-accent-subtle);
+    color: var(--nebula-accent);
+}

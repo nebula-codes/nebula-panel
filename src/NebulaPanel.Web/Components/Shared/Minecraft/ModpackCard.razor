@@ -1,0 +1,171 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+
+<div class="modpack-card" @onclick="HandleCardClick">
+    <div class="flex gap-4">
+        @* Icon *@
+        <div class="modpack-icon">
+            @if (!string.IsNullOrEmpty(Modpack.IconUrl))
+            {
+                <img src="@Modpack.IconUrl" alt="@Modpack.Name" class="w-full h-full object-cover rounded-lg" />
+            }
+            else
+            {
+                <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted" />
+            }
+        </div>
+
+        @* Content *@
+        <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-2 mb-1">
+                <h3 class="font-medium text-nebula-text-primary truncate">@Modpack.Name</h3>
+                @if (ShowProviderBadge)
+                {
+                    <span class="provider-badge @GetProviderClass()">@GetProviderName()</span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(Modpack.Author))
+            {
+                <p class="text-xs text-nebula-text-muted mb-2">by @Modpack.Author</p>
+            }
+
+            @if (!string.IsNullOrEmpty(Modpack.Summary))
+            {
+                <p class="text-sm text-nebula-text-secondary mb-3 line-clamp-2">@Modpack.Summary</p>
+            }
+
+            @* Metadata row *@
+            <div class="flex flex-wrap items-center gap-2 mb-3">
+                @if (Modpack.Loaders.Count > 0)
+                {
+                    <StatusBadge Status="@GetLoaderStatus(Modpack.Loaders[0])" Size="BadgeSize.Small">
+                        @GetLoaderName(Modpack.Loaders[0])
+                    </StatusBadge>
+                }
+
+                @if (Modpack.MinecraftVersions.Count > 0)
+                {
+                    <span class="text-xs text-nebula-text-muted">@Modpack.MinecraftVersions[0]</span>
+                }
+
+                <span class="text-xs text-nebula-text-muted flex items-center gap-1">
+                    <Icon Name="download" Size="IconSize.XSmall" />
+                    @FormatDownloads(Modpack.Downloads)
+                </span>
+            </div>
+
+            @* Server pack indicator and action *@
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    @if (Modpack.HasServerPack)
+                    {
+                        <span class="flex items-center gap-1 text-xs text-nebula-success">
+                            <Icon Name="check-circle" Size="IconSize.XSmall" />
+                            Server Pack
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="flex items-center gap-1 text-xs text-nebula-warning">
+                            <Icon Name="alert-triangle" Size="IconSize.XSmall" />
+                            No Server Pack
+                        </span>
+                    }
+                </div>
+
+                <Button Variant="ButtonVariant.Ghost"
+                        Size="ButtonSize.Small"
+                        Text="View Details"
+                        OnClick="HandleViewDetails"
+                        OnClickStopPropagation="true" />
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The modpack data to display.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public ModpackSearchItem Modpack { get; set; } = default!;
+
+    /// <summary>
+    /// Callback when the user clicks "View Details".
+    /// </summary>
+    [Parameter]
+    public EventCallback OnViewDetails { get; set; }
+
+    /// <summary>
+    /// Callback when the card itself is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnSelect { get; set; }
+
+    /// <summary>
+    /// Whether to show the provider badge (CurseForge, Modrinth, etc.).
+    /// </summary>
+    [Parameter]
+    public bool ShowProviderBadge { get; set; } = true;
+
+    private async Task HandleCardClick()
+    {
+        if (OnSelect.HasDelegate)
+        {
+            await OnSelect.InvokeAsync();
+        }
+        else if (OnViewDetails.HasDelegate)
+        {
+            await OnViewDetails.InvokeAsync();
+        }
+    }
+
+    private async Task HandleViewDetails()
+    {
+        await OnViewDetails.InvokeAsync();
+    }
+
+    private static string FormatDownloads(long count) => count switch
+    {
+        >= 1_000_000 => $"{count / 1_000_000.0:F1}M",
+        >= 1_000 => $"{count / 1_000.0:F1}K",
+        _ => count.ToString()
+    };
+
+    private string GetProviderName() => Modpack.Provider switch
+    {
+        ModpackProviderType.CurseForge => "CurseForge",
+        ModpackProviderType.Modrinth => "Modrinth",
+        ModpackProviderType.FTB => "FTB",
+        ModpackProviderType.ATLauncher => "ATLauncher",
+        ModpackProviderType.Technic => "Technic",
+        _ => "Unknown"
+    };
+
+    private string GetProviderClass() => Modpack.Provider switch
+    {
+        ModpackProviderType.CurseForge => "provider-curseforge",
+        ModpackProviderType.Modrinth => "provider-modrinth",
+        ModpackProviderType.FTB => "provider-ftb",
+        _ => ""
+    };
+
+    private static string GetLoaderName(ModLoaderType loader) => loader switch
+    {
+        ModLoaderType.Forge => "Forge",
+        ModLoaderType.NeoForge => "NeoForge",
+        ModLoaderType.Fabric => "Fabric",
+        ModLoaderType.Quilt => "Quilt",
+        _ => "Unknown"
+    };
+
+    private static StatusBadge.StatusType GetLoaderStatus(ModLoaderType loader) => loader switch
+    {
+        ModLoaderType.Forge => StatusBadge.StatusType.Warning,
+        ModLoaderType.NeoForge => StatusBadge.StatusType.Warning,
+        ModLoaderType.Fabric => StatusBadge.StatusType.Info,
+        ModLoaderType.Quilt => StatusBadge.StatusType.Info,
+        _ => StatusBadge.StatusType.Neutral
+    };
+}

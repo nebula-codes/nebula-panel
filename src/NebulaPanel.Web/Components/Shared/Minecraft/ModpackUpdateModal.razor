@@ -1,0 +1,277 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.ValueObjects
+
+<Modal IsOpen="IsOpen" OnClose="HandleClose" Size="ModalSize.Large">
+    <Header>
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-nebula-info/20 flex items-center justify-center">
+                <Icon Name="download" Size="IconSize.Small" Class="text-nebula-info" />
+            </div>
+            <div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">Update @ModpackName</h3>
+                <div class="text-sm text-nebula-text-muted">Choose a version to update to</div>
+            </div>
+        </div>
+    </Header>
+    <Body>
+        @if (UpdateInfo is not null)
+        {
+            <div class="space-y-6">
+                @* Version Comparison *@
+                <div class="bg-nebula-bg-tertiary rounded-nebula p-4">
+                    <div class="flex items-center justify-between">
+                        <div class="text-center flex-1">
+                            <div class="text-xs text-nebula-text-muted uppercase tracking-wider mb-1">Current</div>
+                            <div class="text-lg font-medium text-nebula-text-primary">@UpdateInfo.CurrentVersionName</div>
+                            @if (!string.IsNullOrEmpty(UpdateInfo.CurrentMinecraftVersion))
+                            {
+                                <div class="text-sm text-nebula-text-muted mt-1">
+                                    MC @UpdateInfo.CurrentMinecraftVersion
+                                </div>
+                            }
+                        </div>
+                        <div class="px-4">
+                            <Icon Name="arrow-right" Size="IconSize.Medium" Class="text-nebula-info" />
+                        </div>
+                        <div class="text-center flex-1">
+                            <div class="text-xs text-nebula-text-muted uppercase tracking-wider mb-1">Latest</div>
+                            <div class="text-lg font-medium text-nebula-info">@UpdateInfo.LatestVersionName</div>
+                            @if (!string.IsNullOrEmpty(UpdateInfo.NewMinecraftVersion))
+                            {
+                                <div class="text-sm text-nebula-text-muted mt-1">
+                                    MC @UpdateInfo.NewMinecraftVersion
+                                    @if (UpdateInfo.IsMinecraftVersionChange)
+                                    {
+                                        <StatusBadge Status="StatusType.Warning" Text="Changed" Size="BadgeSize.Small" Class="ml-1" />
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (UpdateInfo.ServerPackSizeBytes.HasValue)
+                    {
+                        <div class="mt-4 pt-3 border-t border-nebula-border text-center">
+                            <span class="text-sm text-nebula-text-muted">
+                                Download size: <span class="text-nebula-text-secondary font-medium">@FormatBytes(UpdateInfo.ServerPackSizeBytes.Value)</span>
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                @* Warnings *@
+                @if (UpdateInfo.Warnings.Count > 0)
+                {
+                    <div class="bg-nebula-warning/10 border border-nebula-warning/30 rounded-nebula p-4">
+                        <div class="flex items-start gap-3">
+                            <Icon Name="alert-triangle" Size="IconSize.Small" Class="text-nebula-warning mt-0.5" />
+                            <div class="flex-1">
+                                <div class="font-medium text-nebula-warning mb-2">Important Notes</div>
+                                <ul class="text-sm text-nebula-text-secondary space-y-1 list-disc list-inside">
+                                    @foreach (var warning in UpdateInfo.Warnings)
+                                    {
+                                        <li>@warning</li>
+                                    }
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @* Changelog *@
+                @if (!string.IsNullOrEmpty(UpdateInfo.Changelog))
+                {
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="text-sm font-medium text-nebula-text-primary">Changelog</h4>
+                            <button type="button"
+                                    class="text-xs text-nebula-text-muted hover:text-nebula-text-secondary"
+                                    @onclick="@(() => _changelogExpanded = !_changelogExpanded)">
+                                @(_changelogExpanded ? "Collapse" : "Expand")
+                            </button>
+                        </div>
+                        <div class="@(_changelogExpanded ? "max-h-[400px]" : "max-h-[120px]") overflow-y-auto bg-nebula-bg-tertiary rounded-nebula p-4 text-sm text-nebula-text-secondary prose prose-sm max-w-none">
+                            @((MarkupString)SanitizeHtml(UpdateInfo.Changelog))
+                        </div>
+                    </div>
+                }
+
+                @* Intermediate Versions *@
+                @if (UpdateInfo.IntermediateVersions.Count > 0)
+                {
+                    <div>
+                        <h4 class="text-sm font-medium text-nebula-text-primary mb-2">
+                            Versions in between (@UpdateInfo.IntermediateVersions.Count)
+                        </h4>
+                        <div class="bg-nebula-bg-tertiary rounded-nebula p-3 max-h-[120px] overflow-y-auto">
+                            <div class="space-y-2 text-sm">
+                                @foreach (var version in UpdateInfo.IntermediateVersions)
+                                {
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-nebula-text-secondary">@version.Name</span>
+                                        <span class="text-nebula-text-muted">@FormatRelativeTime(version.ReleasedAt)</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @* Update Options *@
+                <div class="bg-nebula-bg-tertiary rounded-nebula p-4">
+                    <h4 class="text-sm font-medium text-nebula-text-primary mb-3">Update Options</h4>
+                    <div class="space-y-3">
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   checked="@_options.CreateBackupBeforeUpdate"
+                                   @onchange="@(e => _options = _options with { CreateBackupBeforeUpdate = (bool)(e.Value ?? true) })"
+                                   class="mt-1 w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                            <div>
+                                <div class="text-sm text-nebula-text-primary">Create backup before updating</div>
+                                <div class="text-xs text-nebula-text-muted">Recommended. Creates a full backup you can restore from if needed.</div>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   checked="@_options.PreserveWorldData"
+                                   @onchange="@(e => _options = _options with { PreserveWorldData = (bool)(e.Value ?? true) })"
+                                   class="mt-1 w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                            <div>
+                                <div class="text-sm text-nebula-text-primary">Preserve world data</div>
+                                <div class="text-xs text-nebula-text-muted">Keep all world folders and saves.</div>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   checked="@_options.PreserveCustomConfigs"
+                                   @onchange="@(e => _options = _options with { PreserveCustomConfigs = (bool)(e.Value ?? true) })"
+                                   class="mt-1 w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                            <div>
+                                <div class="text-sm text-nebula-text-primary">Keep custom configurations</div>
+                                <div class="text-xs text-nebula-text-muted">Preserve server.properties customizations and mod configs.</div>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   checked="@_options.PreservePlayerData"
+                                   @onchange="@(e => _options = _options with { PreservePlayerData = (bool)(e.Value ?? true) })"
+                                   class="mt-1 w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                            <div>
+                                <div class="text-sm text-nebula-text-primary">Preserve player data</div>
+                                <div class="text-xs text-nebula-text-muted">Keep whitelist, ops, and ban lists.</div>
+                            </div>
+                        </label>
+
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   checked="@_options.RestartServerAfterUpdate"
+                                   @onchange="@(e => _options = _options with { RestartServerAfterUpdate = (bool)(e.Value ?? true) })"
+                                   class="mt-1 w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent focus:ring-nebula-accent focus:ring-offset-0" />
+                            <div>
+                                <div class="text-sm text-nebula-text-primary">Restart server after update</div>
+                                <div class="text-xs text-nebula-text-muted">Automatically restart the server if it was running before the update.</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                @* Info Note *@
+                <div class="flex items-start gap-2 text-sm text-nebula-text-muted">
+                    <Icon Name="info" Size="IconSize.Small" Class="mt-0.5" />
+                    <span>
+                        If the update fails, you can restore from the backup in the Backups tab.
+                        World data and player permissions will be preserved based on your selected options.
+                    </span>
+                </div>
+            </div>
+        }
+    </Body>
+    <Footer>
+        <div class="flex items-center justify-end gap-3">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Cancel"
+                    OnClick="HandleClose" />
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Update Modpack"
+                    IconName="download"
+                    Loading="Updating"
+                    OnClick="HandleUpdate" />
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public string ModpackName { get; set; } = "Modpack";
+
+    [Parameter]
+    public ModpackUpdateInfo? UpdateInfo { get; set; }
+
+    [Parameter]
+    public EventCallback<ModpackUpdateOptions> OnUpdate { get; set; }
+
+    [Parameter]
+    public bool Updating { get; set; }
+
+    private ModpackUpdateOptions _options = new();
+    private bool _changelogExpanded = false;
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleUpdate()
+    {
+        await OnUpdate.InvokeAsync(_options);
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1)
+            return "just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+
+    private static string SanitizeHtml(string html)
+    {
+        // Basic HTML sanitization - in production you'd use a proper library
+        // For now, just escape script tags and keep basic formatting
+        return html
+            .Replace("<script", "&lt;script")
+            .Replace("</script>", "&lt;/script&gt;")
+            .Replace("javascript:", "");
+    }
+}

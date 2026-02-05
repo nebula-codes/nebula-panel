@@ -1,0 +1,165 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+
+<div class="hytale-mod-card @(ShowInstallButton ? "has-install-btn" : "")" @onclick="HandleClick">
+    @* Icon *@
+    <div class="card-icon">
+        @if (!string.IsNullOrEmpty(Mod.IconUrl))
+        {
+            <img src="@Mod.IconUrl" alt="@Mod.Name" loading="lazy" />
+        }
+        else
+        {
+            <div class="icon-placeholder">
+                <Icon Name="package" Size="IconSize.Large" />
+            </div>
+        }
+
+        @if (ShowProviderBadge)
+        {
+            <span class="provider-badge provider-@Mod.Provider.ToString().ToLowerInvariant()"
+                  title="@GetProviderDisplayName(Mod.Provider)">
+                @GetProviderIcon(Mod.Provider)
+            </span>
+        }
+    </div>
+
+    @* Install Button Overlay *@
+    @if (ShowInstallButton)
+    {
+        <div class="install-overlay" @onclick="HandleInstallClick" @onclick:stopPropagation="true">
+            <button type="button" class="install-btn" title="Install mod">
+                <Icon Name="download" Size="IconSize.Small" />
+            </button>
+        </div>
+    }
+
+    @* Content *@
+    <div class="card-content">
+        <h4 class="mod-name" title="@Mod.Name">@Mod.Name</h4>
+
+        @if (!string.IsNullOrEmpty(Mod.Author))
+        {
+            <p class="mod-author">by @Mod.Author</p>
+        }
+
+        @if (!string.IsNullOrEmpty(Mod.Summary))
+        {
+            <p class="mod-summary" title="@Mod.Summary">@TruncateSummary(Mod.Summary)</p>
+        }
+
+        <div class="mod-meta">
+            <span class="meta-item" title="Downloads">
+                <Icon Name="download" Size="IconSize.XSmall" />
+                @FormatDownloads(Mod.Downloads)
+            </span>
+            @if (Mod.UpdatedAt.HasValue)
+            {
+                <span class="meta-item" title="Last updated">
+                    <Icon Name="clock" Size="IconSize.XSmall" />
+                    @FormatRelativeDate(Mod.UpdatedAt.Value)
+                </span>
+            }
+        </div>
+
+        @if (Mod.Categories.Count > 0)
+        {
+            <div class="mod-tags">
+                @foreach (var category in Mod.Categories.Take(3))
+                {
+                    <span class="tag">@category</span>
+                }
+                @if (Mod.Categories.Count > 3)
+                {
+                    <span class="tag tag-more">+@(Mod.Categories.Count - 3)</span>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// The mod to display.
+    /// </summary>
+    [Parameter]
+    public ModSearchItem Mod { get; set; } = default!;
+
+    /// <summary>
+    /// Callback when the card is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    /// <summary>
+    /// Callback when the install button is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ModSearchItem> OnInstallClick { get; set; }
+
+    /// <summary>
+    /// Whether to show the provider badge.
+    /// </summary>
+    [Parameter]
+    public bool ShowProviderBadge { get; set; } = true;
+
+    /// <summary>
+    /// Whether to show the install button overlay.
+    /// </summary>
+    [Parameter]
+    public bool ShowInstallButton { get; set; } = false;
+
+    private async Task HandleClick()
+    {
+        await OnClick.InvokeAsync();
+    }
+
+    private async Task HandleInstallClick()
+    {
+        await OnInstallClick.InvokeAsync(Mod);
+    }
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string GetProviderIcon(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "M",
+        ModProviderType.CurseForge => "C",
+        ModProviderType.Modrinth => "R",
+        ModProviderType.Local => "L",
+        _ => "?"
+    };
+
+    private static string FormatDownloads(long count) => count switch
+    {
+        >= 1_000_000 => $"{count / 1_000_000.0:F1}M",
+        >= 1_000 => $"{count / 1_000.0:F1}K",
+        _ => count.ToString()
+    };
+
+    private static string FormatRelativeDate(DateTime date)
+    {
+        var diff = DateTime.UtcNow - date;
+        var days = diff.TotalDays;
+        if (days < 1) return "today";
+        if (days < 2) return "yesterday";
+        if (days < 7) return $"{(int)days}d ago";
+        if (days < 30) return $"{(int)(days / 7)}w ago";
+        if (days < 365) return $"{(int)(days / 30)}mo ago";
+        return date.ToString("MMM yyyy");
+    }
+
+    private static string TruncateSummary(string summary)
+    {
+        const int maxLength = 100;
+        if (summary.Length <= maxLength) return summary;
+        return summary[..maxLength].TrimEnd() + "...";
+    }
+}

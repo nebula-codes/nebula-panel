@@ -1,0 +1,990 @@
+@page "/"
+@attribute [Authorize]
+@inject IDashboardService DashboardService
+@inject IAnnouncementService AnnouncementService
+@inject IGameServerService GameServerService
+@inject IToastService ToastService
+@inject NavigationManager NavigationManager
+@inject AuthStateProvider AuthStateProvider
+@inject HealthCheckService HealthCheckService
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.Extensions.Diagnostics.HealthChecks
+@implements IAsyncDisposable
+
+<PageTitle>Dashboard - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    @* Welcome Header *@
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">@GetGreeting(), @_username</h1>
+            <p class="text-sm text-nebula-text-muted mt-1">Here's what's happening with your servers.</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <Button Variant="Button.ButtonVariant.Secondary"
+                    Size="Button.ButtonSize.Small"
+                    IconName="refresh-cw"
+                    OnClick="LoadDashboardDataAsync"
+                    Loading="_isLoading"
+                    Text="Refresh" />
+            <Button Variant="Button.ButtonVariant.Primary"
+                    IconName="plus"
+                    OnClick="@(() => NavigationManager.NavigateTo("/servers/create"))">
+                New Server
+            </Button>
+        </div>
+    </div>
+
+    @* Summary Stats Row *@
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        @if (_isLoading && _isInitialLoad)
+        {
+            @for (int i = 0; i < 4; i++)
+            {
+                <SkeletonCard Variant="SkeletonCard.SkeletonVariant.SummaryCard" />
+            }
+        }
+        else
+        {
+            <div class="@(_isInitialLoad ? "" : "animate-fade-in-up stagger-1")">
+                <SummaryCard Label="Total Servers"
+                             Value="@_summary.TotalServers.ToString()"
+                             IconName="server"
+                             ColorClass="info" />
+            </div>
+            <div class="@(_isInitialLoad ? "" : "animate-fade-in-up stagger-2")">
+                <SummaryCard Label="Running"
+                             Value="@_summary.RunningServers.ToString()"
+                             IconName="play-circle"
+                             ColorClass="success" />
+            </div>
+            <div class="@(_isInitialLoad ? "" : "animate-fade-in-up stagger-3")">
+                <SummaryCard Label="Stopped"
+                             Value="@_summary.StoppedServers.ToString()"
+                             IconName="stop-circle"
+                             ColorClass="text-muted" />
+            </div>
+            <div class="@(_isInitialLoad ? "" : "animate-fade-in-up stagger-4")">
+                @if (_summary.CrashedServers > 0)
+                {
+                    <SummaryCard Label="Crashed"
+                                 Value="@_summary.CrashedServers.ToString()"
+                                 IconName="alert-triangle"
+                                 ColorClass="error" />
+                }
+                else
+                {
+                    @* System health mini card when no crashes *@
+                    <div class="bg-nebula-gradient-subtle rounded-nebula-lg p-4 border border-nebula-border h-full">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2 rounded-nebula bg-nebula-success/20">
+                                <Icon Name="activity" Size="Icon.IconSize.Medium" Class="text-nebula-success" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm text-nebula-text-muted">System</p>
+                                <p class="text-lg font-bold text-nebula-text-primary">@GetHealthStatus()</p>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @* Main Content Grid *@
+    <div class="dashboard-grid">
+        @* Left Column: Servers & Activity *@
+        <div class="space-y-6">
+            @* Server Cards Section *@
+            <div>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold text-nebula-text-primary">Your Servers</h2>
+                    @if (_servers.Count > 0)
+                    {
+                        <a href="/servers" class="link text-sm flex items-center gap-1">
+                            View all <Icon Name="arrow-right" Size="Icon.IconSize.Small" />
+                        </a>
+                    }
+                </div>
+
+                @if (_isLoading && _isInitialLoad)
+                {
+                    <div class="space-y-3">
+                        @for (int i = 0; i < 3; i++)
+                        {
+                            <SkeletonCard Variant="SkeletonCard.SkeletonVariant.ServerCard" />
+                        }
+                    </div>
+                }
+                else if (_servers.Count == 0)
+                {
+                    @if (!_onboardingDismissed)
+                    {
+                        <OnboardingCard OnDismiss="@(() => { _onboardingDismissed = true; StateHasChanged(); })" />
+                    }
+                    else
+                    {
+                        <Card>
+                            <EmptyState IconName="server"
+                                        Heading="No servers yet"
+                                        Description="Create your first game server to get started managing your gaming experience."
+                                        ShowStarfield="true">
+                                <Actions>
+                                    <Button Variant="Button.ButtonVariant.Primary"
+                                            IconName="plus"
+                                            OnClick="@(() => NavigationManager.NavigateTo("/servers/create"))">
+                                        Create Server
+                                    </Button>
+                                </Actions>
+                            </EmptyState>
+                        </Card>
+                    }
+                }
+                else
+                {
+                    <div class="space-y-3">
+                        @{ var index = 0; }
+                        @foreach (var server in _servers.Take(5))
+                        {
+                            var staggerClass = _isInitialLoad ? "" : $"animate-fade-in-up stagger-{Math.Min(index + 5, 8)}";
+                            <div class="@staggerClass">
+                                <ServerCardEnhanced Server="@server"
+                                                    OnClick="@(s => NavigationManager.NavigateTo($"/servers/{s.Id}"))"
+                                                    OnStartClick="HandleServerStart"
+                                                    OnStopClick="HandleServerStop"
+                                                    OnKillClick="HandleServerKill"
+                                                    OnPinToggle="HandleTogglePin"
+                                                    ConsoleUrl="@($"/servers/{server.Id}")"
+                                                    SettingsUrl="@($"/servers/{server.Id}/edit")" />
+                            </div>
+                            index++;
+                        }
+                    </div>
+                }
+            </div>
+
+            @* Activity Feed *@
+            <Card>
+                <CardHeader Title="Recent Activity">
+                    <Actions>
+                        <a href="/settings/logs" class="text-xs text-nebula-accent hover:text-nebula-accent-hover transition-colors">View all</a>
+                    </Actions>
+                </CardHeader>
+                @if (_isLoading && _isInitialLoad)
+                {
+                    <div class="divide-y divide-nebula-border-subtle">
+                        @for (int i = 0; i < 5; i++)
+                        {
+                            <SkeletonCard Variant="SkeletonCard.SkeletonVariant.ActivityItem" />
+                        }
+                    </div>
+                }
+                else if (_recentActivity.Count == 0)
+                {
+                    <div class="flex flex-col items-center justify-center py-8 text-center">
+                        <Icon Name="activity" Size="Icon.IconSize.Large" Class="text-nebula-text-muted mb-3" />
+                        <p class="text-sm text-nebula-text-muted">No recent activity</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="divide-y divide-nebula-border-subtle">
+                        @foreach (var activity in _recentActivity.Take(8))
+                        {
+                            <ActivityFeedItem Activity="@activity" />
+                        }
+                    </div>
+                }
+            </Card>
+        </div>
+
+        @* Right Column: Resources, Announcements, Quick Actions *@
+        <div class="space-y-6">
+            @* Host Resources Panel *@
+            <Card>
+                <CardHeader Title="Host Resources">
+                    <Actions>
+                        @if (_isHubConnected)
+                        {
+                            <div class="flex items-center gap-1.5 text-xs text-nebula-success">
+                                <span class="w-2 h-2 rounded-full bg-nebula-success animate-pulse"></span>
+                                Live
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="flex items-center gap-1.5 text-xs text-nebula-text-muted">
+                                <span class="w-2 h-2 rounded-full bg-nebula-text-muted"></span>
+                                Offline
+                            </div>
+                        }
+                    </Actions>
+                </CardHeader>
+                @if (_isLoading && _isInitialLoad)
+                {
+                    <div class="flex justify-around gap-4 py-4">
+                        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.HealthGauge" />
+                        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.HealthGauge" />
+                    </div>
+                }
+                else
+                {
+                    <div class="flex flex-wrap justify-around gap-4 py-2">
+                        <HealthGauge Label="CPU"
+                                     Percentage="@_systemHealth.CpuPercent" />
+                        <HealthGauge Label="Memory"
+                                     Percentage="@_systemHealth.MemoryPercent"
+                                     SubLabel="@($"{FormatBytes(_systemHealth.MemoryUsedBytes)} / {FormatBytes(_systemHealth.MemoryTotalBytes)}")" />
+                    </div>
+
+                    @if (_systemHealth.Disks.Count > 0)
+                    {
+                        <div class="mt-4 pt-4 border-t border-nebula-border-subtle space-y-3">
+                            @foreach (var disk in _systemHealth.Disks.Take(2))
+                            {
+                                <div class="space-y-1">
+                                    <div class="flex items-center justify-between text-sm">
+                                        <span class="text-nebula-text-secondary">@disk.DriveLabel</span>
+                                        <span class="text-nebula-text-muted">@FormatBytes(disk.UsedBytes) / @FormatBytes(disk.TotalBytes)</span>
+                                    </div>
+                                    <div class="h-2 bg-nebula-bg-tertiary rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-300 @GetDiskProgressColor(disk.UsagePercent)"
+                                             style="width: @(disk.UsagePercent)%"></div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @* Health Check Status *@
+                    <a href="/settings/system-health"
+                       class="mt-4 pt-4 border-t border-nebula-border-subtle flex items-center justify-between hover:bg-nebula-bg-tertiary -mx-6 -mb-6 px-6 py-3 rounded-b-nebula-lg transition-colors">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full @GetHealthCheckDotClass()"></span>
+                            <span class="text-sm text-nebula-text-secondary">Health Checks</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium @GetHealthCheckTextClass()">@_healthCheckStatus</span>
+                            <Icon Name="chevron-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        </div>
+                    </a>
+                }
+            </Card>
+
+            @* Resource History Chart *@
+            <Card>
+                <CardHeader Title="Resource History">
+                    <Actions>
+                        <div class="flex gap-1">
+                            <button @onclick="@(() => OnTimeRangeChanged(TimeSpan.FromHours(1)))"
+                                    class="@GetTimeRangeButtonClass(TimeSpan.FromHours(1))">
+                                1h
+                            </button>
+                            <button @onclick="@(() => OnTimeRangeChanged(TimeSpan.FromHours(6)))"
+                                    class="@GetTimeRangeButtonClass(TimeSpan.FromHours(6))">
+                                6h
+                            </button>
+                            <button @onclick="@(() => OnTimeRangeChanged(TimeSpan.FromHours(24)))"
+                                    class="@GetTimeRangeButtonClass(TimeSpan.FromHours(24))">
+                                24h
+                            </button>
+                            <button @onclick="@(() => OnTimeRangeChanged(TimeSpan.FromDays(7)))"
+                                    class="@GetTimeRangeButtonClass(TimeSpan.FromDays(7))">
+                                7d
+                            </button>
+                        </div>
+                    </Actions>
+                </CardHeader>
+                @if (_isLoadingHistory)
+                {
+                    <div class="flex items-center justify-center h-[200px]">
+                        <span class="spinner"></span>
+                    </div>
+                }
+                else if (_resourceHistory.Count == 0 || _resourceHistory.All(s => s.DataPoints.Count == 0))
+                {
+                    <div class="flex items-center justify-center h-[200px] text-nebula-text-muted">
+                        <div class="text-center">
+                            <Icon Name="bar-chart-2" Size="IconSize.Large" Class="mb-2 opacity-40" />
+                            <p class="text-sm">No historical data available</p>
+                            <p class="text-xs mt-1">Data is collected every minute while servers are running</p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <ResourceHistoryChart DataPoints="GetAggregatedResourceData()" />
+                }
+            </Card>
+
+            @* Announcements *@
+            @if (_announcements.Count > 0)
+            {
+                <div>
+                    <h2 class="text-lg font-semibold text-nebula-text-primary mb-4">Announcements</h2>
+                    <div class="space-y-3">
+                        @foreach (var announcement in _announcements.Take(3))
+                        {
+                            <AnnouncementCard Announcement="@announcement" />
+                        }
+                    </div>
+                </div>
+            }
+
+            @* Quick Actions *@
+            <Card>
+                <CardHeader Title="Quick Actions" />
+                <div class="space-y-1 -mx-6 -mb-6">
+                    @if (_summary.StoppedServers > 0 || _summary.CrashedServers > 0)
+                    {
+                        <button @onclick="RequestStartAll"
+                                disabled="@_isLoading"
+                                class="flex items-center gap-3 w-full p-4 text-left hover:bg-nebula-bg-tertiary transition-colors disabled:opacity-50">
+                            <div class="p-2 rounded-nebula bg-nebula-success/20">
+                                <Icon Name="play" Size="Icon.IconSize.Small" Class="text-nebula-success" />
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-medium text-nebula-text-primary">Start All Servers</p>
+                                <p class="text-xs text-nebula-text-muted">Start @(_summary.StoppedServers + _summary.CrashedServers) stopped server(s)</p>
+                            </div>
+                            <Icon Name="chevron-right" Size="Icon.IconSize.Small" Class="text-nebula-text-muted" />
+                        </button>
+                    }
+
+                    @if (_summary.RunningServers > 0)
+                    {
+                        <button @onclick="RequestStopAll"
+                                disabled="@_isLoading"
+                                class="flex items-center gap-3 w-full p-4 text-left hover:bg-nebula-bg-tertiary transition-colors disabled:opacity-50">
+                            <div class="p-2 rounded-nebula bg-nebula-warning/20">
+                                <Icon Name="square" Size="Icon.IconSize.Small" Class="text-nebula-warning" />
+                            </div>
+                            <div class="flex-1">
+                                <p class="text-sm font-medium text-nebula-text-primary">Stop All Servers</p>
+                                <p class="text-xs text-nebula-text-muted">Gracefully stop @_summary.RunningServers running server(s)</p>
+                            </div>
+                            <Icon Name="chevron-right" Size="Icon.IconSize.Small" Class="text-nebula-text-muted" />
+                        </button>
+                    }
+
+                    <a href="/games" class="flex items-center gap-3 w-full p-4 text-left hover:bg-nebula-bg-tertiary transition-colors">
+                        <div class="p-2 rounded-nebula bg-nebula-accent/20">
+                            <Icon Name="gamepad" Size="Icon.IconSize.Small" Class="text-nebula-accent" />
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-nebula-text-primary">Browse Games</p>
+                            <p class="text-xs text-nebula-text-muted">Explore available game servers</p>
+                        </div>
+                        <Icon Name="chevron-right" Size="Icon.IconSize.Small" Class="text-nebula-text-muted" />
+                    </a>
+
+                    <a href="/settings" class="flex items-center gap-3 w-full p-4 text-left hover:bg-nebula-bg-tertiary transition-colors rounded-b-nebula-lg">
+                        <div class="p-2 rounded-nebula bg-nebula-info/20">
+                            <Icon Name="settings" Size="Icon.IconSize.Small" Class="text-nebula-info" />
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-medium text-nebula-text-primary">Settings</p>
+                            <p class="text-xs text-nebula-text-muted">Configure your panel</p>
+                        </div>
+                        <Icon Name="chevron-right" Size="Icon.IconSize.Small" Class="text-nebula-text-muted" />
+                    </a>
+                </div>
+            </Card>
+        </div>
+    </div>
+</div>
+
+@* Bulk Action Confirmation Modal *@
+@if (_showBulkConfirm)
+{
+    <Modal IsOpen="true" OnClose="CancelBulkAction" Size="Modal.ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">
+                @(_pendingBulkAction == "stop" ? "Stop All Servers" : "Start All Servers")
+            </h3>
+        </Header>
+        <Body>
+            @if (_pendingBulkAction == "stop")
+            {
+                <p class="text-nebula-text-secondary">
+                    Are you sure you want to stop <strong class="text-nebula-text-primary">@_summary.RunningServers running server(s)</strong>?
+                </p>
+                <p class="text-sm text-nebula-warning mt-2 flex items-center gap-2">
+                    <Icon Name="alert-triangle" Size="Icon.IconSize.Small" />
+                    Players may lose progress if servers are stopped without warning.
+                </p>
+            }
+            else
+            {
+                <p class="text-nebula-text-secondary">
+                    Start <strong class="text-nebula-text-primary">@(_summary.StoppedServers + _summary.CrashedServers) stopped server(s)</strong>?
+                </p>
+            }
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="Button.ButtonVariant.Secondary" Text="Cancel" OnClick="CancelBulkAction" />
+                <Button Variant="@(_pendingBulkAction == "stop" ? Button.ButtonVariant.Danger : Button.ButtonVariant.Primary)"
+                        Text="@(_pendingBulkAction == "stop" ? "Stop All" : "Start All")"
+                        OnClick="ConfirmBulkAction" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private DashboardSummaryDto _summary = new(0, 0, 0, 0, 0, 0);
+    private SystemHealthDto _systemHealth = new(0, 0, 0, 0, [], DateTime.UtcNow);
+    private IReadOnlyList<ActivityFeedItemDto> _recentActivity = [];
+    private IReadOnlyList<AnnouncementDto> _announcements = [];
+    private IReadOnlyList<GameServerListItemDto> _servers = [];
+    private IReadOnlyList<ServerResourceChartDto> _resourceHistory = [];
+
+    private bool _isLoading = true;
+    private bool _isInitialLoad = true;
+    private bool _isLoadingHistory = false;
+    private string _username = "User";
+    private TimeSpan _selectedTimeRange = TimeSpan.FromHours(1);
+    private HubConnection? _hubConnection;
+    private bool _isHubConnected = false;
+    private string _healthCheckStatus = "Loading...";
+    private bool _showBulkConfirm;
+    private string? _pendingBulkAction;
+    private bool _onboardingDismissed;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get username from auth state
+        if (AuthStateTask is not null)
+        {
+            var authState = await AuthStateTask;
+            _username = authState.User.FindFirst("name")?.Value
+                        ?? authState.User.Identity?.Name
+                        ?? "User";
+
+            // Extract first name if full name
+            if (_username.Contains(' '))
+            {
+                _username = _username.Split(' ')[0];
+            }
+        }
+
+        await LoadDashboardDataAsync();
+        _isInitialLoad = false;
+
+        // Setup SignalR connection for real-time updates
+        await SetupSignalRConnectionAsync();
+    }
+
+    private async Task SetupSignalRConnectionAsync()
+    {
+        try
+        {
+            var token = await AuthStateProvider.GetTokenAsync();
+            if (string.IsNullOrEmpty(token))
+            {
+                return;
+            }
+
+            _hubConnection = new HubConnectionBuilder()
+                .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/dashboard"), options =>
+                {
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                })
+                .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)])
+                .Build();
+
+            // Subscribe to system health updates
+            _hubConnection.On<SystemHealthDto>("SystemHealthUpdated", health =>
+            {
+                _systemHealth = health;
+                InvokeAsync(StateHasChanged);
+            });
+
+            // Subscribe to summary updates
+            _hubConnection.On<DashboardSummaryDto>("SummaryUpdated", summary =>
+            {
+                _summary = summary;
+                InvokeAsync(StateHasChanged);
+            });
+
+            // Subscribe to new activity
+            _hubConnection.On<ActivityFeedItemDto>("NewActivity", activity =>
+            {
+                var updatedList = new List<ActivityFeedItemDto> { activity };
+                updatedList.AddRange(_recentActivity.Take(9));
+                _recentActivity = updatedList;
+                InvokeAsync(StateHasChanged);
+            });
+
+            // Subscribe to server status changes - update local state directly
+            _hubConnection.On<Guid, string, string>("ServerStatusChanged", (serverId, serverName, newStatus) =>
+            {
+                if (Enum.TryParse<ServerStatus>(newStatus, out var status))
+                {
+                    UpdateServerStatus(serverId, status);
+                }
+                InvokeAsync(StateHasChanged);
+            });
+
+            _hubConnection.Reconnecting += _ =>
+            {
+                _isHubConnected = false;
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            _hubConnection.Reconnected += _ =>
+            {
+                _isHubConnected = true;
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            _hubConnection.Closed += _ =>
+            {
+                _isHubConnected = false;
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+
+            await _hubConnection.StartAsync();
+            _isHubConnected = true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error connecting to dashboard hub: {ex.Message}");
+            // Silent failure for SignalR - user can still use the dashboard without live updates
+        }
+    }
+
+    private async Task LoadServersAsync()
+    {
+        try
+        {
+            _servers = await GameServerService.GetAllServersAsync();
+        }
+        catch
+        {
+            // Ignore errors during refresh
+        }
+    }
+
+    private async Task LoadDashboardDataAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            StateHasChanged();
+
+            // Load all data in parallel
+            var summaryTask = DashboardService.GetSummaryAsync();
+            var healthTask = DashboardService.GetSystemHealthAsync();
+            var activityTask = DashboardService.GetRecentActivityAsync(10);
+            var announcementsTask = AnnouncementService.GetActiveAnnouncementsAsync();
+            var serversTask = GameServerService.GetAllServersAsync();
+            var resourceHistoryTask = DashboardService.GetResourceHistoryAsync(_selectedTimeRange);
+            var healthCheckTask = LoadHealthCheckStatusAsync();
+
+            await Task.WhenAll(summaryTask, healthTask, activityTask, announcementsTask, serversTask, resourceHistoryTask, healthCheckTask);
+
+            _summary = await summaryTask;
+            _systemHealth = await healthTask;
+            _recentActivity = await activityTask;
+            _announcements = await announcementsTask;
+            _servers = await serversTask;
+            _resourceHistory = await resourceHistoryTask;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load dashboard: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task HandleServerStart(GameServerListItemDto server)
+    {
+        try
+        {
+            // Optimistic update: immediately reflect the new status locally
+            UpdateServerStatus(server.Id, ServerStatus.Starting);
+            _summary = _summary with
+            {
+                StoppedServers = Math.Max(0, _summary.StoppedServers - 1),
+                StartingOrStopping = _summary.StartingOrStopping + 1
+            };
+            StateHasChanged();
+
+            var result = await GameServerService.StartServerAsync(server.Id);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess($"{server.Name} is starting...");
+                // SignalR will handle the eventual status update to Running
+            }
+            else
+            {
+                // Revert optimistic update on failure
+                UpdateServerStatus(server.Id, ServerStatus.Stopped);
+                _summary = _summary with
+                {
+                    StoppedServers = _summary.StoppedServers + 1,
+                    StartingOrStopping = Math.Max(0, _summary.StartingOrStopping - 1)
+                };
+                ToastService.ShowError(result.Error ?? "Failed to start server");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateServerStatus(server.Id, ServerStatus.Stopped);
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task HandleServerStop(GameServerListItemDto server)
+    {
+        try
+        {
+            // Optimistic update
+            UpdateServerStatus(server.Id, ServerStatus.Stopping);
+            _summary = _summary with
+            {
+                RunningServers = Math.Max(0, _summary.RunningServers - 1),
+                StartingOrStopping = _summary.StartingOrStopping + 1
+            };
+            StateHasChanged();
+
+            var result = await GameServerService.StopServerAsync(server.Id);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess($"{server.Name} is stopping...");
+            }
+            else
+            {
+                // Revert
+                UpdateServerStatus(server.Id, ServerStatus.Running);
+                _summary = _summary with
+                {
+                    RunningServers = _summary.RunningServers + 1,
+                    StartingOrStopping = Math.Max(0, _summary.StartingOrStopping - 1)
+                };
+                ToastService.ShowError(result.Error ?? "Failed to stop server");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateServerStatus(server.Id, ServerStatus.Running);
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task HandleServerKill(GameServerListItemDto server)
+    {
+        try
+        {
+            // Optimistic update
+            UpdateServerStatus(server.Id, ServerStatus.Stopped);
+            _summary = _summary with
+            {
+                RunningServers = Math.Max(0, _summary.RunningServers - 1),
+                StoppedServers = _summary.StoppedServers + 1
+            };
+            StateHasChanged();
+
+            var result = await GameServerService.KillServerAsync(server.Id);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess($"{server.Name} was terminated");
+            }
+            else
+            {
+                // Revert
+                UpdateServerStatus(server.Id, ServerStatus.Running);
+                _summary = _summary with
+                {
+                    RunningServers = _summary.RunningServers + 1,
+                    StoppedServers = Math.Max(0, _summary.StoppedServers - 1)
+                };
+                ToastService.ShowError(result.Error ?? "Failed to kill server");
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateServerStatus(server.Id, ServerStatus.Running);
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+    }
+
+    private async Task HandleTogglePin(GameServerListItemDto server)
+    {
+        // Optimistic update
+        _servers = _servers.Select(s =>
+            s.Id == server.Id ? s with { IsPinned = !s.IsPinned } : s
+        ).OrderByDescending(s => s.IsPinned).ThenBy(s => s.Name).ToList();
+        StateHasChanged();
+
+        var result = await GameServerService.TogglePinAsync(server.Id);
+        if (!result.IsSuccess)
+        {
+            // Revert on failure
+            _servers = _servers.Select(s =>
+                s.Id == server.Id ? s with { IsPinned = !s.IsPinned } : s
+            ).OrderByDescending(s => s.IsPinned).ThenBy(s => s.Name).ToList();
+            StateHasChanged();
+        }
+    }
+
+    private void UpdateServerStatus(Guid serverId, ServerStatus newStatus)
+    {
+        var updatedServers = _servers.Select(s =>
+            s.Id == serverId
+                ? s with { Status = newStatus }
+                : s
+        ).ToList();
+        _servers = updatedServers;
+    }
+
+    private void RequestStartAll()
+    {
+        _pendingBulkAction = "start";
+        _showBulkConfirm = true;
+    }
+
+    private void RequestStopAll()
+    {
+        _pendingBulkAction = "stop";
+        _showBulkConfirm = true;
+    }
+
+    private void CancelBulkAction()
+    {
+        _showBulkConfirm = false;
+        _pendingBulkAction = null;
+    }
+
+    private async Task ConfirmBulkAction()
+    {
+        _showBulkConfirm = false;
+        if (_pendingBulkAction == "start")
+            await StartAllServers();
+        else if (_pendingBulkAction == "stop")
+            await StopAllServers();
+        _pendingBulkAction = null;
+    }
+
+    private async Task StartAllServers()
+    {
+        if (_isLoading) return;
+
+        _isLoading = true;
+        try
+        {
+            var authState = await AuthStateTask!;
+            var userId = Guid.Parse(authState.User.FindFirst("sub")?.Value ?? Guid.Empty.ToString());
+
+            var result = await DashboardService.StartAllServersAsync(userId);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess("All servers are starting...");
+                // SignalR will push status updates
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to start servers");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task StopAllServers()
+    {
+        if (_isLoading) return;
+
+        _isLoading = true;
+        try
+        {
+            var authState = await AuthStateTask!;
+            var userId = Guid.Parse(authState.User.FindFirst("sub")?.Value ?? Guid.Empty.ToString());
+
+            var result = await DashboardService.StopAllServersAsync(userId);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess("All servers are stopping...");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to stop servers");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Error: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private string GetGreeting()
+    {
+        var hour = DateTime.Now.Hour;
+        return hour switch
+        {
+            >= 5 and < 12 => "Good morning",
+            >= 12 and < 17 => "Good afternoon",
+            >= 17 and < 21 => "Good evening",
+            _ => "Good night"
+        };
+    }
+
+    private string GetHealthStatus()
+    {
+        var avgUsage = (_systemHealth.CpuPercent + _systemHealth.MemoryPercent) / 2;
+        if (avgUsage < 50) return "Healthy";
+        if (avgUsage < 75) return "Moderate";
+        return "High Load";
+    }
+
+    private string GetDiskProgressColor(double percentage)
+    {
+        return percentage switch
+        {
+            >= 90 => "bg-nebula-error",
+            >= 70 => "bg-nebula-warning",
+            _ => "bg-nebula-success"
+        };
+    }
+
+    private string GetTimeRangeButtonClass(TimeSpan range)
+    {
+        var baseClass = "px-2 py-1 text-xs rounded transition-colors";
+        if (_selectedTimeRange == range)
+        {
+            return $"{baseClass} bg-nebula-accent text-white";
+        }
+        return $"{baseClass} text-nebula-text-muted hover:bg-nebula-bg-tertiary";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+
+        return $"{size:0.#} {sizes[order]}";
+    }
+
+    private async Task LoadResourceHistoryAsync()
+    {
+        try
+        {
+            _isLoadingHistory = true;
+            StateHasChanged();
+            _resourceHistory = await DashboardService.GetResourceHistoryAsync(_selectedTimeRange);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load resource history: {ex.Message}");
+            ToastService.ShowError("Failed to load resource history");
+        }
+        finally
+        {
+            _isLoadingHistory = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnTimeRangeChanged(TimeSpan timeRange)
+    {
+        _selectedTimeRange = timeRange;
+        await LoadResourceHistoryAsync();
+    }
+
+    private IReadOnlyList<ResourceDataPointDto> GetAggregatedResourceData()
+    {
+        // Aggregate all server data points by timestamp (rounded to nearest minute)
+        if (_resourceHistory.Count == 0)
+            return [];
+
+        var allPoints = _resourceHistory
+            .SelectMany(s => s.DataPoints)
+            .GroupBy(p => new DateTime(p.Timestamp.Year, p.Timestamp.Month, p.Timestamp.Day,
+                                        p.Timestamp.Hour, p.Timestamp.Minute, 0, DateTimeKind.Utc))
+            .Select(g => new ResourceDataPointDto(
+                Timestamp: g.Key,
+                CpuPercent: g.Average(p => p.CpuPercent),
+                MemoryMb: g.Sum(p => p.MemoryMb),
+                PlayerCount: g.Sum(p => p.PlayerCount ?? 0)
+            ))
+            .OrderBy(p => p.Timestamp)
+            .ToList();
+
+        return allPoints;
+    }
+
+    private async Task LoadHealthCheckStatusAsync()
+    {
+        try
+        {
+            var report = await HealthCheckService.CheckHealthAsync();
+            _healthCheckStatus = report.Status.ToString();
+        }
+        catch
+        {
+            _healthCheckStatus = "Unknown";
+        }
+    }
+
+    private string GetHealthCheckDotClass()
+    {
+        return _healthCheckStatus switch
+        {
+            "Healthy" => "bg-nebula-success",
+            "Degraded" => "bg-nebula-warning animate-pulse",
+            "Unhealthy" => "bg-nebula-error",
+            _ => "bg-nebula-text-muted"
+        };
+    }
+
+    private string GetHealthCheckTextClass()
+    {
+        return _healthCheckStatus switch
+        {
+            "Healthy" => "text-nebula-success",
+            "Degraded" => "text-nebula-warning",
+            "Unhealthy" => "text-nebula-error",
+            _ => "text-nebula-text-muted"
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

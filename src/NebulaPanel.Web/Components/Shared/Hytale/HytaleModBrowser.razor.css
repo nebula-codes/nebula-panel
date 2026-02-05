@@ -1,0 +1,25 @@
+.hytale-mod-browser {
+    padding: 1rem;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+.featured-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .featured-grid,
+    .results-grid {
+        grid-template-columns: 1fr;
+    }
+}

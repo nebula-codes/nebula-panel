@@ -1,0 +1,120 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject IAuthClientService AuthService
+@inject IJSRuntime JS
+@inject IHostEnvironment Environment
+@using Microsoft.AspNetCore.Components.Authorization
+
+<ThemeProvider>
+    <div class="flex min-h-screen bg-nebula-bg-void">
+        @* Sidebar *@
+        <Sidebar IsCollapsed="_sidebarCollapsed"
+                 IsCollapsedChanged="OnSidebarCollapsedChanged"
+                 IsMobileOpen="_isMobileMenuOpen" />
+
+        @* Mobile overlay *@
+        @if (_isMobileMenuOpen)
+        {
+            <div class="mobile-overlay lg:hidden" @onclick="CloseMobileMenu"></div>
+        }
+
+        @* Main content area *@
+        <div class="@MainContentClasses">
+            @* Top bar *@
+            <TopBar SidebarCollapsed="_sidebarCollapsed"
+                    OnMobileMenuToggle="ToggleMobileMenu" />
+
+            @* Page content *@
+            <main class="pt-14">
+                <div class="max-w-[1400px] mx-auto p-6">
+                    <NebulaErrorBoundary ShowDetails="@Environment.IsDevelopment()">
+                        @Body
+                    </NebulaErrorBoundary>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    @* Toast notifications *@
+    <ToastContainer />
+
+    @* Session expired modal *@
+    <SessionExpiredModal />
+
+    @* Blazor error UI (fallback for unhandled errors outside ErrorBoundary) *@
+    <div id="blazor-error-ui" data-nosnippet class="hidden fixed bottom-4 left-4 right-4 md:left-auto md:right-4 md:w-96 alert-error z-50">
+        <div class="flex items-center gap-3">
+            <Icon Name="alert-circle" Size="IconSize.Medium" />
+            <div class="flex-1">
+                <p class="font-medium">An unhandled error has occurred.</p>
+                <p class="text-sm opacity-80">
+                    <a href="." class="underline">Reload</a> the page to continue.
+                </p>
+            </div>
+            <button class="dismiss btn-ghost btn-icon" onclick="this.parentElement.parentElement.classList.add('hidden')">
+                <Icon Name="x" Size="IconSize.Small" />
+            </button>
+        </div>
+    </div>
+</ThemeProvider>
+
+@code {
+    private bool _sidebarCollapsed;
+    private bool _isMobileMenuOpen;
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load sidebar collapsed state from localStorage
+            _sidebarCollapsed = await JS.InvokeAsync<bool>("nebulaSidebar.getCollapsed");
+
+            // Check if we're on mobile/tablet and auto-collapse
+            var width = await JS.InvokeAsync<int>("nebulaBreakpoint.getWidth");
+            if (width < 1024)
+            {
+                _sidebarCollapsed = true;
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSidebarCollapsedChanged(bool collapsed)
+    {
+        _sidebarCollapsed = collapsed;
+        await JS.InvokeVoidAsync("nebulaSidebar.setCollapsed", collapsed);
+    }
+
+    private void ToggleMobileMenu()
+    {
+        _isMobileMenuOpen = !_isMobileMenuOpen;
+    }
+
+    private void CloseMobileMenu()
+    {
+        _isMobileMenuOpen = false;
+    }
+
+    private string MainContentClasses
+    {
+        get
+        {
+            var classes = new List<string> { "main-content" };
+
+            if (_sidebarCollapsed)
+            {
+                classes.Add("main-content-sidebar-collapsed");
+            }
+            else
+            {
+                classes.Add("main-content-sidebar-expanded");
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+}

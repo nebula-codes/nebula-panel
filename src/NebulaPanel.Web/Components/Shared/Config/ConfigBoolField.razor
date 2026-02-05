@@ -1,0 +1,108 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.ValueObjects
+
+<div class="form-group">
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            @if (Field.Type == ConfigFieldType.Toggle)
+            {
+                <button type="button"
+                        @onclick="Toggle"
+                        disabled="@(Disabled || Field.ReadOnly)"
+                        class="@ToggleClasses"
+                        role="switch"
+                        aria-checked="@Value">
+                    <span class="@ToggleKnobClasses"></span>
+                </button>
+            }
+            else
+            {
+                <input type="checkbox"
+                       id="@_id"
+                       checked="@Value"
+                       @onchange="OnChange"
+                       disabled="@(Disabled || Field.ReadOnly)"
+                       class="checkbox" />
+            }
+
+            <label for="@_id" class="label mb-0 cursor-pointer">
+                @if (IsModified)
+                {
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-nebula-accent mr-1.5" title="Modified from default"></span>
+                }
+                @Field.DisplayName
+                @if (Field.Required)
+                {
+                    <span class="text-nebula-error ml-1">*</span>
+                }
+            </label>
+        </div>
+        @if (IsModified && OnResetToDefault.HasDelegate)
+        {
+            <button type="button"
+                    @onclick="OnResetToDefault"
+                    class="text-xs text-nebula-text-muted hover:text-nebula-accent transition-colors"
+                    title="Reset to default">
+                <Icon Name="rotate-ccw" Size="IconSize.Small" />
+            </button>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(Field.Description))
+    {
+        <p class="text-xs text-nebula-text-muted mt-1 ml-9">@Field.Description</p>
+    }
+
+    @if (HasErrors)
+    {
+        <p class="text-xs text-nebula-error mt-1 ml-9">@string.Join(", ", Errors!)</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConfigField Field { get; set; } = null!;
+
+    [Parameter]
+    public bool Value { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> ValueChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public List<string>? Errors { get; set; }
+
+    [Parameter]
+    public bool IsModified { get; set; }
+
+    [Parameter]
+    public EventCallback OnResetToDefault { get; set; }
+
+    private string _id = Guid.NewGuid().ToString("N")[..8];
+    private bool HasErrors => Errors?.Count > 0;
+
+    private string ToggleClasses => Value
+        ? "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-nebula-accent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-nebula-accent focus:ring-offset-2"
+        : "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-nebula-surface-tertiary transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-nebula-accent focus:ring-offset-2";
+
+    private string ToggleKnobClasses => Value
+        ? "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-5"
+        : "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0";
+
+    private async Task Toggle()
+    {
+        if (Disabled || Field.ReadOnly)
+            return;
+
+        await ValueChanged.InvokeAsync(!Value);
+    }
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        var value = e.Value is bool b ? b : false;
+        await ValueChanged.InvokeAsync(value);
+    }
+}

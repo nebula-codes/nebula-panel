@@ -1,0 +1,351 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IRoleService RoleService
+@inject IGameServerService GameServerService
+
+<div class="server-permission-overrides @Class">
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-medium text-nebula-text-primary">Per-Server Permission Overrides</h3>
+        @if (!ReadOnly)
+        {
+            <Button Variant="ButtonVariant.Secondary"
+                    Size="ButtonSize.Small"
+                    IconName="plus"
+                    Text="Add Override"
+                    OnClick="ShowAddOverrideModal" />
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-8">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-3 text-sm">
+            <div class="flex items-center gap-2">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                <span>@_error</span>
+            </div>
+        </div>
+    }
+    else if (_permissions.Count == 0)
+    {
+        <div class="text-center py-8 bg-nebula-bg-secondary rounded-nebula">
+            <Icon Name="shield-off" Size="IconSize.Large" Class="mx-auto mb-2 text-nebula-text-muted opacity-50" />
+            <p class="text-nebula-text-muted">No per-server permission overrides.</p>
+            <p class="text-sm text-nebula-text-muted mt-1">Permission overrides allow you to grant or deny specific permissions for individual servers.</p>
+        </div>
+    }
+    else
+    {
+        @* Group by server *@
+        @foreach (var serverGroup in _permissions.GroupBy(p => p.ServerId))
+        {
+            var server = _servers.FirstOrDefault(s => s.Id == serverGroup.Key);
+            <div class="mb-4 border border-nebula-border-subtle rounded-lg overflow-hidden">
+                <div class="flex items-center gap-3 px-4 py-3 bg-nebula-bg-secondary">
+                    @if (!string.IsNullOrEmpty(server?.EffectiveIcon))
+                    {
+                        <img src="@server.EffectiveIcon" alt="@server?.Name" class="w-6 h-6 object-contain rounded" />
+                    }
+                    else
+                    {
+                        <Icon Name="server" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                    }
+                    <span class="font-medium text-nebula-text-primary">@(server?.Name ?? "Unknown Server")</span>
+                    <span class="text-sm text-nebula-text-muted">@serverGroup.Count() override(s)</span>
+                </div>
+                <div class="divide-y divide-nebula-border-subtle">
+                    @foreach (var perm in serverGroup)
+                    {
+                        <div class="flex items-center justify-between px-4 py-2">
+                            <div class="flex items-center gap-3">
+                                <Icon Name="@GetPermissionIcon(perm.PermissionCode)" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                <div>
+                                    <span class="text-nebula-text-primary">@GetPermissionName(perm.PermissionCode)</span>
+                                    <code class="ml-2 text-xs text-nebula-text-muted">@perm.PermissionCode</code>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <StatusBadge Status="@(perm.IsGranted ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Error)"
+                                             Text="@(perm.IsGranted ? "Granted" : "Denied")"
+                                             ShowDot="true" />
+                                @if (!ReadOnly)
+                                {
+                                    <Button Variant="ButtonVariant.Ghost"
+                                            Size="ButtonSize.Small"
+                                            IconName="x"
+                                            IconOnly="true"
+                                            OnClick="@(() => RemoveOverride(perm))"
+                                            title="Remove override" />
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@if (_showAddModal)
+{
+    <Modal IsOpen="true" OnClose="HideAddOverrideModal" Size="ModalSize.Medium">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Add Permission Override</h3>
+        </Header>
+        <Body>
+            <div class="space-y-4">
+                <div class="form-group">
+                    <label class="label">Server</label>
+                    <select @bind="_selectedServerId" class="input">
+                        <option value="">-- Select a server --</option>
+                        @foreach (var server in _servers)
+                        {
+                            <option value="@server.Id">@server.Name (@server.GameName)</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="label">Permission</label>
+                    <select @bind="_selectedPermissionCode" class="input">
+                        <option value="">-- Select a permission --</option>
+                        @foreach (var perm in _availablePermissions)
+                        {
+                            <option value="@perm.Code">@perm.Name</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="label">Override Type</label>
+                    <div class="flex gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="overrideType" value="true" checked="@_selectedIsGranted" @onchange="@(() => _selectedIsGranted = true)" class="text-nebula-accent" />
+                            <span class="flex items-center gap-1">
+                                <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                Grant
+                            </span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="overrideType" value="false" checked="@(!_selectedIsGranted)" @onchange="@(() => _selectedIsGranted = false)" class="text-nebula-accent" />
+                            <span class="flex items-center gap-1">
+                                <Icon Name="x" Size="IconSize.Small" Class="text-nebula-error" />
+                                Deny
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_addError))
+                {
+                    <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-3 text-sm">
+                        @_addError
+                    </div>
+                }
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="HideAddOverrideModal" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Add Override"
+                        Loading="_adding"
+                        Disabled="@(string.IsNullOrEmpty(_selectedPermissionCode) || !_selectedServerId.HasValue)"
+                        OnClick="AddOverride" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter]
+    public Guid UserId { get; set; }
+
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public EventCallback OnPermissionsChanged { get; set; }
+
+    private List<ServerPermissionSummaryDto> _permissions = [];
+    private List<GameServerListItemDto> _servers = [];
+    private bool _loading = true;
+    private string? _error;
+
+    // Add modal state
+    private bool _showAddModal;
+    private Guid? _selectedServerId;
+    private string _selectedPermissionCode = string.Empty;
+    private bool _selectedIsGranted = true;
+    private bool _adding;
+    private string? _addError;
+
+    private readonly List<(string Code, string Name)> _availablePermissions =
+    [
+        ("start", "Start Server"),
+        ("stop", "Stop Server"),
+        ("restart", "Restart Server"),
+        ("console", "Access Console"),
+        ("files", "Manage Files"),
+        ("config", "Edit Configuration"),
+        ("mods", "Manage Mods"),
+        ("backup", "Manage Backups"),
+        ("schedule", "Manage Schedules")
+    ];
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (UserId != Guid.Empty)
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var permissionsTask = RoleService.GetUserServerPermissionsAsync(UserId);
+            var serversTask = GameServerService.GetAllServersAsync();
+
+            await Task.WhenAll(permissionsTask, serversTask).ConfigureAwait(false);
+
+            _permissions = (await permissionsTask).ToList();
+            _servers = (await serversTask).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ShowAddOverrideModal()
+    {
+        _selectedServerId = null;
+        _selectedPermissionCode = string.Empty;
+        _selectedIsGranted = true;
+        _addError = null;
+        _showAddModal = true;
+    }
+
+    private void HideAddOverrideModal()
+    {
+        _showAddModal = false;
+    }
+
+    private async Task AddOverride()
+    {
+        if (!_selectedServerId.HasValue || string.IsNullOrEmpty(_selectedPermissionCode)) return;
+
+        try
+        {
+            _adding = true;
+            _addError = null;
+
+            var result = await RoleService.SetServerPermissionAsync(
+                UserId,
+                _selectedServerId.Value,
+                _selectedPermissionCode,
+                _selectedIsGranted,
+                GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _showAddModal = false;
+                await LoadDataAsync();
+                await OnPermissionsChanged.InvokeAsync();
+            }
+            else
+            {
+                _addError = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _addError = ex.Message;
+        }
+        finally
+        {
+            _adding = false;
+        }
+    }
+
+    private async Task RemoveOverride(ServerPermissionSummaryDto permission)
+    {
+        try
+        {
+            var result = await RoleService.RemoveServerPermissionAsync(
+                UserId,
+                permission.ServerId,
+                permission.PermissionCode,
+                GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                await LoadDataAsync();
+                await OnPermissionsChanged.InvokeAsync();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private static string GetPermissionIcon(string code) => code switch
+    {
+        "start" => "play",
+        "stop" => "square",
+        "restart" => "refresh-cw",
+        "console" => "terminal",
+        "files" => "folder",
+        "config" => "settings",
+        "mods" => "package",
+        "backup" => "archive",
+        "schedule" => "clock",
+        _ => "key"
+    };
+
+    private string GetPermissionName(string code)
+    {
+        return _availablePermissions.FirstOrDefault(p => p.Code == code).Name ?? code;
+    }
+}

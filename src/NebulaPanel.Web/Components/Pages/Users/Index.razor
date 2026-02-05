@@ -1,0 +1,315 @@
+@page "/users"
+@attribute [Authorize(Policy = "ViewUsers")]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IUserManagementService UserService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Users - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Users</h1>
+            <p class="text-nebula-text-muted mt-1">Manage user accounts and permissions.</p>
+        </div>
+        <AuthorizeView Policy="CreateUsers">
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Create User"
+                    IconName="user-plus"
+                    OnClick="@(() => Navigation.NavigateTo("/users/create"))" />
+        </AuthorizeView>
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    <DataGrid TItem="UserListItemDto"
+              Items="_users"
+              Loading="_loading"
+              Searchable="true"
+              SearchPlaceholder="Search users..."
+              SearchFields="@(u => $"{u.Username} {u.Email}")"
+              Pageable="true"
+              PageSize="10"
+              EmptyMessage="No users found."
+              OnRowClick="ViewUser"
+              RowClickable="@(_ => true)">
+        <Columns>
+            <DataGridColumn TItem="UserListItemDto"
+                           Title="User"
+                           Field="@(u => u.Username)"
+                           Sortable="true">
+                <Template Context="user">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 bg-nebula-accent/20 rounded-full flex items-center justify-center">
+                            <span class="text-sm font-medium text-nebula-accent">@user.Username[0].ToString().ToUpper()</span>
+                        </div>
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@user.Username</div>
+                            <div class="text-sm text-nebula-text-muted">@user.Email</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="UserListItemDto"
+                           Title="Roles"
+                           Field="@(u => string.Join(", ", u.Roles))"
+                           Sortable="true"
+                           Width="200px">
+                <Template Context="user">
+                    <div class="flex flex-wrap gap-1">
+                        @foreach (var role in user.Roles.Take(3))
+                        {
+                            <span class="px-2 py-0.5 text-xs rounded-full @GetRoleBadgeClass(role)">@role</span>
+                        }
+                        @if (user.Roles.Count > 3)
+                        {
+                            <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">+@(user.Roles.Count - 3)</span>
+                        }
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="UserListItemDto"
+                           Title="Status"
+                           Field="@(u => u.IsActive)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="user">
+                    <StatusBadge Status="@(user.IsActive ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Neutral)"
+                                 Text="@(user.IsActive ? "Active" : "Disabled")"
+                                 ShowDot="true" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="UserListItemDto"
+                           Title="Servers"
+                           Field="@(u => u.OwnedServerCount)"
+                           Sortable="true"
+                           Width="100px">
+                <Template Context="user">
+                    <div class="flex items-center gap-1.5">
+                        <Icon Name="server" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        <span class="text-sm text-nebula-text-secondary">@user.OwnedServerCount</span>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="UserListItemDto"
+                           Title="Last Login"
+                           Field="@(u => u.LastLoginAt)"
+                           Sortable="true"
+                           Width="140px">
+                <Template Context="user">
+                    @if (user.LastLoginAt.HasValue)
+                    {
+                        <span class="text-sm text-nebula-text-muted" title="@user.LastLoginAt.Value.ToString("f")">
+                            @FormatRelativeTime(user.LastLoginAt.Value)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">Never</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="UserListItemDto"
+                           Title="Created"
+                           Field="@(u => u.CreatedAt)"
+                           Sortable="true"
+                           Width="120px">
+                <Template Context="user">
+                    <span class="text-sm text-nebula-text-muted">
+                        @user.CreatedAt.ToString("MMM d, yyyy")
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="UserListItemDto"
+                           Title=""
+                           Width="120px">
+                <Template Context="user">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="eye"
+                                IconOnly="true"
+                                OnClick="@(() => ViewUser(user))"
+                                title="View" />
+                        <AuthorizeView Policy="EditUsers">
+                            <Button Variant="ButtonVariant.Ghost"
+                                    Size="ButtonSize.Small"
+                                    IconName="pencil"
+                                    IconOnly="true"
+                                    OnClick="@(() => EditUser(user))"
+                                    title="Edit" />
+                        </AuthorizeView>
+                        <AuthorizeView Policy="DeleteUsers">
+                            <Button Variant="ButtonVariant.Ghost"
+                                    Size="ButtonSize.Small"
+                                    IconName="trash-2"
+                                    IconOnly="true"
+                                    OnClick="@(() => ConfirmDelete(user))"
+                                    title="Delete" />
+                        </AuthorizeView>
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+
+        <EmptyAction>
+            <AuthorizeView Policy="CreateUsers">
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Create Your First User"
+                        IconName="user-plus"
+                        OnClick="@(() => Navigation.NavigateTo("/users/create"))" />
+            </AuthorizeView>
+        </EmptyAction>
+    </DataGrid>
+</div>
+
+@if (_showDeleteConfirm && _userToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete User</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_userToDelete.Username</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone. All user data including server ownership will be affected.</p>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDelete" />
+                <Button Variant="ButtonVariant.Danger" Text="Delete" Loading="_deleting" OnClick="DeleteUser" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private List<UserListItemDto> _users = [];
+    private bool _loading = true;
+    private string? _error;
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private UserListItemDto? _userToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            var users = await UserService.GetAllUsersAsync();
+            _users = users.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ViewUser(UserListItemDto user)
+    {
+        Navigation.NavigateTo($"/users/{user.Id}/edit");
+    }
+
+    private void EditUser(UserListItemDto user)
+    {
+        Navigation.NavigateTo($"/users/{user.Id}/edit");
+    }
+
+    private void ConfirmDelete(UserListItemDto user)
+    {
+        _userToDelete = user;
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _userToDelete = null;
+        _showDeleteConfirm = false;
+    }
+
+    private async Task DeleteUser()
+    {
+        if (_userToDelete is null) return;
+
+        try
+        {
+            _deleting = true;
+            var result = await UserService.DeleteUserAsync(_userToDelete.Id, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _users.Remove(_userToDelete);
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteConfirm = false;
+            _userToDelete = null;
+        }
+    }
+
+    private static string GetRoleBadgeClass(string role) => role.ToLower() switch
+    {
+        "admin" => "bg-nebula-error/20 text-nebula-error",
+        "moderator" => "bg-nebula-warning/20 text-nebula-warning",
+        _ => "bg-nebula-accent/20 text-nebula-accent"
+    };
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = DateTime.UtcNow - dateTime;
+
+        if (diff.TotalMinutes < 1)
+            return "Just now";
+        if (diff.TotalMinutes < 60)
+            return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24)
+            return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+
+        return dateTime.ToString("MMM d");
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+}

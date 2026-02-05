@@ -1,0 +1,291 @@
+.install-progress-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: linear-gradient(180deg, var(--nebula-bg-void) 0%, var(--nebula-bg-primary) 100%);
+}
+
+.install-progress-content {
+    width: 100%;
+    max-width: 600px;
+    text-align: center;
+}
+
+/* Header */
+.progress-header {
+    margin-bottom: 2rem;
+}
+
+.progress-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--nebula-text-primary);
+    margin-bottom: 1.5rem;
+}
+
+.modpack-icon-large {
+    width: 80px;
+    height: 80px;
+    border-radius: var(--nebula-radius-lg);
+    object-fit: cover;
+    margin: 0 auto;
+    box-shadow: var(--nebula-shadow-lg);
+}
+
+.modpack-icon-large-placeholder {
+    width: 80px;
+    height: 80px;
+    border-radius: var(--nebula-radius-lg);
+    background-color: var(--nebula-bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    color: var(--nebula-text-muted);
+}
+
+/* Progress Bar */
+.progress-bar-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.progress-bar-track {
+    flex: 1;
+    height: 12px;
+    background-color: var(--nebula-bg-tertiary);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--nebula-accent) 0%, var(--nebula-secondary) 100%);
+    border-radius: 6px;
+    transition: width 0.3s ease-out;
+    position: relative;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.2) 50%,
+        transparent 100%
+    );
+    animation: shimmer 2s infinite;
+}
+
+.progress-bar-fill.error {
+    background: var(--nebula-error);
+}
+
+.progress-bar-fill.error::after {
+    display: none;
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.progress-percentage {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--nebula-accent);
+    min-width: 60px;
+}
+
+/* Current Action */
+.current-action {
+    font-size: 0.875rem;
+    color: var(--nebula-text-secondary);
+    margin-bottom: 2rem;
+}
+
+/* Phase Checklist */
+.phase-checklist {
+    background-color: var(--nebula-bg-secondary);
+    border-radius: var(--nebula-radius-lg);
+    border: 1px solid var(--nebula-border-subtle);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+}
+
+.phase-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+}
+
+.phase-item:not(:last-child) {
+    border-bottom: 1px solid var(--nebula-border-subtle);
+}
+
+.phase-indicator {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.phase-circle {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--nebula-border);
+    background: transparent;
+}
+
+.phase-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--nebula-accent);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(0.9);
+    }
+}
+
+.phase-item.completed .phase-indicator {
+    color: var(--nebula-success);
+}
+
+.phase-item.in-progress .phase-label {
+    color: var(--nebula-accent);
+    font-weight: 500;
+}
+
+.phase-item.pending .phase-label {
+    color: var(--nebula-text-muted);
+}
+
+.phase-item.completed .phase-label {
+    color: var(--nebula-text-secondary);
+}
+
+.phase-label {
+    font-size: 0.875rem;
+}
+
+/* Time Info */
+.time-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    color: var(--nebula-text-muted);
+    margin-bottom: 1.5rem;
+}
+
+/* Log Viewer */
+.log-viewer-section {
+    margin-bottom: 1.5rem;
+}
+
+.log-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: transparent;
+    border: none;
+    color: var(--nebula-text-secondary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--nebula-radius);
+    transition: all 0.15s ease;
+}
+
+.log-toggle:hover {
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-primary);
+}
+
+.log-viewer {
+    margin-top: 1rem;
+    background-color: var(--nebula-bg-void);
+    border-radius: var(--nebula-radius);
+    border: 1px solid var(--nebula-border-subtle);
+    padding: 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+    text-align: left;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 0.75rem;
+}
+
+.log-line {
+    color: var(--nebula-text-muted);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-empty {
+    color: var(--nebula-text-muted);
+    font-style: italic;
+    text-align: center;
+}
+
+/* Warning */
+.install-warning {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.875rem;
+    color: var(--nebula-warning);
+    margin-bottom: 2rem;
+}
+
+/* Cancel Section */
+.cancel-section {
+    display: flex;
+    justify-content: center;
+}
+
+/* Scrollbar styling for log viewer */
+.log-viewer::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-viewer::-webkit-scrollbar-track {
+    background: var(--nebula-bg-tertiary);
+    border-radius: 3px;
+}
+
+.log-viewer::-webkit-scrollbar-thumb {
+    background: var(--nebula-border);
+    border-radius: 3px;
+}
+
+.log-viewer::-webkit-scrollbar-thumb:hover {
+    background: var(--nebula-text-muted);
+}

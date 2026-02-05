@@ -1,0 +1,101 @@
+<div class="space-y-6">
+    @* Min Memory *@
+    <div>
+        <div class="flex justify-between mb-2">
+            <label class="text-sm text-nebula-text-secondary">Minimum Memory</label>
+            <span class="text-sm font-medium text-nebula-text-primary">@FormatMemory(MinMemory)</span>
+        </div>
+        <input type="range"
+               class="memory-slider w-full"
+               min="@MinValue"
+               max="@MaxValue"
+               step="@Step"
+               value="@MinMemory"
+               @oninput="@HandleMinMemoryChanged" />
+    </div>
+
+    @* Max Memory *@
+    <div>
+        <div class="flex justify-between mb-2">
+            <label class="text-sm text-nebula-text-secondary">Maximum Memory</label>
+            <span class="text-sm font-medium text-nebula-text-primary">@FormatMemory(MaxMemory)</span>
+        </div>
+        <input type="range"
+               class="memory-slider w-full"
+               min="@MinValue"
+               max="@MaxValue"
+               step="@Step"
+               value="@MaxMemory"
+               @oninput="@HandleMaxMemoryChanged" />
+    </div>
+
+    @* Memory Labels *@
+    <div class="memory-labels">
+        <span>512 MB</span>
+        <span>4 GB</span>
+        <span>8 GB</span>
+        <span>12 GB</span>
+        <span>16 GB</span>
+    </div>
+
+    @* Recommendation *@
+    <div class="memory-recommendation">
+        <Icon Name="lightbulb" Size="IconSize.Small" Class="text-nebula-warning flex-shrink-0" />
+        <div>
+            <strong>Recommendation:</strong> For most servers, 4-6 GB is sufficient.
+            Heavily modded servers may require 8+ GB.
+            @if (MinMemory > MaxMemory)
+            {
+                <span class="text-nebula-error ml-2">Minimum memory cannot exceed maximum memory.</span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int MinMemory { get; set; } = 1024;
+
+    [Parameter]
+    public int MaxMemory { get; set; } = 4096;
+
+    [Parameter]
+    public EventCallback<int> OnMinMemoryChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnMaxMemoryChanged { get; set; }
+
+    [Parameter]
+    public int MinValue { get; set; } = 512;
+
+    [Parameter]
+    public int MaxValue { get; set; } = 16384;
+
+    [Parameter]
+    public int Step { get; set; } = 512;
+
+    private string FormatMemory(int mb)
+    {
+        if (mb >= 1024)
+        {
+            return $"{mb / 1024.0:F1} GB";
+        }
+        return $"{mb} MB";
+    }
+
+    private async Task HandleMinMemoryChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value))
+        {
+            await OnMinMemoryChanged.InvokeAsync(value);
+        }
+    }
+
+    private async Task HandleMaxMemoryChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var value))
+        {
+            await OnMaxMemoryChanged.InvokeAsync(value);
+        }
+    }
+}

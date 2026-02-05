@@ -1,0 +1,492 @@
+/* ModBrowserDataGrid - Mod search results table */
+
+.mod-browser-datagrid {
+    width: 100%;
+}
+
+/* Loading Skeleton */
+.loading-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+}
+
+.skeleton-row {
+    display: grid;
+    grid-template-columns: 48px 1fr 120px 100px 100px 120px 100px 120px;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--nebula-border-subtle);
+}
+
+.skeleton-cell {
+    height: 1rem;
+    background: linear-gradient(
+        90deg,
+        var(--nebula-bg-tertiary) 25%,
+        var(--nebula-bg-secondary) 50%,
+        var(--nebula-bg-tertiary) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+    border-radius: var(--nebula-radius);
+}
+
+.skeleton-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--nebula-radius);
+}
+
+.skeleton-name {
+    width: 80%;
+}
+
+.skeleton-author {
+    width: 100px;
+}
+
+.skeleton-type {
+    width: 70px;
+}
+
+.skeleton-downloads {
+    width: 60px;
+}
+
+.skeleton-updated {
+    width: 80px;
+}
+
+.skeleton-provider {
+    width: 70px;
+}
+
+.skeleton-actions {
+    width: 100px;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* DataGrid Container */
+.datagrid-container {
+    overflow-x: auto;
+    border: 1px solid var(--nebula-border);
+    border-radius: var(--nebula-radius-lg);
+    background: var(--nebula-bg-secondary);
+}
+
+/* Table Styles */
+.data-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.data-grid thead {
+    background: var(--nebula-bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.data-grid th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--nebula-text-secondary);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--nebula-border);
+    white-space: nowrap;
+}
+
+.data-grid th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: color 0.15s ease;
+}
+
+.data-grid th.sortable:hover {
+    color: var(--nebula-text-primary);
+}
+
+.data-grid th.sortable ::deep .sort-icon {
+    opacity: 0.3;
+    margin-left: 0.25rem;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.data-grid th.sortable:hover ::deep .sort-icon {
+    opacity: 0.6;
+}
+
+.data-grid th.sortable.sort-asc ::deep .sort-icon,
+.data-grid th.sortable.sort-desc ::deep .sort-icon {
+    opacity: 1;
+    color: var(--nebula-accent);
+}
+
+.data-grid tbody tr {
+    border-bottom: 1px solid var(--nebula-border-subtle);
+    transition: background-color 0.15s ease;
+}
+
+.data-grid tbody tr:hover {
+    background: var(--nebula-bg-tertiary);
+}
+
+.data-grid tbody tr:last-child {
+    border-bottom: none;
+}
+
+.data-grid td {
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+}
+
+/* Column Widths */
+.col-icon {
+    width: 48px;
+}
+
+.col-name {
+    min-width: 200px;
+}
+
+.col-author {
+    width: 120px;
+}
+
+.col-type {
+    width: 100px;
+}
+
+.col-downloads {
+    width: 100px;
+}
+
+.col-updated {
+    width: 120px;
+}
+
+.col-provider {
+    width: 100px;
+}
+
+.col-actions {
+    width: 120px;
+}
+
+/* Mod Icon */
+.mod-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--nebula-radius);
+    object-fit: cover;
+}
+
+.mod-icon-placeholder {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--nebula-bg-tertiary);
+    border-radius: var(--nebula-radius);
+    color: var(--nebula-text-muted);
+}
+
+/* Name Cell */
+.name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.mod-name {
+    color: var(--nebula-text-primary);
+    font-weight: 500;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mod-summary {
+    color: var(--nebula-text-muted);
+    font-size: 0.75rem;
+    margin: 0.25rem 0 0 0;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Installed Badge */
+.installed-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.installed-badge ::deep .badge-icon {
+    width: 0.625rem;
+    height: 0.625rem;
+}
+
+/* Author */
+.author-name {
+    color: var(--nebula-text-secondary);
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: block;
+}
+
+/* Classification Badges */
+.classification-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--nebula-radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.classification-plugin {
+    background: rgba(99, 102, 241, 0.15);
+    color: #6366f1;
+}
+
+.classification-mod {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.classification-data {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.classification-art {
+    background: rgba(236, 72, 153, 0.15);
+    color: #ec4899;
+}
+
+.classification-save {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.classification-modpack {
+    background: rgba(139, 92, 246, 0.15);
+    color: #8b5cf6;
+}
+
+/* Downloads */
+.downloads-count {
+    color: var(--nebula-text-secondary);
+    font-family: var(--nebula-font-mono);
+    font-size: 0.875rem;
+}
+
+/* Date */
+.date {
+    color: var(--nebula-text-muted);
+    font-size: 0.75rem;
+}
+
+/* Provider Badge */
+.provider-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--nebula-radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.provider-curseforge {
+    background: rgba(246, 119, 55, 0.15);
+    color: #f67737;
+}
+
+.provider-modrinth {
+    background: rgba(30, 201, 122, 0.15);
+    color: #1ec97a;
+}
+
+.provider-thunderstore {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.provider-spigotmc {
+    background: rgba(255, 175, 34, 0.15);
+    color: #ffaf22;
+}
+
+.provider-hangar {
+    background: rgba(72, 177, 255, 0.15);
+    color: #48b1ff;
+}
+
+.provider-nexusmods {
+    background: rgba(218, 138, 27, 0.15);
+    color: #da8a1b;
+}
+
+.provider-steamworkshop {
+    background: rgba(30, 144, 255, 0.15);
+    color: #1e90ff;
+}
+
+.provider-modtale {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+}
+
+.provider-local {
+    background: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-muted);
+}
+
+/* Action Buttons */
+.action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.action-buttons ::deep .btn-installed {
+    color: var(--nebula-text-muted);
+    cursor: default;
+}
+
+/* Row States */
+.row-installed {
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.row-busy {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+/* Pagination Footer */
+.datagrid-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--nebula-border);
+    background: var(--nebula-bg-secondary);
+    border-radius: 0 0 var(--nebula-radius-lg) var(--nebula-radius-lg);
+}
+
+.datagrid-pagination-info {
+    color: var(--nebula-text-muted);
+    font-size: 0.875rem;
+}
+
+.datagrid-pagination {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.page-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: none;
+    border-radius: var(--nebula-radius);
+    background: transparent;
+    color: var(--nebula-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.page-btn:hover {
+    background: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-primary);
+}
+
+.page-btn.active {
+    background: var(--nebula-accent);
+    color: white;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1024px) {
+    .col-author,
+    .col-type {
+        display: none;
+    }
+
+    .skeleton-row {
+        grid-template-columns: 48px 1fr 100px 120px 100px 120px;
+    }
+}
+
+@media (max-width: 768px) {
+    .col-provider,
+    .col-updated {
+        display: none;
+    }
+
+    .skeleton-row {
+        grid-template-columns: 48px 1fr 100px 120px;
+    }
+
+    .datagrid-footer {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .col-downloads {
+        display: none;
+    }
+
+    .skeleton-row {
+        grid-template-columns: 48px 1fr 100px;
+    }
+
+    .mod-name {
+        max-width: 120px;
+    }
+
+    .mod-summary {
+        display: none;
+    }
+}

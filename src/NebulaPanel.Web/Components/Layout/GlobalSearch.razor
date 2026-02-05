@@ -1,0 +1,355 @@
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject IGameServerService ServerService
+@inject IGameService GameService
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@implements IDisposable
+
+<button type="button"
+        @ref="_buttonRef"
+        class="global-search-trigger"
+        @onclick="OpenSearch"
+        title="Search (Ctrl+K)">
+    <Icon Name="search" Size="IconSize.Small" />
+    <span class="hidden md:inline text-sm">Search...</span>
+    <kbd class="hidden lg:inline-flex search-kbd">Ctrl K</kbd>
+</button>
+
+@* Command Palette Modal *@
+@if (_isOpen)
+{
+    <div class="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]"
+         @onclick="CloseSearch"
+         @onkeydown="HandleKeyDown">
+        <div class="fixed inset-0 bg-nebula-overlay-bg backdrop-blur-sm"></div>
+        <div class="relative w-full max-w-xl mx-4" @onclick:stopPropagation="true">
+            <div class="card border-nebula-border-strong shadow-nebula-lg overflow-hidden">
+                @* Search Input *@
+                <div class="flex items-center gap-3 p-4 border-b border-nebula-border">
+                    <Icon Name="search" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                    <input @ref="_inputRef"
+                           type="text"
+                           @bind="_searchQuery"
+                           @bind:event="oninput"
+                           @bind:after="OnSearchChanged"
+                           @onkeydown="HandleKeyDown"
+                           placeholder="Search servers, pages, or type a command..."
+                           class="flex-1 bg-transparent text-nebula-text-primary placeholder:text-nebula-text-muted outline-none text-base" />
+                    <kbd class="search-kbd text-xs">ESC</kbd>
+                </div>
+
+                @* Results *@
+                <div class="max-h-[400px] overflow-y-auto">
+                    @if (_filteredResults.Count == 0 && !string.IsNullOrWhiteSpace(_searchQuery))
+                    {
+                        <div class="p-6 text-center text-sm text-nebula-text-muted">
+                            <Icon Name="search" Size="IconSize.Medium" Class="mb-2 opacity-40" />
+                            <p>No results for "@_searchQuery"</p>
+                        </div>
+                    }
+                    else if (_filteredResults.Count == 0)
+                    {
+                        @* Show default commands when no query *@
+                        <div class="py-2">
+                            <div class="px-4 py-1.5 text-xs font-medium text-nebula-text-muted uppercase tracking-wider">Quick Actions</div>
+                            @foreach (var item in _defaultItems)
+                            {
+                                var idx = _defaultItems.IndexOf(item);
+                                <button type="button"
+                                        class="@GetItemClass(idx)"
+                                        @onclick="() => ExecuteItem(item)"
+                                        @onmouseenter="() => _selectedIndex = idx">
+                                    <div class="p-1.5 rounded bg-nebula-bg-tertiary">
+                                        <Icon Name="@item.Icon" Size="IconSize.Small" Class="@item.IconClass" />
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-sm text-nebula-text-primary">@item.Title</div>
+                                        <div class="text-xs text-nebula-text-muted truncate">@item.Subtitle</div>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(item.Shortcut))
+                                    {
+                                        <kbd class="search-kbd text-xs">@item.Shortcut</kbd>
+                                    }
+                                    <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                </button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        @* Grouped results *@
+                        @foreach (var group in _filteredResults.GroupBy(r => r.Category))
+                        {
+                            <div class="py-2">
+                                <div class="px-4 py-1.5 text-xs font-medium text-nebula-text-muted uppercase tracking-wider">@group.Key</div>
+                                @foreach (var item in group)
+                                {
+                                    var globalIdx = _filteredResults.IndexOf(item);
+                                    <button type="button"
+                                            class="@GetItemClass(globalIdx)"
+                                            @onclick="() => ExecuteItem(item)"
+                                            @onmouseenter="() => _selectedIndex = globalIdx">
+                                        <div class="p-1.5 rounded bg-nebula-bg-tertiary">
+                                            <Icon Name="@item.Icon" Size="IconSize.Small" Class="@item.IconClass" />
+                                        </div>
+                                        <div class="flex-1 min-w-0">
+                                            <div class="text-sm text-nebula-text-primary">@item.Title</div>
+                                            @if (!string.IsNullOrEmpty(item.Subtitle))
+                                            {
+                                                <div class="text-xs text-nebula-text-muted truncate">@item.Subtitle</div>
+                                            }
+                                        </div>
+                                        @if (item.Badge is not null)
+                                        {
+                                            <StatusBadge Status="@item.Badge.Value" Text="@item.BadgeText" ShowDot="true" />
+                                        }
+                                        <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    </button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+
+                @* Footer *@
+                <div class="flex items-center justify-between px-4 py-2 border-t border-nebula-border text-xs text-nebula-text-muted">
+                    <div class="flex items-center gap-3">
+                        <span class="flex items-center gap-1"><kbd class="search-kbd">↑↓</kbd> Navigate</span>
+                        <span class="flex items-center gap-1"><kbd class="search-kbd">↵</kbd> Select</span>
+                    </div>
+                    <span class="flex items-center gap-1"><kbd class="search-kbd">ESC</kbd> Close</span>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ElementReference _buttonRef;
+    private ElementReference _inputRef;
+    private bool _isOpen;
+    private string _searchQuery = "";
+    private int _selectedIndex;
+    private DotNetObjectReference<GlobalSearch>? _objRef;
+
+    private List<CommandItem> _allItems = [];
+    private List<CommandItem> _filteredResults = [];
+    private bool _dataLoaded;
+
+    private readonly List<CommandItem> _defaultItems =
+    [
+        new("Create Server", "Set up a new game server", "plus", "text-nebula-success", "Pages", "/servers/create", null, null, null),
+        new("View Servers", "Manage your servers", "server", "text-nebula-accent", "Pages", "/servers", null, null, null),
+        new("Browse Games", "View available games", "gamepad", "text-nebula-info", "Pages", "/games", null, null, null),
+        new("Settings", "Configure your panel", "settings", "text-nebula-text-secondary", "Pages", "/settings", null, null, null),
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _objRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("nebulaSearch.init", _objRef);
+        }
+
+        if (_isOpen)
+        {
+            await Task.Delay(50);
+            await JS.InvokeVoidAsync("nebulaSearch.focusInput", _inputRef);
+        }
+    }
+
+    [JSInvokable]
+    public void HandleKeyboardShortcut()
+    {
+        _isOpen = true;
+        _searchQuery = "";
+        _selectedIndex = 0;
+        _filteredResults = [];
+        StateHasChanged();
+        _ = LoadDataIfNeeded();
+    }
+
+    private void OpenSearch()
+    {
+        _isOpen = true;
+        _searchQuery = "";
+        _selectedIndex = 0;
+        _filteredResults = [];
+        _ = LoadDataIfNeeded();
+    }
+
+    private async Task LoadDataIfNeeded()
+    {
+        if (_dataLoaded) return;
+
+        try
+        {
+            var serversTask = ServerService.GetAllServersAsync();
+            var gamesTask = GameService.GetAllGamesAsync();
+
+            await Task.WhenAll(serversTask, gamesTask);
+
+            var servers = await serversTask;
+            var games = await gamesTask;
+
+            _allItems = [];
+
+            // Add servers
+            foreach (var server in servers)
+            {
+                var statusBadge = server.Status switch
+                {
+                    ServerStatus.Running => StatusBadge.StatusType.Success,
+                    ServerStatus.Starting or ServerStatus.Stopping => StatusBadge.StatusType.Warning,
+                    ServerStatus.Crashed => StatusBadge.StatusType.Error,
+                    _ => StatusBadge.StatusType.Neutral
+                };
+
+                _allItems.Add(new CommandItem(
+                    server.Name,
+                    $"{server.GameName} · {server.BindAddress}:{server.PrimaryPort}",
+                    "server",
+                    "text-nebula-accent",
+                    "Servers",
+                    $"/servers/{server.Id}",
+                    null,
+                    statusBadge,
+                    server.Status.ToString()
+                ));
+            }
+
+            // Add games
+            foreach (var game in games)
+            {
+                _allItems.Add(new CommandItem(
+                    game.Name,
+                    "Game",
+                    "gamepad",
+                    "text-nebula-info",
+                    "Games",
+                    $"/games/{game.Id}",
+                    null,
+                    null,
+                    null
+                ));
+            }
+
+            // Add navigation pages
+            _allItems.AddRange([
+                new("Dashboard", "Home page", "home", "text-nebula-text-secondary", "Pages", "/", null, null, null),
+                new("Create Server", "Set up a new game server", "plus", "text-nebula-success", "Pages", "/servers/create", null, null, null),
+                new("Servers", "View all servers", "server", "text-nebula-accent", "Pages", "/servers", null, null, null),
+                new("Games", "Browse available games", "gamepad", "text-nebula-info", "Pages", "/games", null, null, null),
+                new("Backups", "Manage backups", "archive", "text-nebula-warning", "Pages", "/backups", null, null, null),
+                new("Users", "Manage users", "users", "text-nebula-text-secondary", "Pages", "/users", null, null, null),
+                new("Roles", "Manage roles & permissions", "shield", "text-nebula-text-secondary", "Pages", "/roles", null, null, null),
+                new("General Settings", "Application name, URL, maintenance", "settings", "text-nebula-text-secondary", "Settings", "/settings/general", null, null, null),
+                new("Appearance", "Theme & display settings", "palette", "text-nebula-text-secondary", "Settings", "/settings/appearance", null, null, null),
+                new("Official Games", "Manage official game providers", "download", "text-nebula-text-secondary", "Settings", "/settings/official-games", null, null, null),
+                new("System Health", "View system health checks", "activity", "text-nebula-success", "Settings", "/settings/system-health", null, null, null),
+                new("Database", "Database management", "database", "text-nebula-text-secondary", "Settings", "/settings/database", null, null, null),
+                new("Logs", "View application logs", "file-text", "text-nebula-text-secondary", "Settings", "/settings/logs", null, null, null),
+                new("Updates", "Check for updates", "refresh-cw", "text-nebula-info", "Settings", "/settings/updates", null, null, null),
+            ]);
+
+            _dataLoaded = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Silent failure - search just won't have server/game data
+        }
+    }
+
+    private void OnSearchChanged()
+    {
+        _selectedIndex = 0;
+
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            _filteredResults = [];
+            return;
+        }
+
+        var query = _searchQuery.Trim();
+        _filteredResults = _allItems
+            .Where(item =>
+                item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                (item.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
+            .OrderBy(item => item.Category == "Servers" ? 0 : item.Category == "Games" ? 1 : 2)
+            .ThenBy(item => item.Title.StartsWith(query, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .Take(12)
+            .ToList();
+    }
+
+    private void ExecuteItem(CommandItem item)
+    {
+        CloseSearch();
+
+        if (!string.IsNullOrEmpty(item.Url))
+        {
+            Navigation.NavigateTo(item.Url);
+        }
+    }
+
+    private void CloseSearch()
+    {
+        _isOpen = false;
+        _searchQuery = "";
+        _filteredResults = [];
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        var items = _filteredResults.Count > 0 ? _filteredResults : _defaultItems;
+        var count = items.Count;
+
+        switch (e.Key)
+        {
+            case "Escape":
+                CloseSearch();
+                break;
+            case "ArrowDown":
+                _selectedIndex = (_selectedIndex + 1) % count;
+                break;
+            case "ArrowUp":
+                _selectedIndex = (_selectedIndex - 1 + count) % count;
+                break;
+            case "Enter":
+                if (_selectedIndex >= 0 && _selectedIndex < count)
+                {
+                    ExecuteItem(items[_selectedIndex]);
+                }
+                break;
+        }
+    }
+
+    private string GetItemClass(int index)
+    {
+        var baseClass = "flex items-center gap-3 w-full px-4 py-2.5 text-left transition-colors";
+        return index == _selectedIndex
+            ? $"{baseClass} bg-nebula-accent/10"
+            : $"{baseClass} hover:bg-nebula-bg-tertiary";
+    }
+
+    public void Dispose()
+    {
+        _objRef?.Dispose();
+        JS.InvokeVoidAsync("nebulaSearch.dispose");
+    }
+
+    private record CommandItem(
+        string Title,
+        string? Subtitle,
+        string Icon,
+        string IconClass,
+        string Category,
+        string? Url,
+        string? Shortcut,
+        StatusBadge.StatusType? Badge,
+        string? BadgeText
+    );
+}

@@ -1,0 +1,107 @@
+@typeparam TValue
+@inherits ComponentBase
+
+<div class="@ContainerClasses">
+    <button type="button"
+            class="@ComputedClasses"
+            role="radio"
+            aria-checked="@IsSelected.ToString().ToLower()"
+            disabled="@Disabled"
+            id="@Id"
+            @onclick="HandleClick"
+            @onkeydown="HandleKeyDown"
+            @attributes="AdditionalAttributes">
+        <span class="radio-dot"></span>
+    </button>
+
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@Id"
+               class="text-sm cursor-pointer select-none ml-2 @LabelClasses"
+               @onclick="HandleClick"
+               @onclick:preventDefault="true">
+            @Label
+        </label>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public TValue? Value { get; set; }
+
+    [Parameter]
+    public TValue? GroupValue { get; set; }
+
+    [Parameter]
+    public EventCallback<TValue> GroupValueChanged { get; set; }
+
+    [Parameter]
+    public string? Label { get; set; }
+
+    [Parameter]
+    public RadioSize Size { get; set; } = RadioSize.Medium;
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsSelected => Value != null && Value.Equals(GroupValue);
+
+    private string ContainerClasses => "inline-flex items-center";
+
+    private string LabelClasses => Disabled
+        ? "text-nebula-text-disabled cursor-not-allowed"
+        : "text-nebula-text-secondary";
+
+    private string ComputedClasses
+    {
+        get
+        {
+            var classes = new List<string> { "radio-custom", GetSizeClass() };
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string GetSizeClass() => Size switch
+    {
+        RadioSize.Small => "radio-custom-sm",
+        RadioSize.Medium => "",
+        RadioSize.Large => "radio-custom-lg",
+        _ => ""
+    };
+
+    private async Task HandleClick()
+    {
+        if (!Disabled && Value != null)
+        {
+            await GroupValueChanged.InvokeAsync(Value);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!Disabled && Value != null && (e.Key == " " || e.Key == "Enter"))
+        {
+            await GroupValueChanged.InvokeAsync(Value);
+        }
+    }
+
+    public enum RadioSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+}

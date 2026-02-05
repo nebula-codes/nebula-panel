@@ -1,0 +1,51 @@
+@using NebulaPanel.Application.DTOs
+
+@* Activity feed item component *@
+
+<div class="flex items-start gap-3 py-3 border-b border-nebula-border last:border-b-0">
+    <div class="@($"p-2 rounded-nebula bg-nebula-{GetColorClass()}/20 flex-shrink-0")">
+        <Icon Name="@(Activity.IconName ?? "activity")" Size="IconSize.Small" Class="@($"text-nebula-{GetColorClass()}")" />
+    </div>
+    <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+            @if (!string.IsNullOrEmpty(Activity.ServerName))
+            {
+                <span class="font-medium text-nebula-text-primary text-sm truncate">@Activity.ServerName</span>
+                <span class="text-nebula-text-muted text-xs">•</span>
+            }
+            <span class="text-nebula-text-secondary text-sm">@FormatActivityType(Activity.ActivityType)</span>
+        </div>
+        <p class="text-xs text-nebula-text-muted mt-0.5 truncate">@Activity.Description</p>
+        <div class="flex items-center gap-2 mt-1">
+            <RelativeTime DateTime="@Activity.Timestamp" Class="text-xs text-nebula-text-muted" RefreshIntervalSeconds="30" />
+            @if (!string.IsNullOrEmpty(Activity.Username))
+            {
+                <span class="text-nebula-text-muted text-xs">by @Activity.Username</span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ActivityFeedItemDto Activity { get; set; } = null!;
+
+    private string GetColorClass()
+    {
+        return Activity.StatusColor switch
+        {
+            "success" => "success",
+            "error" => "error",
+            "warning" => "warning",
+            "info" => "info",
+            _ => "text-muted"
+        };
+    }
+
+    private static string FormatActivityType(string activityType)
+    {
+        // Convert PascalCase to spaced words
+        return System.Text.RegularExpressions.Regex.Replace(activityType, "(\\B[A-Z])", " $1");
+    }
+
+}

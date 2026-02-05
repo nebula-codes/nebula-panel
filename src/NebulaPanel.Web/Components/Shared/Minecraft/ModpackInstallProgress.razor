@@ -1,0 +1,348 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Application.DTOs
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div class="install-progress-container">
+    <div class="install-progress-content">
+        @* Header *@
+        <div class="progress-header">
+            <h2 class="progress-title">Installing @ModpackName</h2>
+
+            @if (!string.IsNullOrEmpty(ModpackIconUrl))
+            {
+                <img src="@ModpackIconUrl" alt="@ModpackName" class="modpack-icon-large" />
+            }
+            else
+            {
+                <div class="modpack-icon-large-placeholder">
+                    <Icon Name="package" Size="IconSize.XLarge" />
+                </div>
+            }
+        </div>
+
+        @* Progress Bar *@
+        <div class="progress-bar-container">
+            <div class="progress-bar-track">
+                <div class="progress-bar-fill @(_hasError ? "error" : "")"
+                     style="width: @(_currentProgress?.Percentage ?? 0)%"></div>
+            </div>
+            <div class="progress-percentage">@((_currentProgress?.Percentage ?? 0).ToString("F0"))%</div>
+        </div>
+
+        @* Current Action *@
+        <div class="current-action">
+            @(_currentProgress?.Message ?? "Preparing installation...")
+        </div>
+
+        @* Phase Checklist *@
+        <div class="phase-checklist">
+            @foreach (var phase in _phases)
+            {
+                <div class="phase-item @GetPhaseClass(phase.Key)">
+                    <div class="phase-indicator">
+                        @if (GetPhaseState(phase.Key) == PhaseState.Completed)
+                        {
+                            <Icon Name="check" Size="IconSize.Small" />
+                        }
+                        else if (GetPhaseState(phase.Key) == PhaseState.InProgress)
+                        {
+                            <span class="phase-dot"></span>
+                        }
+                        else
+                        {
+                            <span class="phase-circle"></span>
+                        }
+                    </div>
+                    <span class="phase-label">@phase.Value</span>
+                </div>
+            }
+        </div>
+
+        @* Elapsed Time *@
+        <div class="time-info">
+            <Icon Name="clock" Size="IconSize.Small" Class="mr-2" />
+            <span>Elapsed: @FormatElapsedTime()</span>
+        </div>
+
+        @* Log Viewer *@
+        <div class="log-viewer-section">
+            <button class="log-toggle" @onclick="@(() => _showLogs = !_showLogs)">
+                <Icon Name="@(_showLogs ? "chevron-up" : "chevron-down")" Size="IconSize.Small" />
+                <span>@(_showLogs ? "Hide" : "View") Log</span>
+            </button>
+
+            @if (_showLogs)
+            {
+                <div class="log-viewer" @ref="_logContainer">
+                    @foreach (var line in _logLines)
+                    {
+                        <div class="log-line">@line</div>
+                    }
+                    @if (_logLines.Count == 0)
+                    {
+                        <div class="log-empty">Waiting for log output...</div>
+                    }
+                </div>
+            }
+        </div>
+
+        @* Warning *@
+        <div class="install-warning">
+            <Icon Name="alert-triangle" Size="IconSize.Small" Class="mr-2" />
+            <span>This may take several minutes for large packs</span>
+        </div>
+
+        @* Cancel Button *@
+        <div class="cancel-section">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Cancel"
+                    OnClick="HandleCancelClick"
+                    Disabled="@(_isComplete || _isCancelling)" />
+        </div>
+    </div>
+
+    @* Cancel Confirmation Modal *@
+    <Modal @bind-IsOpen="_showCancelConfirm"
+           Title="Cancel Installation?"
+           Size="ModalSize.Small">
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to cancel the installation? This will stop the download and clean up any partial files.
+            </p>
+        </Body>
+        <Footer>
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Continue Installing"
+                        OnClick="@(() => _showCancelConfirm = false)" />
+                <Button Variant="ButtonVariant.Danger"
+                        Text="Cancel Installation"
+                        Loading="@_isCancelling"
+                        OnClick="ConfirmCancel" />
+            </div>
+        </Footer>
+    </Modal>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid InstallationId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string ModpackName { get; set; } = "";
+
+    [Parameter]
+    public string? ModpackIconUrl { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancelRequested { get; set; }
+
+    [Parameter]
+    public EventCallback<InstallationResult> OnComplete { get; set; }
+
+    // SignalR connection
+    private HubConnection? _hubConnection;
+
+    // State
+    private MinecraftInstallProgressDto? _currentProgress;
+    private List<string> _logLines = [];
+    private bool _showLogs;
+    private bool _showCancelConfirm;
+    private bool _isCancelling;
+    private bool _isComplete;
+    private bool _hasError;
+    private DateTime _startTime = DateTime.UtcNow;
+    private System.Threading.Timer? _elapsedTimer;
+    private ElementReference _logContainer;
+
+    // Phase definitions
+    private readonly Dictionary<string, string> _phases = new()
+    {
+        ["Preparing"] = "Preparing installation",
+        ["Downloading"] = "Downloading modpack files",
+        ["DownloadingMods"] = "Downloading mods",
+        ["Extracting"] = "Extracting files",
+        ["InstallingLoader"] = "Installing mod loader",
+        ["Configuring"] = "Configuring server",
+        ["Complete"] = "Finalizing"
+    };
+
+    private string _currentPhase = "Preparing";
+
+    private async Task<string?> GetAccessTokenAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _startTime = DateTime.UtcNow;
+
+        // Start elapsed time timer
+        _elapsedTimer = new System.Threading.Timer(
+            _ => InvokeAsync(StateHasChanged),
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1));
+
+        // Get auth token for SignalR
+        var token = await GetAccessTokenAsync();
+
+        // Set up SignalR connection
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/install-progress"), options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<MinecraftInstallProgressDto>("ReceiveProgress", HandleProgress);
+        _hubConnection.On<Guid, bool, string?>("InstallationComplete", HandleComplete);
+        _hubConnection.On<Guid, string>("ReceiveLogLine", HandleLogLine);
+
+        try
+        {
+            await _hubConnection.StartAsync().ConfigureAwait(false);
+            await _hubConnection.InvokeAsync("JoinInstallation", InstallationId).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logLines.Add($"[Error] Failed to connect to progress hub: {ex.Message}");
+        }
+    }
+
+    private void HandleProgress(MinecraftInstallProgressDto progress)
+    {
+        _currentProgress = progress;
+        _currentPhase = progress.Phase;
+        _hasError = progress.HasError;
+
+        if (progress.HasError && !string.IsNullOrEmpty(progress.ErrorMessage))
+        {
+            _logLines.Add($"[Error] {progress.ErrorMessage}");
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async void HandleComplete(Guid serverId, bool success, string? error)
+    {
+        _isComplete = true;
+        _elapsedTimer?.Dispose();
+
+        var result = new InstallationResult
+        {
+            ServerId = serverId,
+            Success = success,
+            Error = error
+        };
+
+        await InvokeAsync(async () =>
+        {
+            await OnComplete.InvokeAsync(result);
+        });
+    }
+
+    private void HandleLogLine(Guid installationId, string line)
+    {
+        if (installationId == InstallationId)
+        {
+            _logLines.Add(line);
+
+            // Keep only the last 500 lines
+            if (_logLines.Count > 500)
+            {
+                _logLines.RemoveAt(0);
+            }
+
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private PhaseState GetPhaseState(string phase)
+    {
+        var phaseOrder = _phases.Keys.ToList();
+        var currentIndex = phaseOrder.IndexOf(_currentPhase);
+        var phaseIndex = phaseOrder.IndexOf(phase);
+
+        if (phaseIndex < currentIndex)
+            return PhaseState.Completed;
+        if (phaseIndex == currentIndex)
+            return PhaseState.InProgress;
+        return PhaseState.Pending;
+    }
+
+    private string GetPhaseClass(string phase)
+    {
+        return GetPhaseState(phase) switch
+        {
+            PhaseState.Completed => "completed",
+            PhaseState.InProgress => "in-progress",
+            _ => "pending"
+        };
+    }
+
+    private string FormatElapsedTime()
+    {
+        var elapsed = DateTime.UtcNow - _startTime;
+        if (elapsed.TotalHours >= 1)
+            return elapsed.ToString(@"h\:mm\:ss");
+        return elapsed.ToString(@"m\:ss");
+    }
+
+    private void HandleCancelClick()
+    {
+        _showCancelConfirm = true;
+    }
+
+    private async Task ConfirmCancel()
+    {
+        _isCancelling = true;
+        _showCancelConfirm = false;
+        StateHasChanged();
+
+        await OnCancelRequested.InvokeAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _elapsedTimer?.Dispose();
+
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("LeaveInstallation", InstallationId).ConfigureAwait(false);
+                await _hubConnection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+
+    private enum PhaseState
+    {
+        Pending,
+        InProgress,
+        Completed
+    }
+
+    public record InstallationResult
+    {
+        public Guid ServerId { get; init; }
+        public bool Success { get; init; }
+        public string? Error { get; init; }
+    }
+}

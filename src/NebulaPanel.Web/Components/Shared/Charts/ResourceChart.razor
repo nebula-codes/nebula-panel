@@ -1,0 +1,115 @@
+@using ApexCharts
+@using NebulaPanel.Application.DTOs
+
+@* Resource usage chart component using ApexCharts *@
+
+@if (DataPoints.Count > 0)
+{
+    <ApexChart TItem="ResourceDataPointDto"
+               Title=""
+               Height="200"
+               Options="_chartOptions">
+        <ApexPointSeries TItem="ResourceDataPointDto"
+                        Items="DataPoints"
+                        Name="@(ShowCpu ? "CPU %" : "Memory MB")"
+                        SeriesType="SeriesType.Area"
+                        XValue="@(d => d.Timestamp)"
+                        YValue="@(d => ShowCpu ? (decimal)d.CpuPercent : (decimal)d.MemoryMb)" />
+    </ApexChart>
+}
+else
+{
+    <div class="flex items-center justify-center h-[200px] text-nebula-text-muted">
+        <div class="text-center">
+            <Icon Name="bar-chart-2" Size="IconSize.Large" Class="mb-2 opacity-50" />
+            <p class="text-sm">No data available</p>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<ResourceDataPointDto> DataPoints { get; set; } = [];
+
+    [Parameter]
+    public bool ShowCpu { get; set; } = true;
+
+    [Parameter]
+    public string ChartColor { get; set; } = "#6366f1"; // Default to indigo
+
+    private ApexChartOptions<ResourceDataPointDto> _chartOptions = new();
+
+    protected override void OnInitialized()
+    {
+        _chartOptions = new ApexChartOptions<ResourceDataPointDto>
+        {
+            Chart = new Chart
+            {
+                Background = "transparent",
+                Toolbar = new Toolbar { Show = false },
+                Zoom = new Zoom { Enabled = false },
+                Sparkline = new ChartSparkline { Enabled = false },
+                Animations = new Animations { Enabled = true }
+            },
+            Colors = [ChartColor],
+            Fill = new Fill
+            {
+                Type = [FillType.Gradient],
+                Gradient = new FillGradient
+                {
+                    ShadeIntensity = 1,
+                    OpacityFrom = 0.45,
+                    OpacityTo = 0.05,
+                    Stops = [0, 100]
+                }
+            },
+            Stroke = new Stroke
+            {
+                Curve = Curve.Smooth,
+                Width = 2
+            },
+            Grid = new Grid
+            {
+                BorderColor = "var(--nebula-border)",
+                StrokeDashArray = 4,
+                Xaxis = new GridXAxis { Lines = new Lines { Show = false } }
+            },
+            Xaxis = new XAxis
+            {
+                Type = XAxisType.Datetime,
+                Labels = new XAxisLabels
+                {
+                    Style = new AxisLabelStyle { Colors = "var(--nebula-text-muted)" },
+                    DatetimeFormatter = new DatetimeFormatter
+                    {
+                        Hour = "HH:mm"
+                    }
+                },
+                AxisBorder = new AxisBorder { Show = false },
+                AxisTicks = new AxisTicks { Show = false }
+            },
+            Yaxis =
+            [
+                new YAxis
+                {
+                    Labels = new YAxisLabels
+                    {
+                        Style = new AxisLabelStyle { Colors = "var(--nebula-text-muted)" },
+                        Formatter = ShowCpu ? "function(val) { return val.toFixed(0) + '%'; }" : "function(val) { return val.toFixed(0) + ' MB'; }"
+                    },
+                    Min = 0,
+                    Max = ShowCpu ? 100 : null
+                }
+            ],
+            Tooltip = new Tooltip
+            {
+                Theme = Mode.Dark,
+                X = new TooltipX
+                {
+                    Format = "HH:mm"
+                }
+            },
+            Legend = new Legend { Show = false }
+        };
+    }
+}

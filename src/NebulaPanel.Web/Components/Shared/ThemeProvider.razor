@@ -1,0 +1,66 @@
+@inject IJSRuntime JS
+
+<CascadingValue Value="this">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    public string CurrentTheme { get; private set; } = "dark";
+    public bool IsDarkMode => CurrentTheme == "dark";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadSavedThemeAsync();
+        }
+    }
+
+    private async Task LoadSavedThemeAsync()
+    {
+        try
+        {
+            var savedTheme = await JS.InvokeAsync<string?>("localStorage.getItem", "nebula-theme");
+
+            if (!string.IsNullOrEmpty(savedTheme))
+            {
+                CurrentTheme = savedTheme;
+            }
+            else
+            {
+                var prefersDark = await JS.InvokeAsync<bool>("eval", "window.matchMedia('(prefers-color-scheme: dark)').matches");
+                CurrentTheme = prefersDark ? "dark" : "light";
+            }
+
+            StateHasChanged();
+        }
+        catch
+        {
+            CurrentTheme = "dark";
+        }
+    }
+
+    public async Task SetThemeAsync(string theme)
+    {
+        if (theme != "dark" && theme != "light")
+            return;
+
+        CurrentTheme = theme;
+        await ApplyThemeAsync(theme);
+        StateHasChanged();
+    }
+
+    public async Task ToggleThemeAsync()
+    {
+        var newTheme = CurrentTheme == "dark" ? "light" : "dark";
+        await SetThemeAsync(newTheme);
+    }
+
+    private async Task ApplyThemeAsync(string theme)
+    {
+        await JS.InvokeVoidAsync("setNebulaTheme", theme);
+    }
+}

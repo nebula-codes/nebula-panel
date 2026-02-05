@@ -1,0 +1,92 @@
+@using NebulaPanel.Application.DTOs
+
+@* Announcement card component *@
+
+<div class="rounded-nebula border p-4 @GetBorderClass()">
+    <div class="flex items-start gap-3">
+        <div class="p-2 rounded-nebula @GetBackgroundClass() flex-shrink-0">
+            <Icon Name="@GetIconName()" Size="IconSize.Small" Class="@GetIconClass()" />
+        </div>
+        <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+                <h4 class="font-medium text-nebula-text-primary text-sm">@Announcement.Title</h4>
+                @if (Announcement.IsPinned)
+                {
+                    <Icon Name="pin" Size="IconSize.XSmall" Class="text-nebula-accent" />
+                }
+            </div>
+            <p class="text-sm text-nebula-text-secondary mt-1 line-clamp-2">@Announcement.Content</p>
+            <div class="flex items-center gap-2 mt-2 text-xs text-nebula-text-muted">
+                <span>@FormatDate(Announcement.CreatedAt)</span>
+                @if (Announcement.ExpiresAt.HasValue)
+                {
+                    <span>• Expires @FormatDate(Announcement.ExpiresAt.Value)</span>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public AnnouncementDto Announcement { get; set; } = null!;
+
+    private string GetBorderClass()
+    {
+        return Announcement.Type switch
+        {
+            "Success" => "border-nebula-success/50 bg-nebula-success/5",
+            "Warning" => "border-nebula-warning/50 bg-nebula-warning/5",
+            "Error" => "border-nebula-error/50 bg-nebula-error/5",
+            "Maintenance" => "border-nebula-accent/50 bg-nebula-accent/5",
+            _ => "border-nebula-info/50 bg-nebula-info/5" // Info
+        };
+    }
+
+    private string GetBackgroundClass()
+    {
+        return Announcement.Type switch
+        {
+            "Success" => "bg-nebula-success/20",
+            "Warning" => "bg-nebula-warning/20",
+            "Error" => "bg-nebula-error/20",
+            "Maintenance" => "bg-nebula-accent/20",
+            _ => "bg-nebula-info/20" // Info
+        };
+    }
+
+    private string GetIconClass()
+    {
+        return Announcement.Type switch
+        {
+            "Success" => "text-nebula-success",
+            "Warning" => "text-nebula-warning",
+            "Error" => "text-nebula-error",
+            "Maintenance" => "text-nebula-accent",
+            _ => "text-nebula-info" // Info
+        };
+    }
+
+    private string GetIconName()
+    {
+        return Announcement.Type switch
+        {
+            "Success" => "check-circle",
+            "Warning" => "alert-triangle",
+            "Error" => "x-circle",
+            "Maintenance" => "wrench",
+            _ => "info" // Info
+        };
+    }
+
+    private static string FormatDate(DateTime date)
+    {
+        var diff = DateTime.UtcNow - date;
+
+        if (diff.TotalDays < 1) return "Today";
+        if (diff.TotalDays < 2) return "Yesterday";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays} days ago";
+
+        return date.ToString("MMM d, yyyy");
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "Jwt": {
+    "Secret": "your-development-jwt-secret-at-least-32-characters"
+  },
+  "CurseForge": {
+    "ApiKey": "your-curseforge-api-key"
+  },
+  "Modtale": {
+    "ApiKey": "your-modtale-api-key"
+  }
+}

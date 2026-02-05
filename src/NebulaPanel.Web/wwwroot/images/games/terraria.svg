@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4299e1"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="groundGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#78350f"/>
+      <stop offset="100%" style="stop-color:#451a03"/>
+    </linearGradient>
+  </defs>
+  <!-- Sky background -->
+  <rect width="100" height="60" fill="url(#skyGradient)"/>
+  <!-- Ground -->
+  <rect y="60" width="100" height="40" fill="url(#groundGradient)"/>
+  <!-- Grass layer -->
+  <rect y="55" width="100" height="10" fill="#16a34a"/>
+  <!-- Sun -->
+  <circle cx="80" cy="20" r="12" fill="#fbbf24"/>
+  <!-- Cloud -->
+  <ellipse cx="25" cy="18" rx="12" ry="6" fill="#f1f5f9" opacity="0.9"/>
+  <ellipse cx="35" cy="15" rx="10" ry="5" fill="#f1f5f9" opacity="0.9"/>
+  <!-- Tree trunk -->
+  <rect x="15" y="35" width="6" height="25" fill="#7c3aed"/>
+  <!-- Tree leaves -->
+  <ellipse cx="18" cy="30" rx="12" ry="10" fill="#22c55e"/>
+  <!-- Character (simplified) -->
+  <rect x="50" y="45" width="8" height="12" fill="#3b82f6" rx="1"/>
+  <rect x="51" y="40" width="6" height="6" fill="#fcd34d" rx="1"/>
+  <!-- Pickaxe -->
+  <rect x="58" y="43" width="12" height="2" fill="#9ca3af" transform="rotate(45 64 44)"/>
+  <polygon points="70,40 74,44 68,44" fill="#9ca3af"/>
+  <!-- Star -->
+  <polygon points="70,12 71.5,15 75,15 72.5,17 73.5,20 70,18 66.5,20 67.5,17 65,15 68.5,15" fill="#fbbf24"/>
+</svg>

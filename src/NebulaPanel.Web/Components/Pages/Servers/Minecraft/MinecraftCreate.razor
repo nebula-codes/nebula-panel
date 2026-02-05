@@ -1,0 +1,1028 @@
+@page "/servers/create/minecraft"
+@attribute [Authorize]
+@using System.Security.Claims
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Web.Components.Shared.Minecraft
+@inject IMinecraftInstallService InstallService
+@inject IUnifiedModpackService ModpackService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Create Minecraft Server - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    @* Breadcrumb *@
+    <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-4">
+        <a href="/servers" class="hover:text-nebula-text-primary transition-colors">Servers</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <a href="/servers/create" class="hover:text-nebula-text-primary transition-colors">Create</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Minecraft</span>
+    </nav>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Create Minecraft Server</h1>
+    <p class="text-nebula-text-muted mb-6">Configure and install a new Minecraft server.</p>
+
+    @* Step Indicator (dynamic based on setup type) *@
+    <div class="flex items-center justify-center mb-8">
+        @for (int i = 1; i <= TotalSteps; i++)
+        {
+            var step = i;
+            <div class="flex items-center">
+                <div class="@GetStepClass(step)">
+                    @if (_currentStep > step)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" />
+                    }
+                    else
+                    {
+                        @step
+                    }
+                </div>
+                <span class="@GetStepLabelClass(step) ml-2 text-sm hidden sm:inline">@GetStepLabel(step)</span>
+                @if (i < TotalSteps)
+                {
+                    <div class="w-6 sm:w-12 h-0.5 mx-2 sm:mx-3 @(_currentStep > step ? "bg-nebula-accent" : "bg-nebula-border-subtle")"></div>
+                }
+            </div>
+        }
+    </div>
+
+    @* Error Display *@
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Step Content *@
+    @switch (_currentStep)
+    {
+        case 1:
+            @* Step 1: Setup Type Selection *@
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">How would you like to set up your server?</h2>
+                </Header>
+                <ChildContent>
+                    <p class="text-nebula-text-muted mb-6">
+                        Choose to start fresh with a loader or install a ready-made modpack.
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        @* Loader Option *@
+                        <div class="@GetSetupTypeClass(MinecraftSetupType.Loader)"
+                             @onclick="() => SelectSetupType(MinecraftSetupType.Loader)">
+                            <div class="setup-type-icon">
+                                <Icon Name="wrench" Size="IconSize.Large" Class="text-nebula-accent" />
+                            </div>
+                            <h3 class="text-lg font-medium text-nebula-text-primary mb-2">Start Fresh</h3>
+                            <p class="text-sm text-nebula-text-muted mb-4">
+                                Set up a clean server with Paper, Fabric, Forge, or Vanilla. Add your own plugins and mods.
+                            </p>
+                            <div class="mt-auto">
+                                <span class="text-xs text-nebula-text-muted">Best for: Custom servers, plugins, full control</span>
+                            </div>
+                            @if (_wizardData.SetupType == MinecraftSetupType.Loader)
+                            {
+                                <div class="selected-indicator">
+                                    <Icon Name="check" Size="IconSize.Small" />
+                                </div>
+                            }
+                        </div>
+
+                        @* Modpack Option *@
+                        <div class="@GetSetupTypeClass(MinecraftSetupType.Modpack)"
+                             @onclick="() => SelectSetupType(MinecraftSetupType.Modpack)">
+                            <div class="setup-type-icon">
+                                <Icon Name="package" Size="IconSize.Large" Class="text-nebula-secondary" />
+                            </div>
+                            <h3 class="text-lg font-medium text-nebula-text-primary mb-2">Install Modpack</h3>
+                            <p class="text-sm text-nebula-text-muted mb-4">
+                                Choose from thousands of ready-made modpacks like ATM, RLCraft, Create, and more.
+                            </p>
+                            <div class="mt-auto">
+                                <span class="text-xs text-nebula-text-muted">Best for: Quick setup, curated mod experiences</span>
+                            </div>
+                            @if (_wizardData.SetupType == MinecraftSetupType.Modpack)
+                            {
+                                <div class="selected-indicator">
+                                    <Icon Name="check" Size="IconSize.Small" />
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-end gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" OnClick="NextStep" />
+            </div>
+            break;
+
+        case 2 when _wizardData.SetupType == MinecraftSetupType.Modpack:
+            @* Step 2 (Modpack): Browse Modpacks *@
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Browse Modpacks</h2>
+                </Header>
+                <ChildContent>
+                    <ModpackBrowser OnModpackSelected="HandleModpackSelected" />
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                        Disabled="@(_wizardData.SelectedModpack == null)" OnClick="NextStep" />
+            </div>
+
+            @* Modpack Details Modal *@
+            <ModpackDetailsModal
+                IsOpen="@_showModpackDetails"
+                ModpackId="@_selectedModpackForDetails?.Id"
+                Provider="@(_selectedModpackForDetails?.Provider ?? ModpackProviderType.CurseForge)"
+                OnClose="CloseModpackDetails"
+                OnInstall="HandleModpackInstallSelected" />
+            break;
+
+        case 2 when _wizardData.SetupType == MinecraftSetupType.Loader:
+            @* Step 2 (Loader): Loader Selection *@
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Select Server Type</h2>
+                </Header>
+                <ChildContent>
+                    <p class="text-nebula-text-muted mb-6">
+                        Choose the server software that best fits your needs. Each has different features and mod/plugin support.
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        @foreach (var loader in _loaderInfos.Where(l => !l.IsProxy))
+                        {
+                            <LoaderCard
+                                Loader="@loader"
+                                Selected="@(_wizardData.SelectedLoader == loader.Loader)"
+                                OnSelect="@(() => SelectLoader(loader.Loader))" />
+                        }
+                    </div>
+
+                    @* Proxy servers section *@
+                    <div class="mt-8">
+                        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-4">
+                            Proxy Servers
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            @foreach (var loader in _loaderInfos.Where(l => l.IsProxy))
+                            {
+                                <LoaderCard
+                                    Loader="@loader"
+                                    Selected="@(_wizardData.SelectedLoader == loader.Loader)"
+                                    OnSelect="@(() => SelectLoader(loader.Loader))" />
+                            }
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" OnClick="NextStep" />
+            </div>
+            break;
+
+        case 3 when _wizardData.SetupType == MinecraftSetupType.Loader:
+            @* Step 3 (Loader): Version Selection *@
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Select Version</h2>
+                </Header>
+                <ChildContent>
+                    <VersionSelector
+                        Loader="@_wizardData.SelectedLoader"
+                        MinecraftVersions="@_minecraftVersions"
+                        LoaderBuilds="@_loaderBuilds"
+                        SelectedMinecraftVersion="@_wizardData.MinecraftVersion"
+                        SelectedLoaderVersion="@_wizardData.LoaderVersion"
+                        IncludeSnapshots="@_wizardData.IncludeSnapshots"
+                        OnMinecraftVersionChanged="@HandleMinecraftVersionChanged"
+                        OnLoaderVersionChanged="@HandleLoaderVersionChanged"
+                        OnIncludeSnapshotsChanged="@HandleSnapshotsToggled"
+                        Loading="@_loadingVersions" />
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                        Disabled="@(!IsVersionStepValid)" OnClick="NextStep" />
+            </div>
+            break;
+
+        case 3 when _wizardData.SetupType == MinecraftSetupType.Modpack:
+        case 4 when _wizardData.SetupType == MinecraftSetupType.Loader:
+            @* Step 3: Server Configuration *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Server Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="form-group md:col-span-2">
+                            <label for="serverName" class="label">
+                                Server Name <span class="text-nebula-error">*</span>
+                            </label>
+                            <input id="serverName" type="text" class="input"
+                                   @bind="_wizardData.ServerName"
+                                   @bind:after="UpdateInstallPath"
+                                   placeholder="My Minecraft Server" />
+                        </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label for="installPath" class="label">
+                                Install Path <span class="text-nebula-error">*</span>
+                            </label>
+                            <input id="installPath" type="text" class="input"
+                                   @bind="_wizardData.InstallPath"
+                                   placeholder="C:\Servers\minecraft-1" />
+                            <p class="text-xs text-nebula-text-muted mt-1">
+                                Directory where server files will be installed
+                            </p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="port" class="label">Game Port</label>
+                            <input id="port" type="number" class="input"
+                                   @bind="_wizardData.Port"
+                                   min="1" max="65535" />
+                        </div>
+
+                        <div class="form-group">
+                            <label class="label">Deployment Type</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="@GetDeploymentClass(ServerDeploymentType.Native)"
+                                     @onclick="() => _wizardData.DeploymentType = ServerDeploymentType.Native">
+                                    <Icon Name="terminal" Size="IconSize.Small" Class="mb-1" />
+                                    <span class="text-sm font-medium">Native</span>
+                                </div>
+                                <div class="@GetDeploymentClass(ServerDeploymentType.Docker)"
+                                     @onclick="() => _wizardData.DeploymentType = ServerDeploymentType.Docker">
+                                    <Icon Name="box" Size="IconSize.Small" Class="mb-1" />
+                                    <span class="text-sm font-medium">Docker</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            @* Memory Configuration *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Memory Allocation</h2>
+                </Header>
+                <ChildContent>
+                    <MemorySlider
+                        MinMemory="@_wizardData.MinMemoryMb"
+                        MaxMemory="@_wizardData.MaxMemoryMb"
+                        OnMinMemoryChanged="@(v => _wizardData.MinMemoryMb = v)"
+                        OnMaxMemoryChanged="@(v => _wizardData.MaxMemoryMb = v)" />
+                </ChildContent>
+            </Card>
+
+            @* RCON Configuration *@
+            <Card Class="mb-6">
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">RCON (Remote Console)</h2>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" class="checkbox" @bind="_wizardData.EnableRcon" />
+                            <span class="text-sm text-nebula-text-secondary">Enable RCON</span>
+                        </label>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_wizardData.EnableRcon)
+                    {
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-group">
+                                <label for="rconPort" class="label">RCON Port</label>
+                                <input id="rconPort" type="number" class="input"
+                                       @bind="_wizardData.RconPort" min="1" max="65535" />
+                            </div>
+                            <div class="form-group">
+                                <label for="rconPassword" class="label">RCON Password</label>
+                                <div class="flex gap-2">
+                                    <input id="rconPassword" type="text" class="input flex-1"
+                                           @bind="_wizardData.RconPassword" placeholder="Auto-generated if empty" />
+                                    <Button Variant="ButtonVariant.Ghost" IconName="refresh-cw" OnClick="GenerateRconPassword" />
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-sm text-nebula-text-muted">
+                            RCON allows remote command execution. Enable for web console access.
+                        </p>
+                    }
+                </ChildContent>
+            </Card>
+
+            @* Show selected modpack summary for modpack flow *@
+            @if (_wizardData.SetupType == MinecraftSetupType.Modpack && _wizardData.SelectedModpack != null)
+            {
+                <Card Class="mb-6">
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Selected Modpack</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-lg bg-nebula-bg-tertiary flex items-center justify-center">
+                                <Icon Name="package" Size="IconSize.Medium" Class="text-nebula-accent" />
+                            </div>
+                            <div>
+                                <h3 class="font-medium text-nebula-text-primary">@_wizardData.SelectedModpack.ModpackName</h3>
+                                <p class="text-sm text-nebula-text-muted">
+                                    @_wizardData.SelectedModpack.VersionName • @_wizardData.SelectedModpack.MinecraftVersion • @_wizardData.SelectedModpack.Loader
+                                </p>
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                        Disabled="@(!IsConfigStepValid)" OnClick="NextStep" />
+            </div>
+            break;
+
+        case 4 when _wizardData.SetupType == MinecraftSetupType.Modpack:
+        case 5 when _wizardData.SetupType == MinecraftSetupType.Loader:
+            @* World Settings (Optional) - Only for Loader, skip for Modpack *@
+            <Card Class="mb-6">
+                <Header>
+                    <div class="flex items-center gap-2">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">World Settings</h2>
+                        <span class="badge badge-neutral">Optional</span>
+                    </div>
+                </Header>
+                <ChildContent>
+                    <p class="text-nebula-text-muted mb-6">
+                        These settings will be applied to server.properties. You can change them later.
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="form-group">
+                            <label for="worldName" class="label">World Name</label>
+                            <input id="worldName" type="text" class="input"
+                                   @bind="_wizardData.WorldName" placeholder="world" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="seed" class="label">World Seed</label>
+                            <input id="seed" type="text" class="input"
+                                   @bind="_wizardData.WorldSeed" placeholder="Random" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Leave empty for random seed</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="gamemode" class="label">Game Mode</label>
+                            <select id="gamemode" class="input" @bind="_wizardData.GameMode">
+                                @foreach (var mode in Enum.GetValues<MinecraftGameMode>())
+                                {
+                                    <option value="@mode">@mode</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="difficulty" class="label">Difficulty</label>
+                            <select id="difficulty" class="input" @bind="_wizardData.Difficulty">
+                                @foreach (var diff in Enum.GetValues<MinecraftDifficulty>())
+                                {
+                                    <option value="@diff">@diff</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="maxPlayers" class="label">Max Players</label>
+                            <input id="maxPlayers" type="number" class="input"
+                                   @bind="_wizardData.MaxPlayers" min="1" max="1000" />
+                        </div>
+
+                        <div class="space-y-3">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" class="checkbox" @bind="_wizardData.EnablePvp" />
+                                <span class="text-sm text-nebula-text-secondary">Enable PvP</span>
+                            </label>
+
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" class="checkbox" @bind="_wizardData.SpawnAnimals" />
+                                <span class="text-sm text-nebula-text-secondary">Spawn Animals</span>
+                            </label>
+
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" class="checkbox" @bind="_wizardData.SpawnMonsters" />
+                                <span class="text-sm text-nebula-text-secondary">Spawn Monsters</span>
+                            </label>
+
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" class="checkbox" @bind="_wizardData.EnableCommandBlocks" />
+                                <span class="text-sm text-nebula-text-secondary">Enable Command Blocks</span>
+                            </label>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <div class="flex gap-3">
+                    <Button Variant="ButtonVariant.Ghost" Text="Skip" OnClick="NextStep" />
+                    <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right" OnClick="NextStep" />
+                </div>
+            </div>
+            break;
+
+        case 5 when _wizardData.SetupType == MinecraftSetupType.Modpack:
+        case 6 when _wizardData.SetupType == MinecraftSetupType.Loader:
+            @* Review & Install *@
+            @if (!_installing)
+            {
+                @* Review Summary *@
+                <Card Class="mb-6">
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Review Configuration</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="space-y-6">
+                            @* Server Software / Modpack *@
+                            <div>
+                                <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">
+                                    @(_wizardData.SetupType == MinecraftSetupType.Modpack ? "Modpack" : "Server Software")
+                                </h3>
+                                <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                                    @if (_wizardData.SetupType == MinecraftSetupType.Modpack && _wizardData.SelectedModpack != null)
+                                    {
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Modpack</span>
+                                            <span class="text-nebula-text-primary font-medium">@_wizardData.SelectedModpack.ModpackName</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Version</span>
+                                            <span class="text-nebula-text-primary">@_wizardData.SelectedModpack.VersionName</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Minecraft</span>
+                                            <span class="text-nebula-text-secondary">@_wizardData.SelectedModpack.MinecraftVersion</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Loader</span>
+                                            <span class="text-nebula-text-secondary">@_wizardData.SelectedModpack.Loader</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Loader</span>
+                                            <span class="text-nebula-text-primary font-medium">@_wizardData.SelectedLoader</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Version</span>
+                                            <span class="text-nebula-text-primary">@GetVersionDisplay()</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            @* Server Configuration *@
+                            <div>
+                                <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">
+                                    Server Configuration
+                                </h3>
+                                <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                                    <div class="flex justify-between">
+                                        <span class="text-nebula-text-muted">Name</span>
+                                        <span class="text-nebula-text-primary font-medium">@_wizardData.ServerName</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-nebula-text-muted">Install Path</span>
+                                        <code class="text-nebula-text-secondary text-sm">@_wizardData.InstallPath</code>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-nebula-text-muted">Port</span>
+                                        <code class="text-nebula-text-primary">@_wizardData.Port</code>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-nebula-text-muted">Memory</span>
+                                        <span class="text-nebula-text-secondary">
+                                            @((_wizardData.MinMemoryMb / 1024.0).ToString("F1")) - @((_wizardData.MaxMemoryMb / 1024.0).ToString("F1")) GB
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-nebula-text-muted">Deployment</span>
+                                        <span class="text-nebula-text-primary">@_wizardData.DeploymentType</span>
+                                    </div>
+                                    @if (_wizardData.EnableRcon)
+                                    {
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">RCON</span>
+                                            <span class="text-nebula-text-secondary">Enabled (Port @_wizardData.RconPort)</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            @* World Settings (only for Loader flow) *@
+                            @if (_wizardData.SetupType == MinecraftSetupType.Loader)
+                            {
+                                <div>
+                                    <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">
+                                        World Settings
+                                    </h3>
+                                    <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">World Name</span>
+                                            <span class="text-nebula-text-primary">@_wizardData.WorldName</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Game Mode</span>
+                                            <span class="text-nebula-text-secondary">@_wizardData.GameMode</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Difficulty</span>
+                                            <span class="text-nebula-text-secondary">@_wizardData.Difficulty</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Max Players</span>
+                                            <span class="text-nebula-text-secondary">@_wizardData.MaxPlayers</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </ChildContent>
+                </Card>
+
+                <div class="flex items-center justify-between gap-3 mt-6">
+                    <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                    <Button Variant="ButtonVariant.Primary" Text="Create Server" IconName="download"
+                            Loading="_submitting" OnClick="StartInstallation" />
+                </div>
+            }
+            else
+            {
+                @* Installation Progress *@
+                <InstallProgress
+                    Progress="@_currentProgress"
+                    Logs="@_installLogs"
+                    OnRetry="RetryInstallation"
+                    OnCancel="CancelInstallation"
+                    OnViewServer="ViewServer" />
+            }
+            break;
+    }
+</div>
+
+@code {
+    // Dynamic step count: Modpack flow = 5 steps, Loader flow = 6 steps
+    private int TotalSteps => _wizardData.SetupType == MinecraftSetupType.Modpack ? 5 : 6;
+
+    // Wizard state
+    private int _currentStep = 1;
+    private bool _loadingVersions;
+    private bool _submitting;
+    private bool _installing;
+    private string? _error;
+
+    // Form data
+    private MinecraftServerWizardData _wizardData = new();
+
+    // Cached data
+    private IReadOnlyList<MinecraftLoaderInfo> _loaderInfos = [];
+    private IReadOnlyList<string> _minecraftVersions = [];
+    private IReadOnlyList<GameVersionDto> _loaderBuilds = [];
+
+    // Modpack state
+    private bool _showModpackDetails;
+    private ModpackSearchItem? _selectedModpackForDetails;
+
+    // Installation tracking
+    private Guid _installationId;
+    private Guid? _installedServerId;
+    private MinecraftInstallProgressDto? _currentProgress;
+    private List<string> _installLogs = [];
+
+    // SignalR connection
+    private HubConnection? _hubConnection;
+
+    // Validation
+    private bool IsVersionStepValid => !string.IsNullOrWhiteSpace(_wizardData.MinecraftVersion);
+    private bool IsConfigStepValid => !string.IsNullOrWhiteSpace(_wizardData.ServerName) &&
+                                       !string.IsNullOrWhiteSpace(_wizardData.InstallPath) &&
+                                       _wizardData.Port > 0 && _wizardData.Port <= 65535 &&
+                                       _wizardData.MinMemoryMb <= _wizardData.MaxMemoryMb;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loaderInfos = InstallService.GetLoaderInfos();
+        await LoadVersionsForLoaderAsync();
+    }
+
+    private async Task LoadVersionsForLoaderAsync()
+    {
+        _loadingVersions = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            _minecraftVersions = await InstallService.GetMinecraftVersionsAsync(
+                _wizardData.SelectedLoader,
+                _wizardData.IncludeSnapshots);
+
+            // Clear loader builds when changing loader
+            _loaderBuilds = [];
+            _wizardData.LoaderVersion = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load versions: {ex.Message}";
+        }
+        finally
+        {
+            _loadingVersions = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadLoaderBuildsAsync()
+    {
+        if (string.IsNullOrEmpty(_wizardData.MinecraftVersion))
+        {
+            _loaderBuilds = [];
+            return;
+        }
+
+        try
+        {
+            _loaderBuilds = await InstallService.GetLoaderBuildsAsync(
+                _wizardData.SelectedLoader,
+                _wizardData.MinecraftVersion);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load builds: {ex.Message}";
+        }
+    }
+
+    private async Task SelectLoader(MinecraftLoader loader)
+    {
+        if (_wizardData.SelectedLoader == loader)
+        {
+            return;
+        }
+
+        _wizardData.SelectedLoader = loader;
+        _wizardData.MinecraftVersion = null;
+        _wizardData.LoaderVersion = null;
+        await LoadVersionsForLoaderAsync();
+    }
+
+    private async Task HandleMinecraftVersionChanged(string? version)
+    {
+        _wizardData.MinecraftVersion = version;
+        _wizardData.LoaderVersion = null;
+        await LoadLoaderBuildsAsync();
+    }
+
+    private Task HandleLoaderVersionChanged(string? version)
+    {
+        _wizardData.LoaderVersion = version;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleSnapshotsToggled(bool includeSnapshots)
+    {
+        _wizardData.IncludeSnapshots = includeSnapshots;
+        await LoadVersionsForLoaderAsync();
+    }
+
+    private void UpdateInstallPath()
+    {
+        if (string.IsNullOrWhiteSpace(_wizardData.InstallPath) ||
+            _wizardData.InstallPath == InstallService.GetDefaultInstallPath(""))
+        {
+            _wizardData.InstallPath = InstallService.GetDefaultInstallPath(_wizardData.ServerName);
+        }
+    }
+
+    private void GenerateRconPassword()
+    {
+        _wizardData.RconPassword = InstallService.GenerateRconPassword();
+    }
+
+    private void NextStep()
+    {
+        if (_currentStep < TotalSteps)
+        {
+            _error = null;
+            _currentStep++;
+        }
+    }
+
+    private void PreviousStep()
+    {
+        if (_currentStep > 1)
+        {
+            _error = null;
+            _currentStep--;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/servers");
+    }
+
+    // Setup type selection
+    private void SelectSetupType(MinecraftSetupType setupType)
+    {
+        _wizardData.SetupType = setupType;
+    }
+
+    // Modpack selection handlers
+    private void HandleModpackSelected(ModpackSearchItem modpack)
+    {
+        _selectedModpackForDetails = modpack;
+        _showModpackDetails = true;
+    }
+
+    private void CloseModpackDetails()
+    {
+        _showModpackDetails = false;
+        _selectedModpackForDetails = null;
+    }
+
+    private void HandleModpackInstallSelected(ModpackInstallRequest request)
+    {
+        _wizardData.SelectedModpack = request;
+        _showModpackDetails = false;
+        _selectedModpackForDetails = null;
+
+        // Pre-fill memory if recommendation is available
+        if (request.RecommendedRamMb.HasValue && request.RecommendedRamMb.Value > 0)
+        {
+            _wizardData.MaxMemoryMb = (int)Math.Min(request.RecommendedRamMb.Value, 16384);
+            _wizardData.MinMemoryMb = (int)Math.Min(request.RecommendedRamMb.Value / 2, _wizardData.MaxMemoryMb);
+        }
+
+        // Auto-generate server name from modpack
+        if (string.IsNullOrWhiteSpace(_wizardData.ServerName))
+        {
+            _wizardData.ServerName = request.ModpackName;
+            UpdateInstallPath();
+        }
+
+        NextStep();
+    }
+
+    private string GetSetupTypeClass(MinecraftSetupType type) =>
+        _wizardData.SetupType == type
+            ? "setup-type-card selected"
+            : "setup-type-card";
+
+    private async Task StartInstallation()
+    {
+        Console.WriteLine($"[MinecraftCreate] StartInstallation called. Loader={_wizardData.SelectedLoader}, MC={_wizardData.MinecraftVersion}, LoaderVer={_wizardData.LoaderVersion}");
+        _submitting = true;
+        _error = null;
+
+        try
+        {
+            // Validate wizard data
+            var validationResult = await InstallService.ValidateWizardDataAsync(_wizardData);
+            if (validationResult.IsFailure)
+            {
+                _error = validationResult.Error;
+                _submitting = false;
+                return;
+            }
+
+            if (validationResult.Value!.Count > 0)
+            {
+                _error = string.Join(Environment.NewLine, validationResult.Value);
+                _submitting = false;
+                return;
+            }
+
+            // Get current user
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim is null || !Guid.TryParse(userIdClaim.Value, out var ownerId))
+            {
+                _error = "Unable to determine current user.";
+                _submitting = false;
+                return;
+            }
+
+            // Generate installation ID and connect to SignalR
+            _installationId = Guid.NewGuid();
+            await ConnectToSignalRAsync();
+
+            // Start installation
+            _installing = true;
+            _installLogs.Clear();
+            _currentProgress = MinecraftInstallProgressDto.Starting(_installationId);
+            StateHasChanged();
+
+            var result = await InstallService.InstallServerAsync(_wizardData, ownerId, _installationId);
+
+            if (result.IsFailure)
+            {
+                _currentProgress = MinecraftInstallProgressDto.Failed(_installationId, result.Error!);
+            }
+            else
+            {
+                _installedServerId = result.Value;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MinecraftCreate] Installation exception: {ex}");
+            _error = $"Installation failed: {ex.Message}";
+            _installing = false;
+        }
+        finally
+        {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RetryInstallation()
+    {
+        _installing = false;
+        _currentProgress = null;
+        _installLogs.Clear();
+        await StartInstallation();
+    }
+
+    private async Task CancelInstallation()
+    {
+        await InstallService.CancelInstallationAsync(_installationId);
+        _installing = false;
+        _currentProgress = null;
+        StateHasChanged();
+    }
+
+    private void ViewServer()
+    {
+        if (_installedServerId.HasValue)
+        {
+            Navigation.NavigateTo($"/servers/{_installedServerId.Value}");
+        }
+    }
+
+    private async Task<string?> GetAccessTokenAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ConnectToSignalRAsync()
+    {
+        var hubUrl = Navigation.ToAbsoluteUri("/hubs/install-progress");
+        var token = await GetAccessTokenAsync();
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<MinecraftInstallProgressDto>("ReceiveProgress", async progress =>
+        {
+            _currentProgress = progress;
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<Guid, bool, string?>("InstallationComplete", async (serverId, success, error) =>
+        {
+            _installedServerId = success ? serverId : null;
+            if (!success && !string.IsNullOrEmpty(error))
+            {
+                _currentProgress = MinecraftInstallProgressDto.Failed(_installationId, error);
+            }
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<Guid, string>("ReceiveLogLine", async (installationId, line) =>
+        {
+            if (installationId == _installationId)
+            {
+                _installLogs.Add(line);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        await _hubConnection.StartAsync();
+        await _hubConnection.InvokeAsync("JoinInstallation", _installationId);
+    }
+
+    private string GetVersionDisplay()
+    {
+        if (string.IsNullOrEmpty(_wizardData.LoaderVersion))
+        {
+            return $"{_wizardData.MinecraftVersion} (Latest Build)";
+        }
+
+        return _wizardData.SelectedLoader switch
+        {
+            MinecraftLoader.Paper or MinecraftLoader.Purpur or MinecraftLoader.Spigot
+                => $"{_wizardData.MinecraftVersion} Build {_wizardData.LoaderVersion}",
+            _ => $"{_wizardData.MinecraftVersion} ({_wizardData.LoaderVersion})"
+        };
+    }
+
+    private string GetStepClass(int step) => step switch
+    {
+        _ when _currentStep > step => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-accent text-white",
+        _ when _currentStep == step => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-accent text-white",
+        _ => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private string GetStepLabelClass(int step) => step switch
+    {
+        _ when _currentStep >= step => "text-nebula-text-primary",
+        _ => "text-nebula-text-muted"
+    };
+
+    private string GetStepLabel(int step)
+    {
+        if (_wizardData.SetupType == MinecraftSetupType.Modpack)
+        {
+            // Modpack flow: Setup > Modpack > Config > World > Install
+            return step switch
+            {
+                1 => "Setup",
+                2 => "Modpack",
+                3 => "Config",
+                4 => "World",
+                5 => "Install",
+                _ => ""
+            };
+        }
+        else
+        {
+            // Loader flow: Setup > Loader > Version > Config > World > Install
+            return step switch
+            {
+                1 => "Setup",
+                2 => "Loader",
+                3 => "Version",
+                4 => "Config",
+                5 => "World",
+                6 => "Install",
+                _ => ""
+            };
+        }
+    }
+
+    private string GetDeploymentClass(ServerDeploymentType type) =>
+        _wizardData.DeploymentType == type
+            ? "flex flex-col items-center justify-center p-4 rounded-nebula border-2 border-nebula-accent bg-nebula-accent/5 cursor-pointer transition-all"
+            : "flex flex-col items-center justify-center p-4 rounded-nebula border-2 border-nebula-border-subtle cursor-pointer hover:border-nebula-accent/50 transition-all";
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("LeaveInstallation", _installationId);
+                await _hubConnection.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+}

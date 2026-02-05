@@ -1,0 +1,654 @@
+@page "/servers/{ServerId:guid}/schedule"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@using NebulaPanel.Application.Common
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using BackupTaskConfig = NebulaPanel.Application.Services.BackupTaskConfig
+@inject IScheduledTaskService TaskService
+@inject IGameServerService ServerService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Schedule - @(_serverName ?? "Server") - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @* Header *@
+    <div class="flex items-center gap-4 mb-6">
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="arrow-left"
+                IconOnly="true"
+                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}"))" />
+        <div class="flex-1">
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Scheduled Tasks</h1>
+            <p class="text-nebula-text-muted mt-1">Automate server operations for <span class="text-nebula-text-secondary">@(_serverName ?? "...")</span></p>
+        </div>
+        <Button Variant="ButtonVariant.Primary"
+                Text="Create Task"
+                IconName="plus"
+                OnClick="@(() => OpenCreateModal())" />
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Task List *@
+    <DataGrid TItem="ScheduledTaskListItemDto"
+              Items="_tasks"
+              Loading="_loading"
+              EmptyMessage="No scheduled tasks configured yet."
+              Pageable="true"
+              PageSize="10">
+        <Columns>
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Task"
+                           Field="@(t => t.Name)"
+                           Sortable="true">
+                <Template Context="task">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center @GetTaskTypeColor(task.TaskType)">
+                            <Icon Name="@GetTaskTypeIcon(task.TaskType)" Size="IconSize.Small" />
+                        </div>
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@task.Name</div>
+                            <div class="text-sm text-nebula-text-muted">@task.TaskType</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Schedule"
+                           Field="@(t => t.CronExpression)"
+                           Width="200px">
+                <Template Context="task">
+                    @if (!string.IsNullOrEmpty(task.CronExpression))
+                    {
+                        <code class="text-sm bg-nebula-bg-tertiary px-2 py-0.5 rounded text-nebula-text-secondary">
+                            @task.CronExpression
+                        </code>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">Manual only</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Next Run"
+                           Field="@(t => t.NextRunAt)"
+                           Sortable="true"
+                           Width="160px">
+                <Template Context="task">
+                    @if (task.NextRunAt.HasValue)
+                    {
+                        <span class="text-sm text-nebula-text-secondary" title="@task.NextRunAt.Value.ToLocalTime().ToString("f")">
+                            @FormatRelativeTime(task.NextRunAt.Value)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">-</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Last Run"
+                           Field="@(t => t.LastRunAt)"
+                           Sortable="true"
+                           Width="160px">
+                <Template Context="task">
+                    @if (task.LastRunAt.HasValue)
+                    {
+                        <span class="text-sm text-nebula-text-muted" title="@task.LastRunAt.Value.ToLocalTime().ToString("f")">
+                            @FormatRelativeTime(task.LastRunAt.Value)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">Never</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Status"
+                           Width="100px">
+                <Template Context="task">
+                    <StatusBadge Status="@(task.IsEnabled ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Neutral)"
+                                 Text="@(task.IsEnabled ? "Enabled" : "Disabled")"
+                                 ShowDot="true"
+                                 Size="StatusBadge.BadgeSize.Small" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title=""
+                           Width="160px">
+                <Template Context="task">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="play"
+                                IconOnly="true"
+                                OnClick="@(() => RunTaskNow(task))"
+                                title="Run Now" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="@(task.IsEnabled ? "pause" : "play-circle")"
+                                IconOnly="true"
+                                OnClick="@(() => ToggleEnabled(task))"
+                                title="@(task.IsEnabled ? "Disable" : "Enable")" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="pencil"
+                                IconOnly="true"
+                                OnClick="@(() => OpenEditModal(task))"
+                                title="Edit" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="trash-2"
+                                IconOnly="true"
+                                OnClick="@(() => ConfirmDelete(task))"
+                                title="Delete" />
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+
+        <EmptyAction>
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Create Your First Task"
+                    IconName="plus"
+                    OnClick="@(() => OpenCreateModal())" />
+        </EmptyAction>
+    </DataGrid>
+</div>
+
+@* Create/Edit Modal *@
+@if (_showModal)
+{
+    <Modal IsOpen="true" OnClose="CloseModal" Size="ModalSize.Medium">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">
+                @(_editingTaskId.HasValue ? "Edit Scheduled Task" : "Create Scheduled Task")
+            </h3>
+        </Header>
+        <Body>
+            <EditForm Model="_formModel" OnValidSubmit="SaveTask">
+                <DataAnnotationsValidator />
+
+                <div class="space-y-4">
+                    <div class="form-group">
+                        <label for="name" class="label">Name <span class="text-nebula-error">*</span></label>
+                        <InputText @bind-Value="_formModel.Name" id="name" class="input" placeholder="Daily Restart" />
+                        <ValidationMessage For="@(() => _formModel.Name)" class="text-sm text-nebula-error mt-1" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskType" class="label">Task Type <span class="text-nebula-error">*</span></label>
+                        <InputSelect @bind-Value="_formModel.TaskType" id="taskType" class="input">
+                            @foreach (var type in Enum.GetValues<ScheduledTaskType>())
+                            {
+                                <option value="@type">@GetTaskTypeLabel(type)</option>
+                            }
+                        </InputSelect>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cron" class="label">
+                            Cron Expression
+                            <span class="text-nebula-text-muted font-normal text-sm">(optional)</span>
+                        </label>
+                        <InputText @bind-Value="_formModel.CronExpression" id="cron" class="input" placeholder="0 4 * * *" />
+                        <p class="text-xs text-nebula-text-muted mt-1">
+                            Leave empty for manual-only execution. Examples: <code class="bg-nebula-bg-tertiary px-1 rounded">0 4 * * *</code> (daily at 4 AM), <code class="bg-nebula-bg-tertiary px-1 rounded">0 */6 * * *</code> (every 6 hours)
+                        </p>
+                        @if (!string.IsNullOrEmpty(_cronError))
+                        {
+                            <p class="text-sm text-nebula-error mt-1">@_cronError</p>
+                        }
+                    </div>
+
+                    @if (_formModel.TaskType == ScheduledTaskType.Command)
+                    {
+                        <div class="form-group">
+                            <label for="command" class="label">Command <span class="text-nebula-error">*</span></label>
+                            <InputText @bind-Value="_formModel.Command" id="command" class="input" placeholder="say Server restarting in 5 minutes!" />
+                            <p class="text-xs text-nebula-text-muted mt-1">
+                                The console command to execute on the server.
+                            </p>
+                        </div>
+                    }
+
+                    @if (_formModel.TaskType == ScheduledTaskType.Backup)
+                    {
+                        <div class="form-group">
+                            <label class="label">Backup Scope</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <button type="button"
+                                        class="@($"p-3 rounded-nebula border text-left transition-colors {(_formModel.BackupScope == BackupScope.Full ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-secondary hover:border-nebula-border-subtle")}")"
+                                        @onclick="@(() => _formModel.BackupScope = BackupScope.Full)">
+                                    <div class="flex items-center gap-2">
+                                        <Icon Name="hard-drive" Size="IconSize.Small" Class="@(_formModel.BackupScope == BackupScope.Full ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                                        <div>
+                                            <div class="font-medium text-nebula-text-primary text-sm">Full Backup</div>
+                                            <div class="text-xs text-nebula-text-muted">Entire server directory</div>
+                                        </div>
+                                    </div>
+                                </button>
+                                <button type="button"
+                                        class="@($"p-3 rounded-nebula border text-left transition-colors {(_formModel.BackupScope == BackupScope.Selective ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-secondary hover:border-nebula-border-subtle")}")"
+                                        @onclick="@(() => _formModel.BackupScope = BackupScope.Selective)">
+                                    <div class="flex items-center gap-2">
+                                        <Icon Name="database" Size="IconSize.Small" Class="@(_formModel.BackupScope == BackupScope.Selective ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                                        <div>
+                                            <div class="font-medium text-nebula-text-primary text-sm">Selective</div>
+                                            <div class="text-xs text-nebula-text-muted">World and config only</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="retentionCount" class="label">
+                                Keep Last N Backups
+                                <span class="text-nebula-text-muted font-normal text-sm">(rolling backup)</span>
+                            </label>
+                            <InputNumber @bind-Value="_formModel.RetentionCount" id="retentionCount" class="input" min="1" max="100" />
+                            <p class="text-xs text-nebula-text-muted mt-1">
+                                Automatically delete older backups when this limit is reached. Set to 0 or leave empty to keep all backups.
+                            </p>
+                        </div>
+                    }
+
+                    <div class="flex items-center gap-2">
+                        <InputCheckbox @bind-Value="_formModel.IsEnabled" id="isEnabled"
+                               class="w-4 h-4 rounded border-nebula-border bg-nebula-bg-secondary text-nebula-accent" />
+                        <label for="isEnabled" class="text-sm text-nebula-text-secondary cursor-pointer">Enabled</label>
+                    </div>
+                </div>
+            </EditForm>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="CloseModal" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="@(_editingTaskId.HasValue ? "Save" : "Create")"
+                        Loading="_saving"
+                        OnClick="SaveTask" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Delete Confirmation *@
+@if (_showDeleteConfirm && _taskToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="@(() => _showDeleteConfirm = false)" Size="ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete Task</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_taskToDelete.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted mt-2">This action cannot be undone.</p>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => _showDeleteConfirm = false)" />
+                <Button Variant="ButtonVariant.Danger" Text="Delete" Loading="_deleting" OnClick="DeleteTask" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    private List<ScheduledTaskListItemDto> _tasks = [];
+    private string? _serverName;
+    private bool _loading = true;
+    private string? _error;
+
+    private bool _showModal;
+    private Guid? _editingTaskId;
+    private TaskFormModel _formModel = new();
+    private string? _cronError;
+    private bool _saving;
+
+    private bool _showDeleteConfirm;
+    private ScheduledTaskListItemDto? _taskToDelete;
+    private bool _deleting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var serverResult = await ServerService.GetServerByIdAsync(ServerId);
+            if (serverResult.IsSuccess && serverResult.Value is not null)
+            {
+                _serverName = serverResult.Value.Name;
+            }
+
+            var tasks = await TaskService.GetTasksByServerIdAsync(ServerId);
+            _tasks = tasks.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _editingTaskId = null;
+        _formModel = new TaskFormModel { IsEnabled = true };
+        _cronError = null;
+        _showModal = true;
+    }
+
+    private async Task OpenEditModal(ScheduledTaskListItemDto task)
+    {
+        var result = await TaskService.GetTaskByIdAsync(task.Id);
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        var taskDto = result.Value!;
+        _editingTaskId = task.Id;
+        _formModel = new TaskFormModel
+        {
+            Name = taskDto.Name,
+            TaskType = taskDto.TaskType,
+            CronExpression = taskDto.CronExpression,
+            IsEnabled = taskDto.IsEnabled
+        };
+
+        // Parse configuration based on task type
+        if (!string.IsNullOrEmpty(taskDto.Configuration))
+        {
+            try
+            {
+                if (taskDto.TaskType == ScheduledTaskType.Command)
+                {
+                    var config = JsonSerializer.Deserialize<CommandTaskConfig>(taskDto.Configuration,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    _formModel.Command = config?.Command;
+                }
+                else if (taskDto.TaskType == ScheduledTaskType.Backup)
+                {
+                    var config = JsonSerializer.Deserialize<BackupTaskConfig>(taskDto.Configuration,
+                        new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    if (config is not null)
+                    {
+                        _formModel.BackupScope = config.Scope;
+                        _formModel.RetentionCount = config.RetentionCount;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore parse errors
+            }
+        }
+
+        _cronError = null;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _editingTaskId = null;
+        _formModel = new();
+        _cronError = null;
+    }
+
+    private async Task SaveTask()
+    {
+        // Validate cron if provided
+        if (!string.IsNullOrEmpty(_formModel.CronExpression))
+        {
+            var cronResult = CronValidator.ValidateCronExpression(_formModel.CronExpression);
+            if (cronResult.IsFailure)
+            {
+                _cronError = cronResult.Error;
+                return;
+            }
+        }
+        _cronError = null;
+
+        // Validate command for command tasks
+        if (_formModel.TaskType == ScheduledTaskType.Command && string.IsNullOrWhiteSpace(_formModel.Command))
+        {
+            _cronError = "Command is required for command tasks.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            string? config = null;
+            if (_formModel.TaskType == ScheduledTaskType.Command && !string.IsNullOrEmpty(_formModel.Command))
+            {
+                config = JsonSerializer.Serialize(new CommandTaskConfig(_formModel.Command),
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            }
+            else if (_formModel.TaskType == ScheduledTaskType.Backup)
+            {
+                var backupConfig = new BackupTaskConfig(
+                    BackupPath: null,
+                    CompressBackup: true,
+                    RetentionCount: _formModel.RetentionCount > 0 ? _formModel.RetentionCount : null,
+                    Scope: _formModel.BackupScope,
+                    SelectivePaths: null
+                );
+                config = JsonSerializer.Serialize(backupConfig,
+                    new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            }
+
+            if (_editingTaskId is null)
+            {
+                var request = new CreateScheduledTaskRequest(
+                    ServerId,
+                    _formModel.Name,
+                    _formModel.TaskType,
+                    _formModel.CronExpression,
+                    _formModel.IsEnabled,
+                    config
+                );
+
+                var result = await TaskService.CreateTaskAsync(request);
+                if (result.IsFailure)
+                {
+                    _error = result.Error;
+                    return;
+                }
+            }
+            else
+            {
+                var request = new UpdateScheduledTaskRequest(
+                    _formModel.Name,
+                    _formModel.TaskType,
+                    _formModel.CronExpression,
+                    _formModel.IsEnabled,
+                    config
+                );
+
+                var result = await TaskService.UpdateTaskAsync(_editingTaskId.Value, request);
+                if (result.IsFailure)
+                {
+                    _error = result.Error;
+                    return;
+                }
+            }
+
+            CloseModal();
+            await LoadDataAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ToggleEnabled(ScheduledTaskListItemDto task)
+    {
+        var result = task.IsEnabled
+            ? await TaskService.DisableTaskAsync(task.Id)
+            : await TaskService.EnableTaskAsync(task.Id);
+
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+        }
+        else
+        {
+            await LoadDataAsync();
+        }
+    }
+
+    private async Task RunTaskNow(ScheduledTaskListItemDto task)
+    {
+        var result = await TaskService.RunTaskNowAsync(task.Id);
+        if (result.IsFailure)
+        {
+            _error = result.Error;
+        }
+        else
+        {
+            // Show brief success feedback
+            _error = null;
+        }
+    }
+
+    private void ConfirmDelete(ScheduledTaskListItemDto task)
+    {
+        _taskToDelete = task;
+        _showDeleteConfirm = true;
+    }
+
+    private async Task DeleteTask()
+    {
+        if (_taskToDelete is null) return;
+
+        _deleting = true;
+        try
+        {
+            var result = await TaskService.DeleteTaskAsync(_taskToDelete.Id);
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                _tasks.Remove(_taskToDelete);
+            }
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteConfirm = false;
+            _taskToDelete = null;
+        }
+    }
+
+    private static string GetTaskTypeIcon(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "refresh-cw",
+        ScheduledTaskType.Stop => "square",
+        ScheduledTaskType.Start => "play",
+        ScheduledTaskType.Backup => "archive",
+        ScheduledTaskType.Command => "terminal",
+        ScheduledTaskType.Update => "download",
+        _ => "clock"
+    };
+
+    private static string GetTaskTypeColor(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "bg-nebula-warning/20 text-nebula-warning",
+        ScheduledTaskType.Stop => "bg-nebula-error/20 text-nebula-error",
+        ScheduledTaskType.Start => "bg-nebula-success/20 text-nebula-success",
+        ScheduledTaskType.Backup => "bg-nebula-accent/20 text-nebula-accent",
+        ScheduledTaskType.Command => "bg-nebula-text-muted/20 text-nebula-text-muted",
+        ScheduledTaskType.Update => "bg-nebula-info/20 text-nebula-info",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static string GetTaskTypeLabel(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "Restart Server",
+        ScheduledTaskType.Stop => "Stop Server",
+        ScheduledTaskType.Start => "Start Server",
+        ScheduledTaskType.Backup => "Create Backup",
+        ScheduledTaskType.Command => "Run Command",
+        ScheduledTaskType.Update => "Update Server",
+        _ => type.ToString()
+    };
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = dateTime - DateTime.UtcNow;
+
+        if (diff.TotalSeconds < 0)
+        {
+            // Past time
+            diff = -diff;
+            if (diff.TotalMinutes < 1) return "Just now";
+            if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+            if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+            if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+            return dateTime.ToLocalTime().ToString("MMM d");
+        }
+        else
+        {
+            // Future time
+            if (diff.TotalMinutes < 1) return "< 1m";
+            if (diff.TotalMinutes < 60) return $"in {(int)diff.TotalMinutes}m";
+            if (diff.TotalHours < 24) return $"in {(int)diff.TotalHours}h";
+            if (diff.TotalDays < 7) return $"in {(int)diff.TotalDays}d";
+            return dateTime.ToLocalTime().ToString("MMM d");
+        }
+    }
+
+    private class TaskFormModel
+    {
+        [Required(ErrorMessage = "Name is required")]
+        [StringLength(100, ErrorMessage = "Name must be 100 characters or less")]
+        public string Name { get; set; } = string.Empty;
+
+        public ScheduledTaskType TaskType { get; set; } = ScheduledTaskType.Restart;
+
+        public string? CronExpression { get; set; }
+
+        public bool IsEnabled { get; set; } = true;
+
+        // Command task fields
+        public string? Command { get; set; }
+
+        // Backup task fields
+        public BackupScope BackupScope { get; set; } = BackupScope.Full;
+        public int? RetentionCount { get; set; }
+    }
+}

@@ -1,0 +1,254 @@
+@using NebulaPanel.Domain.ValueObjects
+@using NebulaPanel.Application.DTOs
+
+<div class="space-y-4">
+    @* Advanced mode toggle *@
+    @if (HasAdvancedFields)
+    {
+        <div class="flex items-center justify-end gap-2 mb-4">
+            <label class="text-sm text-nebula-text-muted">Show advanced settings</label>
+            <button type="button"
+                    @onclick="ToggleAdvancedMode"
+                    class="@AdvancedToggleClasses"
+                    role="switch"
+                    aria-checked="@_showAdvanced">
+                <span class="@AdvancedToggleKnobClasses"></span>
+            </button>
+        </div>
+    }
+
+    @* Render sections *@
+    @foreach (var sect in GetSections())
+    {
+        var sectionFields = GetFieldsForSection(sect.Key);
+        var visibleFields = sectionFields.Where(f => IsFieldVisible(f)).ToList();
+
+        if (visibleFields.Count == 0)
+            continue;
+
+        var sectionErrorCount = visibleFields.Count(f => GetFieldErrors(f.Key)?.Count > 0);
+        var sectionModifiedCount = visibleFields.Count(f => IsFieldModified(f));
+
+        <ConfigSectionPanel Section="sect"
+                           Title="@sect.DisplayName"
+                           Description="@sect.Description"
+                           DefaultExpanded="@sect.DefaultExpanded"
+                           ErrorCount="@sectionErrorCount"
+                           ModifiedCount="@sectionModifiedCount">
+            <div class="space-y-4">
+                @foreach (var field in visibleFields.OrderBy(f => f.Order))
+                {
+                    var f = field;
+                    <ConfigFieldRenderer Field="@f"
+                                        Value="@GetValue(f)"
+                                        ValueChanged="@(async (object? v) => await OnValueChanged(f, v))"
+                                        Disabled="@Disabled"
+                                        Errors="@GetFieldErrors(f.Key)"
+                                        IsModified="@IsFieldModified(f)"
+                                        OnResetToDefault="@(async () => await ResetFieldToDefault(f))" />
+                }
+            </div>
+        </ConfigSectionPanel>
+    }
+
+    @* Fields without a section (uncategorized) *@
+    @{
+        var uncategorizedFields = GetUncategorizedFields().Where(f => IsFieldVisible(f)).ToList();
+        if (uncategorizedFields.Count > 0)
+        {
+            var uncatErrorCount = uncategorizedFields.Count(f => GetFieldErrors(f.Key)?.Count > 0);
+            var uncatModifiedCount = uncategorizedFields.Count(f => IsFieldModified(f));
+
+            <ConfigSectionPanel Title="Other Settings"
+                               DefaultExpanded="true"
+                               ErrorCount="@uncatErrorCount"
+                               ModifiedCount="@uncatModifiedCount">
+                <div class="space-y-4">
+                    @foreach (var field in uncategorizedFields.OrderBy(f => f.Order))
+                    {
+                        var f = field;
+                        <ConfigFieldRenderer Field="@f"
+                                            Value="@GetValue(f)"
+                                            ValueChanged="@(async (object? v) => await OnValueChanged(f, v))"
+                                            Disabled="@Disabled"
+                                            Errors="@GetFieldErrors(f.Key)"
+                                            IsModified="@IsFieldModified(f)"
+                                            OnResetToDefault="@(async () => await ResetFieldToDefault(f))" />
+                    }
+                </div>
+            </ConfigSectionPanel>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ConfigurationSchema Schema { get; set; } = null!;
+
+    [Parameter]
+    public Dictionary<string, object?> Values { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<Dictionary<string, object?>> ValuesChanged { get; set; }
+
+    [Parameter]
+    public Dictionary<string, List<string>>? ValidationErrors { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private bool _showAdvanced = false;
+
+    private bool HasAdvancedFields => Schema?.Fields.Any(f => f.Advanced) ?? false;
+
+    private string AdvancedToggleClasses => _showAdvanced
+        ? "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-nebula-accent transition-colors duration-200 ease-in-out"
+        : "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-nebula-surface-tertiary transition-colors duration-200 ease-in-out";
+
+    private string AdvancedToggleKnobClasses => _showAdvanced
+        ? "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-4"
+        : "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0";
+
+    private IEnumerable<ConfigSection> GetSections()
+    {
+        if (Schema?.Sections?.Count > 0)
+        {
+            return Schema.Sections.OrderBy(s => s.Order);
+        }
+
+        // Create sections from field categories
+        var categories = Schema?.Fields
+            .Where(f => !string.IsNullOrEmpty(f.Category))
+            .Select(f => f.Category!)
+            .Distinct()
+            .ToList() ?? [];
+
+        return categories.Select((cat, index) => new ConfigSection
+        {
+            Key = cat,
+            DisplayName = cat,
+            Order = index,
+            DefaultExpanded = true
+        });
+    }
+
+    private IEnumerable<ConfigField> GetFieldsForSection(string sectionKey)
+    {
+        return Schema?.Fields
+            .Where(f => f.Category == sectionKey)
+            ?? [];
+    }
+
+    private IEnumerable<ConfigField> GetUncategorizedFields()
+    {
+        var sectionKeys = GetSections().Select(s => s.Key).ToHashSet();
+
+        return Schema?.Fields
+            .Where(f => string.IsNullOrEmpty(f.Category) || !sectionKeys.Contains(f.Category))
+            ?? [];
+    }
+
+    private bool IsFieldVisible(ConfigField field)
+    {
+        // Hide advanced fields unless advanced mode is on
+        if (field.Advanced && !_showAdvanced)
+            return false;
+
+        // Check ShowWhen conditions
+        if (field.ShowWhen != null && field.ShowWhen.Count > 0)
+        {
+            foreach (var condition in field.ShowWhen)
+            {
+                var dependentKey = condition.Key;
+                var expectedValue = condition.Value;
+
+                if (!Values.TryGetValue(dependentKey, out var actualValue))
+                    return false;
+
+                if (!ValuesMatch(actualValue, expectedValue))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool ValuesMatch(object? actual, object? expected)
+    {
+        if (actual == null && expected == null)
+            return true;
+
+        if (actual == null || expected == null)
+            return false;
+
+        // Handle boolean comparisons
+        if (expected is bool expectedBool)
+        {
+            var actualBool = actual switch
+            {
+                bool b => b,
+                string s => s.Equals("true", StringComparison.OrdinalIgnoreCase),
+                int i => i != 0,
+                _ => false
+            };
+            return actualBool == expectedBool;
+        }
+
+        return actual.ToString() == expected.ToString();
+    }
+
+    private object? GetValue(ConfigField field)
+    {
+        var key = field.JsonPath ?? field.Key;
+        return Values.TryGetValue(key, out var value) ? value : field.DefaultValue;
+    }
+
+    private async Task OnValueChanged(ConfigField field, object? value)
+    {
+        var key = field.JsonPath ?? field.Key;
+        var newValues = new Dictionary<string, object?>(Values)
+        {
+            [key] = value
+        };
+
+        await ValuesChanged.InvokeAsync(newValues);
+    }
+
+    private List<string>? GetFieldErrors(string key)
+    {
+        return ValidationErrors?.TryGetValue(key, out var errors) == true ? errors : null;
+    }
+
+    private void ToggleAdvancedMode()
+    {
+        _showAdvanced = !_showAdvanced;
+    }
+
+    private bool IsFieldModified(ConfigField field)
+    {
+        var key = field.JsonPath ?? field.Key;
+        if (!Values.TryGetValue(key, out var currentValue))
+            return false;
+
+        var defaultValue = field.DefaultValue;
+
+        if (currentValue == null && defaultValue == null)
+            return false;
+
+        if (currentValue == null || defaultValue == null)
+            return true;
+
+        return currentValue.ToString() != defaultValue.ToString();
+    }
+
+    private async Task ResetFieldToDefault(ConfigField field)
+    {
+        var key = field.JsonPath ?? field.Key;
+        var newValues = new Dictionary<string, object?>(Values)
+        {
+            [key] = field.DefaultValue
+        };
+
+        await ValuesChanged.InvokeAsync(newValues);
+    }
+}

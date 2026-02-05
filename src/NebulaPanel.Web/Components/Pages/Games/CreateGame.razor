@@ -1,0 +1,192 @@
+@page "/games/new"
+@attribute [Authorize]
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Add Game - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    <div class="mb-6">
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+            <a href="/games" class="hover:text-nebula-text-primary transition-colors">Games</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">Add Game</span>
+        </nav>
+        <h1 class="text-2xl font-semibold text-nebula-text-primary">Add New Game</h1>
+        <p class="text-nebula-text-muted mt-1">Choose how you want to add a new game to manage.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        @* Quick Add Steam Game *@
+        <div class="@GetPathCardClass("steam")"
+             @onclick="NavigateToSteamWizard"
+             tabindex="0"
+             role="button"
+             @onkeydown="@(e => HandleKeyDown(e, "steam"))">
+            <div class="flex items-start gap-4">
+                <div class="w-14 h-14 bg-gradient-to-br from-blue-500/20 to-blue-600/20 rounded-xl flex items-center justify-center shrink-0">
+                    <Icon Name="cloud-download" Size="IconSize.Large" Class="text-blue-400" />
+                </div>
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                        <h2 class="text-lg font-semibold text-nebula-text-primary">Quick Add Steam Game</h2>
+                        <span class="px-2 py-0.5 text-xs font-medium rounded-full bg-nebula-accent/10 text-nebula-accent">
+                            Recommended
+                        </span>
+                    </div>
+                    <p class="text-sm text-nebula-text-muted mb-3">
+                        Choose from popular presets or enter a Steam App ID to auto-configure your game server.
+                    </p>
+                    <ul class="space-y-2 text-sm">
+                        <li class="flex items-center gap-2 text-nebula-text-secondary">
+                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span>Pre-configured settings for 20+ popular games</span>
+                        </li>
+                        <li class="flex items-center gap-2 text-nebula-text-secondary">
+                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span>Auto-detect ports, RCON, and mod paths</span>
+                        </li>
+                        <li class="flex items-center gap-2 text-nebula-text-secondary">
+                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span>SteamCMD integration for easy installation</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="mt-4 pt-4 border-t border-nebula-border-subtle">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-nebula-text-muted">
+                        Rust, Valheim, ARK, Palworld, and more...
+                    </span>
+                    <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-accent" />
+                </div>
+            </div>
+        </div>
+
+        @* Custom Game Configuration *@
+        <div class="@GetPathCardClass("custom")"
+             @onclick="NavigateToCustomWizard"
+             tabindex="0"
+             role="button"
+             @onkeydown="@(e => HandleKeyDown(e, "custom"))">
+            <div class="flex items-start gap-4">
+                <div class="w-14 h-14 bg-gradient-to-br from-purple-500/20 to-purple-600/20 rounded-xl flex items-center justify-center shrink-0">
+                    <Icon Name="settings-2" Size="IconSize.Large" Class="text-purple-400" />
+                </div>
+                <div class="flex-1">
+                    <h2 class="text-lg font-semibold text-nebula-text-primary mb-1">Custom Game</h2>
+                    <p class="text-sm text-nebula-text-muted mb-3">
+                        Manually configure a game server with full control over all settings.
+                    </p>
+                    <ul class="space-y-2 text-sm">
+                        <li class="flex items-center gap-2 text-nebula-text-secondary">
+                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span>Non-Steam games or custom servers</span>
+                        </li>
+                        <li class="flex items-center gap-2 text-nebula-text-secondary">
+                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span>Full control over executable and arguments</span>
+                        </li>
+                        <li class="flex items-center gap-2 text-nebula-text-secondary">
+                            <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span>Configure mod providers manually</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="mt-4 pt-4 border-t border-nebula-border-subtle">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs text-nebula-text-muted">
+                        JAR files, custom executables, Docker images...
+                    </span>
+                    <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* Quick Access Section *@
+    <div class="mt-8">
+        <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-4">
+            Popular Steam Games
+        </h3>
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            @foreach (var game in _popularGames)
+            {
+                <button type="button"
+                        class="flex flex-col items-center gap-2 p-3 rounded-nebula bg-nebula-bg-secondary border border-nebula-border-subtle hover:border-nebula-accent/50 hover:bg-nebula-bg-tertiary transition-all group"
+                        @onclick="@(() => NavigateToSteamWizardWithPreset(game.Slug))">
+                    @if (!string.IsNullOrEmpty(game.IconUrl))
+                    {
+                        <img src="@game.IconUrl"
+                             alt="@game.Name"
+                             class="w-12 h-12 object-cover rounded"
+                             loading="lazy" />
+                    }
+                    else
+                    {
+                        <div class="w-12 h-12 bg-nebula-bg-tertiary rounded flex items-center justify-center">
+                            <Icon Name="gamepad-2" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <span class="text-xs text-nebula-text-secondary text-center truncate w-full group-hover:text-nebula-text-primary">
+                        @game.Name
+                    </span>
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-3 mt-8">
+        <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+    </div>
+</div>
+
+@code {
+    // Popular games for quick access
+    private readonly List<(string Name, string Slug, string? IconUrl)> _popularGames =
+    [
+        ("Rust", "rust", "https://cdn.cloudflare.steamstatic.com/steam/apps/252490/capsule_231x87.jpg"),
+        ("Valheim", "valheim", "https://cdn.cloudflare.steamstatic.com/steam/apps/892970/capsule_231x87.jpg"),
+        ("Palworld", "palworld", "https://cdn.cloudflare.steamstatic.com/steam/apps/1623730/capsule_231x87.jpg"),
+        ("ARK", "ark-survival-evolved", "https://cdn.cloudflare.steamstatic.com/steam/apps/346110/capsule_231x87.jpg"),
+        ("V Rising", "v-rising", "https://cdn.cloudflare.steamstatic.com/steam/apps/1604030/capsule_231x87.jpg"),
+        ("Enshrouded", "enshrouded", "https://cdn.cloudflare.steamstatic.com/steam/apps/1203620/capsule_231x87.jpg")
+    ];
+
+    private void NavigateToSteamWizard()
+    {
+        Navigation.NavigateTo("/games/new/steam");
+    }
+
+    private void NavigateToSteamWizardWithPreset(string slug)
+    {
+        Navigation.NavigateTo($"/games/new/steam?preset={slug}");
+    }
+
+    private void NavigateToCustomWizard()
+    {
+        Navigation.NavigateTo("/games/new/custom");
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/games");
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e, string path)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            if (path == "steam")
+                NavigateToSteamWizard();
+            else
+                NavigateToCustomWizard();
+        }
+    }
+
+    private string GetPathCardClass(string path)
+    {
+        return "p-6 rounded-nebula border-2 border-nebula-border-subtle hover:border-nebula-accent/50 bg-nebula-bg-secondary cursor-pointer transition-all";
+    }
+}

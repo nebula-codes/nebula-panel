@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" class="dark">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+
+    <!-- Theme initialization - MUST run before CSS loads to prevent flash -->
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('nebula-theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.classList.remove('dark', 'light');
+            document.documentElement.classList.add(theme);
+        })();
+    </script>
+
+    <ResourcePreloader />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Theme CSS (must load first for CSS variables) -->
+    <link rel="stylesheet" href="@Assets["css/themes/themes.css"]" />
+
+    <!-- Tailwind/Main CSS -->
+    <link rel="stylesheet" href="@Assets["css/tailwind.output.css"]" />
+
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+
+    <!-- Component styles -->
+    <link rel="stylesheet" href="@Assets["NebulaPanel.Web.styles.css"]" />
+
+    <ImportMap />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <HeadOutlet />
+</head>
+
+<body class="bg-nebula-bg-primary text-nebula-text-primary antialiased">
+    <Routes @rendermode="InteractiveServer" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="js/monaco-loader.js"></script>
+    <script>
+        window.setNebulaTheme = function(theme) {
+            localStorage.setItem('nebula-theme', theme);
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.classList.remove('dark', 'light');
+            document.documentElement.classList.add(theme);
+        };
+
+        window.scrollToBottom = function(element) {
+            if (element) {
+                element.scrollTop = element.scrollHeight;
+            }
+        };
+
+        window.downloadTextFile = function(fileName, content) {
+            var blob = new Blob([content], { type: 'text/plain' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        // Sidebar state management
+        window.nebulaSidebar = {
+            getCollapsed: function() {
+                return localStorage.getItem('nebula-sidebar-collapsed') === 'true';
+            },
+            setCollapsed: function(value) {
+                localStorage.setItem('nebula-sidebar-collapsed', value.toString());
+            }
+        };
+
+        // Breakpoint detection
+        window.nebulaBreakpoint = {
+            getWidth: function() {
+                return window.innerWidth;
+            }
+        };
+
+        // Focus management for accessibility
+        window.focusElement = function(element) {
+            if (element) {
+                element.focus();
+            }
+        };
+
+        window.focusElementById = function(id) {
+            var element = document.getElementById(id);
+            if (element) {
+                element.focus();
+            }
+        };
+
+        // Click outside handler for dropdowns
+        window.registerClickOutside = function(dotNetRef, methodName) {
+            var handler = function(e) {
+                if (dotNetRef) {
+                    dotNetRef.invokeMethodAsync(methodName);
+                }
+            };
+            // Delay adding handler to prevent immediate trigger
+            setTimeout(function() {
+                document.addEventListener('click', handler, { once: true });
+            }, 0);
+        };
+
+        // Global search keyboard shortcut
+        window.nebulaSearch = {
+            _dotNetRef: null,
+            _handler: null,
+            init: function(dotNetRef) {
+                this._dotNetRef = dotNetRef;
+                this._handler = function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                        e.preventDefault();
+                        if (window.nebulaSearch._dotNetRef) {
+                            window.nebulaSearch._dotNetRef.invokeMethodAsync('HandleKeyboardShortcut');
+                        }
+                    }
+                    if (e.key === 'Escape') {
+                        // Let Blazor handle ESC to close modal
+                    }
+                };
+                document.addEventListener('keydown', this._handler);
+            },
+            focusInput: function(element) {
+                if (element) {
+                    element.focus();
+                }
+            },
+            dispose: function() {
+                if (this._handler) {
+                    document.removeEventListener('keydown', this._handler);
+                    this._handler = null;
+                }
+                this._dotNetRef = null;
+            }
+        };
+    </script>
+</body>
+
+</html>

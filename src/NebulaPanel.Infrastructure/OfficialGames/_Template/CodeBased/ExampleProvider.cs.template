@@ -1,0 +1,238 @@
+using Microsoft.Extensions.Logging;
+using NebulaPanel.Domain.Entities;
+using NebulaPanel.Domain.Enums;
+using NebulaPanel.Domain.Interfaces;
+using NebulaPanel.Domain.ValueObjects;
+
+namespace NebulaPanel.Infrastructure.OfficialGames.YourGame;
+
+/// <summary>
+/// Official game provider for Your Game.
+/// This is a template - copy and modify for your specific game.
+/// </summary>
+public class YourGameProvider : IOfficialGameProvider
+{
+    private readonly IConfigurationSchemaLoader _schemaLoader;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<YourGameProvider> _logger;
+
+    // Unique identifier for this game (used in URLs, database, etc.)
+    public string GameSlug => "your-game";
+
+    public YourGameProvider(
+        IConfigurationSchemaLoader schemaLoader,
+        IHttpClientFactory httpClientFactory,
+        ILogger<YourGameProvider> logger)
+    {
+        _schemaLoader = schemaLoader;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
+    }
+
+    public string GetDefaultInstallPath(string serverName)
+    {
+        var sanitized = SanitizeForPath(serverName);
+        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        return OperatingSystem.IsWindows()
+            ? Path.Combine(basePath, "YourGameServers", sanitized)
+            : Path.Combine(basePath, "your-game-servers", sanitized);
+    }
+
+    private static string SanitizeForPath(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "server";
+
+        var sanitized = name.ToLowerInvariant()
+            .Replace(' ', '-')
+            .Replace('_', '-');
+
+        sanitized = new string(sanitized.Where(c => char.IsLetterOrDigit(c) || c == '-').ToArray());
+
+        while (sanitized.Contains("--"))
+            sanitized = sanitized.Replace("--", "-");
+
+        sanitized = sanitized.Trim('-');
+        return string.IsNullOrEmpty(sanitized) ? "server" : sanitized;
+    }
+
+    /// <summary>
+    /// Returns the static game definition with all configuration options.
+    /// </summary>
+    public GameDefinition GetGameDefinition()
+    {
+        // Load configuration schemas from JSON files
+        var schemas = _schemaLoader.LoadAllSchemasAsync(GameSlug)
+            .GetAwaiter().GetResult();
+
+        return new GameDefinition
+        {
+            Name = "Your Game Name",
+            Slug = GameSlug,
+            SteamAppId = "123456", // Set to null if not a Steam game
+            ExecutableType = ExecutableType.Exe, // or Jar, Script, etc.
+            DefaultExecutablePath = "server.exe",
+            DefaultStartCommand = "server.exe -port {port} -maxplayers {maxPlayers}",
+            DefaultStopCommand = "quit", // Command sent via RCON/stdin to stop gracefully
+            SupportsDocker = true,
+            DefaultDockerImage = "yourimage/server:latest",
+            IconPath = "/images/games/your-game.png",
+            SupportsMods = false,
+            ModProviders = [], // Add ModProviderConfiguration entries if mods are supported
+            RconDefaults = new RconDefaults
+            {
+                DefaultEnabled = true,
+                Protocol = RconProtocolType.Source, // Source, Minecraft, Custom
+                DefaultPort = 27015
+            },
+            ConfigurationSchemas = schemas
+        };
+    }
+
+    /// <summary>
+    /// Fetches available server versions from the game's API or distribution source.
+    /// </summary>
+    public async Task<IReadOnlyList<GameVersionInfo>> GetAvailableVersionsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var versions = new List<GameVersionInfo>();
+
+        try
+        {
+            // Example: Fetch versions from an API
+            var client = _httpClientFactory.CreateClient("YourGame");
+
+            // TODO: Replace with actual version fetching logic
+            // var response = await client.GetFromJsonAsync<VersionResponse>(
+            //     "https://api.yourgame.com/versions",
+            //     cancellationToken);
+
+            // Example static versions (replace with actual implementation)
+            versions.Add(new GameVersionInfo
+            {
+                Version = "1.0.0",
+                DisplayName = "1.0.0",
+                ReleaseDate = DateTime.UtcNow,
+                VersionType = "stable",
+                IsRecommended = true,
+                DownloadUrl = "https://download.yourgame.com/server-1.0.0.zip"
+            });
+
+            _logger.LogInformation("Fetched {Count} versions for {Game}",
+                versions.Count, GameSlug);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch versions for {Game}", GameSlug);
+            throw;
+        }
+
+        return versions;
+    }
+
+    /// <summary>
+    /// Installs a game server with the specified version.
+    /// </summary>
+    public async Task<ServerInstallationResult> InstallServerAsync(
+        GameServer server,
+        string version,
+        IProgress<OfficialInstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            progress?.Report(new OfficialInstallProgress
+            {
+                Phase = "Preparing",
+                Message = "Preparing installation...",
+                PercentComplete = 0
+            });
+
+            // TODO: Implement actual installation logic
+            // Options:
+            // 1. Use SteamCMD for Steam games
+            // 2. Download and extract from URL
+            // 3. Custom installation procedure
+
+            // Example: Download and extract
+            // var downloadUrl = await GetDownloadUrlAsync(version, cancellationToken);
+            // await DownloadAndExtractAsync(downloadUrl, server.InstallPath, progress, cancellationToken);
+
+            progress?.Report(new OfficialInstallProgress
+            {
+                Phase = "Downloading",
+                Message = $"Downloading version {version}...",
+                PercentComplete = 50
+            });
+
+            await Task.Delay(100, cancellationToken); // Placeholder
+
+            progress?.Report(new OfficialInstallProgress
+            {
+                Phase = "Complete",
+                Message = "Installation complete",
+                PercentComplete = 100
+            });
+
+            _logger.LogInformation("Installed {Game} version {Version} to {Path}",
+                GameSlug, version, server.InstallPath);
+
+            return new ServerInstallationResult
+            {
+                Success = true,
+                InstalledVersion = version,
+                Message = $"Successfully installed version {version}"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to install {Game} version {Version}",
+                GameSlug, version);
+
+            return new ServerInstallationResult
+            {
+                Success = false,
+                Message = ex.Message
+            };
+        }
+    }
+
+    /// <summary>
+    /// Updates a game server to a new version.
+    /// Many games can use the same logic as install.
+    /// </summary>
+    public async Task<ServerInstallationResult> UpdateServerAsync(
+        GameServer server,
+        string targetVersion,
+        IProgress<OfficialInstallProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        // For most games, update is the same as install
+        // Override if your game needs special update handling (backup saves, etc.)
+        return await InstallServerAsync(server, targetVersion, progress, cancellationToken);
+    }
+}
+
+// ============================================================================
+// REGISTRATION
+// ============================================================================
+//
+// Add to Infrastructure/DependencyInjection.cs:
+//
+//     services.AddSingleton<IOfficialGameProvider, YourGameProvider>();
+//
+// The OfficialGameDiscoveryService will automatically discover and register
+// your provider on application startup.
+//
+// ============================================================================
+// TESTING
+// ============================================================================
+//
+// 1. Build the project: dotnet build
+// 2. Run the application: dotnet run --project src/NebulaPanel.Web
+// 3. Check logs for: "Seeded official game: Your Game Name (your-game)"
+// 4. Navigate to /settings/official-games
+// 5. Click "Refresh Versions" to test version fetching
+// 6. Create a test server using your game
+//

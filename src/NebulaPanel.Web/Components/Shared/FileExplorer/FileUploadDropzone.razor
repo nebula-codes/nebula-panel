@@ -1,0 +1,134 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+@using Microsoft.AspNetCore.Components.Forms
+
+<div class="upload-dropzone @(_isDragging ? "dragging" : "")"
+     @ondragover="HandleDragOver"
+     @ondragover:preventDefault
+     @ondragleave="HandleDragLeave"
+     @ondrop:preventDefault>
+
+    @if (!IsUploading && UploadProgress.Count == 0)
+    {
+        <Icon Name="upload" Size="IconSize.XLarge" Class="text-nebula-text-muted mb-4" />
+
+        <p class="text-lg font-medium mb-2">
+            Drag and drop files here
+        </p>
+        <p class="text-sm text-nebula-text-muted mb-4">
+            or click to browse
+        </p>
+
+        <label class="btn btn-secondary cursor-pointer">
+            <InputFile OnChange="HandleFileSelected" multiple class="hidden" />
+            Browse Files
+        </label>
+
+        <p class="text-xs text-nebula-text-muted mt-4">
+            Maximum file size: 100 MB
+        </p>
+    }
+    else
+    {
+        <div class="upload-file-list">
+            @foreach (var file in UploadProgress)
+            {
+                <div class="upload-file-item">
+                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                        <Icon Name="@GetStatusIcon(file.Status)" Size="IconSize.Small" Class="@GetStatusIconClass(file.Status)" />
+                        <div class="flex-1 min-w-0">
+                            <div class="truncate font-medium" title="@file.Name">@file.Name</div>
+                            <div class="text-xs text-nebula-text-muted">@FormatSize(file.Size)</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        @if (file.Status == FileExplorer.UploadStatus.Uploading)
+                        {
+                            <div class="animate-spin h-4 w-4 border-2 border-nebula-accent border-t-transparent rounded-full"></div>
+                        }
+                        else if (file.Status == FileExplorer.UploadStatus.Complete)
+                        {
+                            <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                        }
+                        else if (file.Status == FileExplorer.UploadStatus.Error)
+                        {
+                            <span class="text-xs text-nebula-error max-w-48 truncate" title="@file.Error">
+                                @(string.IsNullOrEmpty(file.Error) ? "Failed" : file.Error)
+                            </span>
+                            <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-error" />
+                        }
+                        else
+                        {
+                            <Icon Name="clock" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        @if (!IsUploading)
+        {
+            <div class="mt-4 text-center">
+                <label class="btn btn-secondary cursor-pointer">
+                    <InputFile OnChange="HandleFileSelected" multiple class="hidden" />
+                    Upload More Files
+                </label>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>> OnFilesSelected { get; set; }
+    [Parameter] public List<FileExplorer.UploadProgressItem> UploadProgress { get; set; } = [];
+    [Parameter] public bool IsUploading { get; set; }
+
+    private bool _isDragging;
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(100);
+        await OnFilesSelected.InvokeAsync(files);
+    }
+
+    private void HandleDragOver()
+    {
+        _isDragging = true;
+    }
+
+    private void HandleDragLeave()
+    {
+        _isDragging = false;
+    }
+
+    private static string GetStatusIcon(FileExplorer.UploadStatus status) => status switch
+    {
+        FileExplorer.UploadStatus.Uploading => "loader",
+        FileExplorer.UploadStatus.Complete => "check-circle",
+        FileExplorer.UploadStatus.Error => "x-circle",
+        _ => "file"
+    };
+
+    private static string GetStatusIconClass(FileExplorer.UploadStatus status) => status switch
+    {
+        FileExplorer.UploadStatus.Uploading => "text-nebula-accent animate-spin",
+        FileExplorer.UploadStatus.Complete => "text-nebula-success",
+        FileExplorer.UploadStatus.Error => "text-nebula-error",
+        _ => "text-nebula-text-muted"
+    };
+
+    private static string FormatSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB"];
+        int order = 0;
+        double size = bytes;
+
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+
+        return $"{size:0.##} {sizes[order]}";
+    }
+}

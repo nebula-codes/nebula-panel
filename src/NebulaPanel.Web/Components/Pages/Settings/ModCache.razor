@@ -1,0 +1,563 @@
+@page "/settings/mod-cache"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@inject IModCacheService ModCacheService
+@inject IModCacheSyncService ModCacheSyncService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+@implements IDisposable
+
+<PageTitle>Mod Cache Settings - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Mod Cache</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Mod Cache Settings</h1>
+    <p class="text-nebula-text-muted mb-6">Configure mod caching for faster searches and reduced API calls.</p>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-6">
+            <!-- Cache Status -->
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Cache Status</h2>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="ButtonVariant.Ghost"
+                                    Text="Refresh"
+                                    IconName="refresh-cw"
+                                    Size="ButtonSize.Small"
+                                    OnClick="RefreshStatus" />
+                        </div>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_stats is not null)
+                    {
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                <p class="text-2xl font-semibold text-nebula-text-primary">@_stats.TotalModsCached.ToString("N0")</p>
+                                <p class="text-sm text-nebula-text-muted">Total Mods Cached</p>
+                            </div>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                <p class="text-2xl font-semibold text-nebula-text-primary">@_stats.TotalModpacksCached.ToString("N0")</p>
+                                <p class="text-sm text-nebula-text-muted">Total Modpacks Cached</p>
+                            </div>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                <p class="text-2xl font-semibold text-nebula-text-primary">@(_stats.ModrinthModCount + _stats.ModrinthModpackCount)</p>
+                                <p class="text-sm text-nebula-text-muted">Modrinth Items</p>
+                            </div>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                <p class="text-2xl font-semibold text-nebula-text-primary">@(_stats.CurseForgeModCount + _stats.CurseForgeModpackCount)</p>
+                                <p class="text-sm text-nebula-text-muted">CurseForge Items</p>
+                            </div>
+                        </div>
+
+                        <div class="text-sm text-nebula-text-muted space-y-1">
+                            @if (_stats.LastSyncTime.HasValue)
+                            {
+                                <p>Last sync: @_stats.LastSyncTime.Value.ToString("g") UTC</p>
+                            }
+                            @if (_stats.OldestCacheEntry.HasValue)
+                            {
+                                <p>Oldest entry: @_stats.OldestCacheEntry.Value.ToString("g") UTC</p>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            <!-- Sync Progress -->
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Sync Progress</h2>
+                        <div class="flex items-center gap-2">
+                            @if (_syncOverview?.IsAnySyncRunning == true)
+                            {
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Text="Pause"
+                                        IconName="pause"
+                                        Size="ButtonSize.Small"
+                                        Loading="_pausingSync"
+                                        OnClick="PauseSync" />
+                            }
+                            else
+                            {
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Text="Sync Now"
+                                        IconName="refresh-cw"
+                                        Size="ButtonSize.Small"
+                                        Loading="_triggeringSync"
+                                        OnClick="TriggerIncrementalSync" />
+                                <Button Variant="ButtonVariant.Ghost"
+                                        Text="Full Sync"
+                                        IconName="database"
+                                        Size="ButtonSize.Small"
+                                        Loading="_triggeringSync"
+                                        OnClick="TriggerFullSync" />
+                            }
+                        </div>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_syncOverview is not null)
+                    {
+                        <div class="space-y-4">
+                            @foreach (var status in _syncOverview.SyncStatuses)
+                            {
+                                <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-medium text-nebula-text-primary">@status.Provider</span>
+                                            <span class="text-sm text-nebula-text-muted">(@status.ContentType)</span>
+                                        </div>
+                                        <span class="@GetStateClass(status.State) text-sm px-2 py-0.5 rounded">@status.State</span>
+                                    </div>
+
+                                    @if (status.State == ModCacheSyncState.Running)
+                                    {
+                                        <div class="w-full bg-nebula-bg-tertiary rounded-full h-2 mb-2">
+                                            <div class="bg-nebula-accent h-2 rounded-full transition-all"
+                                                 style="width: @status.ProgressPercentage.ToString("F1")%"></div>
+                                        </div>
+                                        <p class="text-sm text-nebula-text-muted">
+                                            Page @status.CurrentPage / @status.TotalPages
+                                            (@status.ItemsSynced.ToString("N0") / @status.TotalItems.ToString("N0") items)
+                                        </p>
+                                    }
+                                    else
+                                    {
+                                        <p class="text-sm text-nebula-text-muted">
+                                            @status.ItemsSynced.ToString("N0") items synced
+                                            @if (status.LastFullSyncCompletedAt.HasValue)
+                                            {
+                                                <span> • Last full sync: @status.LastFullSyncCompletedAt.Value.ToString("g")</span>
+                                            }
+                                            @if (status.LastIncrementalSyncAt.HasValue)
+                                            {
+                                                <span> • Last incremental: @status.LastIncrementalSyncAt.Value.ToString("g")</span>
+                                            }
+                                        </p>
+                                    }
+
+                                    @if (!string.IsNullOrEmpty(status.LastError))
+                                    {
+                                        <p class="text-sm text-nebula-error mt-2">Error: @status.LastError</p>
+                                    }
+                                </div>
+                            }
+
+                            @if (_syncOverview.SyncStatuses.Count == 0)
+                            {
+                                <p class="text-nebula-text-muted">No sync status available. Enable caching and save settings to begin.</p>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            <!-- Settings Form -->
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Cache Settings</h2>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-6">
+                        <!-- Enable Toggle -->
+                        <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                            <div>
+                                <p class="font-medium text-nebula-text-primary">Enable Mod Caching</p>
+                                <p class="text-sm text-nebula-text-muted">Cache mod metadata from providers for faster searches.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" @bind="_enabled" class="sr-only peer" />
+                                <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                            </label>
+                        </div>
+
+                        @if (_enabled)
+                        {
+                            <!-- Provider Toggles -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                                    <div>
+                                        <p class="font-medium text-nebula-text-primary">Modrinth</p>
+                                        <p class="text-sm text-nebula-text-muted">~50,000 mods</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" @bind="_modrinthEnabled" class="sr-only peer" />
+                                        <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                                    </label>
+                                </div>
+
+                                <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                                    <div>
+                                        <p class="font-medium text-nebula-text-primary">CurseForge</p>
+                                        <p class="text-sm text-nebula-text-muted">~250,000 mods</p>
+                                    </div>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" @bind="_curseForgeEnabled" class="sr-only peer" />
+                                        <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Cache Modpacks -->
+                            <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                                <div>
+                                    <p class="font-medium text-nebula-text-primary">Cache Modpacks</p>
+                                    <p class="text-sm text-nebula-text-muted">Include modpacks in the cache (in addition to individual mods).</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" @bind="_cacheModpacks" class="sr-only peer" />
+                                    <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                                </label>
+                            </div>
+
+                            <!-- Sync Intervals -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="form-group">
+                                    <label class="label">Incremental Sync Interval</label>
+                                    <select @bind="_incrementalSyncCron" class="input">
+                                        @foreach (var option in _settings?.AvailableIncrementalIntervals ?? [])
+                                        {
+                                            <option value="@option.CronExpression">@option.Label</option>
+                                        }
+                                    </select>
+                                    <p class="text-xs text-nebula-text-muted mt-1">How often to check for updated mods.</p>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="label">Full Sync Interval</label>
+                                    <select @bind="_fullSyncCron" class="input">
+                                        @foreach (var option in _settings?.AvailableFullSyncIntervals ?? [])
+                                        {
+                                            <option value="@option.CronExpression">@option.Label</option>
+                                        }
+                                    </select>
+                                    <p class="text-xs text-nebula-text-muted mt-1">How often to re-sync all mods.</p>
+                                </div>
+                            </div>
+
+                            <!-- Rate Limiting -->
+                            <div class="form-group">
+                                <label class="label">Request Delay (ms)</label>
+                                <input type="number" @bind="_requestDelayMs" class="input w-48" min="0" max="10000" step="50" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Delay between API requests to avoid rate limiting. Default: 100ms.</p>
+                            </div>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <!-- Actions -->
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <Button Variant="ButtonVariant.Ghost"
+                            Text="Clear Modrinth Cache"
+                            IconName="trash-2"
+                            Size="ButtonSize.Small"
+                            Disabled="@(!_enabled)"
+                            OnClick="@(() => ClearCache(ModProviderType.Modrinth))" />
+                    <Button Variant="ButtonVariant.Ghost"
+                            Text="Clear CurseForge Cache"
+                            IconName="trash-2"
+                            Size="ButtonSize.Small"
+                            Disabled="@(!_enabled)"
+                            OnClick="@(() => ClearCache(ModProviderType.CurseForge))" />
+                </div>
+                <div class="flex items-center gap-3">
+                    <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => Navigation.NavigateTo("/settings"))" />
+                    <Button Variant="ButtonVariant.Primary" Text="Save Changes" Loading="_saving" OnClick="SaveSettings" />
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private ModCacheSettingsDto? _settings;
+    private ModCacheStatsDto? _stats;
+    private ModCacheSyncOverviewDto? _syncOverview;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _triggeringSync;
+    private bool _pausingSync;
+    private string? _error;
+    private string? _success;
+    private Timer? _refreshTimer;
+
+    // Form fields
+    private bool _enabled = true;
+    private bool _modrinthEnabled = true;
+    private bool _curseForgeEnabled = true;
+    private bool _cacheModpacks = true;
+    private string _incrementalSyncCron = "0 * * * *";
+    private string _fullSyncCron = "0 0 * * 0";
+    private int _requestDelayMs = 100;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+
+        // Auto-refresh every 5 seconds to show sync progress
+        _refreshTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshStatusQuiet();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            _settings = await ModCacheService.GetSettingsAsync();
+            _stats = await ModCacheService.GetCacheStatsAsync();
+            _syncOverview = await ModCacheService.GetSyncStatusAsync();
+
+            _enabled = _settings.Enabled;
+            _modrinthEnabled = _settings.ModrinthEnabled;
+            _curseForgeEnabled = _settings.CurseForgeEnabled;
+            _cacheModpacks = _settings.CacheModpacks;
+            _incrementalSyncCron = _settings.IncrementalSyncCron;
+            _fullSyncCron = _settings.FullSyncCron;
+            _requestDelayMs = _settings.RequestDelayMs;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshStatus()
+    {
+        try
+        {
+            _error = null;
+            _stats = await ModCacheService.GetCacheStatsAsync();
+            _syncOverview = await ModCacheService.GetSyncStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RefreshStatusQuiet()
+    {
+        try
+        {
+            _stats = await ModCacheService.GetCacheStatsAsync();
+            _syncOverview = await ModCacheService.GetSyncStatusAsync();
+        }
+        catch
+        {
+            // Ignore errors during quiet refresh
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateModCacheSettingsRequest(
+                _enabled,
+                _modrinthEnabled,
+                _curseForgeEnabled,
+                _cacheModpacks,
+                _incrementalSyncCron,
+                _fullSyncCron,
+                _requestDelayMs);
+
+            var result = await ModCacheService.UpdateSettingsAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Settings saved successfully.";
+                _settings = result.Value;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task TriggerIncrementalSync()
+    {
+        try
+        {
+            _triggeringSync = true;
+            _error = null;
+
+            var result = await ModCacheSyncService.TriggerManualSyncAsync(false);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                _success = "Incremental sync started.";
+            }
+
+            await RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _triggeringSync = false;
+        }
+    }
+
+    private async Task TriggerFullSync()
+    {
+        try
+        {
+            _triggeringSync = true;
+            _error = null;
+
+            var result = await ModCacheSyncService.TriggerManualSyncAsync(true);
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                _success = "Full sync started.";
+            }
+
+            await RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _triggeringSync = false;
+        }
+    }
+
+    private async Task PauseSync()
+    {
+        try
+        {
+            _pausingSync = true;
+            _error = null;
+
+            var result = await ModCacheSyncService.PauseSyncAsync();
+
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+            }
+
+            await RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _pausingSync = false;
+        }
+    }
+
+    private async Task ClearCache(ModProviderType provider)
+    {
+        try
+        {
+            _error = null;
+
+            var result = await ModCacheSyncService.ClearCacheAsync(provider);
+
+            if (result.IsSuccess)
+            {
+                _success = $"Cache cleared for {provider}.";
+                await RefreshStatus();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private static string GetStateClass(ModCacheSyncState state) => state switch
+    {
+        ModCacheSyncState.Idle => "bg-nebula-bg-tertiary text-nebula-text-muted",
+        ModCacheSyncState.Running => "bg-nebula-accent/20 text-nebula-accent",
+        ModCacheSyncState.Paused => "bg-nebula-warning/20 text-nebula-warning",
+        ModCacheSyncState.Failed => "bg-nebula-error/20 text-nebula-error",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    public void Dispose()
+    {
+        _refreshTimer?.Dispose();
+    }
+}

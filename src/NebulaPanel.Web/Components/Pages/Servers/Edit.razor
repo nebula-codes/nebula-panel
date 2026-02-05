@@ -1,0 +1,730 @@
+@page "/servers/{ServerId:guid}/edit"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.ValueObjects
+@using NebulaPanel.Web.Components.Servers
+@inject IGameServerService ServerService
+@inject IGameService GameService
+@inject IServerRelocationService RelocationService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@rendermode InteractiveServer
+
+<PageTitle>Edit Server - Nebula Panel</PageTitle>
+<NavigationLock OnBeforeInternalNavigation="OnBeforeInternalNavigation" ConfirmExternalNavigation="_isDirty" />
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    @if (_loading)
+    {
+        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.SettingsForm" />
+    }
+    else if (_server is null)
+    {
+        <div class="text-center py-12">
+            <Icon Name="alert-circle" Size="IconSize.Large" Class="text-nebula-error mb-4" />
+            <h2 class="text-xl font-medium text-nebula-text-primary mb-2">Server Not Found</h2>
+            <p class="text-nebula-text-muted mb-4">@(_error ?? "The requested server could not be found.")</p>
+            <Button Variant="ButtonVariant.Secondary" Text="Back to Servers" OnClick="@(() => Navigation.NavigateTo("/servers"))" />
+        </div>
+    }
+    else
+    {
+        <div class="mb-6">
+            <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+                <a href="/servers" class="hover:text-nebula-text-primary transition-colors">Servers</a>
+                <Icon Name="chevron-right" Size="IconSize.Small" />
+                <a href="/servers/@ServerId" class="hover:text-nebula-text-primary transition-colors">@_server.Name</a>
+                <Icon Name="chevron-right" Size="IconSize.Small" />
+                <span class="text-nebula-text-primary">Edit</span>
+            </nav>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Edit Server</h1>
+            <p class="text-nebula-text-muted mt-1">Modify server configuration settings.</p>
+        </div>
+
+        <ErrorAlert Message="@_error" Class="mb-6" />
+        <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+        @* Server Info (Read-only) *@
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Server Info</h2>
+            </Header>
+            <ChildContent>
+                <div class="flex items-center gap-4 p-2 bg-nebula-bg-secondary rounded-nebula">
+                    @if (!string.IsNullOrEmpty(_server.EffectiveIcon))
+                    {
+                        <img src="@_server.EffectiveIcon" alt="@_server.GameName" class="w-12 h-12 object-contain rounded-lg" />
+                    }
+                    else
+                    {
+                        <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                            <Icon Name="gamepad-2" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <div>
+                        <div class="font-medium text-nebula-text-primary">@_server.GameName</div>
+                        <div class="flex items-center gap-2 text-sm text-nebula-text-muted">
+                            <Icon Name="@(_server.DeploymentType == ServerDeploymentType.Docker ? "box" : "terminal")" Size="IconSize.Small" />
+                            <span>@_server.DeploymentType Deployment</span>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-xs text-nebula-text-muted mt-2">Game and deployment type cannot be changed after creation.</p>
+            </ChildContent>
+        </Card>
+
+        <EditForm Model="_model" OnValidSubmit="SaveChanges" @oninput="() => _isDirty = true">
+            <DataAnnotationsValidator />
+
+            @* Basic Information *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Basic Information</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="name" class="label">Server Name <span class="text-nebula-error">*</span></label>
+                            <InputText id="name" @bind-Value="_model.Name" class="input" placeholder="My Server" />
+                            <ValidationMessage For="@(() => _model.Name)" class="text-nebula-error text-xs mt-1" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="installPath" class="label">Install Path <span class="text-nebula-error">*</span></label>
+                            <div class="flex gap-2">
+                                <InputText id="installPath" @bind-Value="_model.InstallPath" class="input flex-1" placeholder="/var/servers/my-server" disabled="true" />
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Text="Relocate"
+                                        IconName="folder-symlink"
+                                        OnClick="OpenRelocateModal"
+                                        Disabled="@(_server?.Status != ServerStatus.Stopped)"
+                                        Title="@(_server?.Status != ServerStatus.Stopped ? "Server must be stopped to relocate" : "Move server files to a new location")" />
+                            </div>
+                            @if (_server?.Status != ServerStatus.Stopped)
+                            {
+                                <p class="text-xs text-nebula-warning mt-1">Stop the server to enable relocation.</p>
+                            }
+                            else
+                            {
+                                <p class="text-xs text-nebula-text-muted mt-1">Click Relocate to move server files to a new location.</p>
+                            }
+                            <ValidationMessage For="@(() => _model.InstallPath)" class="text-nebula-error text-xs mt-1" />
+                        </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label for="description" class="label">Description</label>
+                            <InputTextArea id="description" @bind-Value="_model.Description" class="input" rows="2" placeholder="Optional description..." />
+                        </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label for="tags" class="label">Tags</label>
+                            <InputText id="tags" @bind-Value="_tagsInput" class="input" placeholder="production, modded, survival" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Comma-separated tags for organizing your servers.</p>
+                        </div>
+
+                        <div class="form-group md:col-span-2">
+                            <label for="iconUrl" class="label">Icon URL</label>
+                            <InputText id="iconUrl" @bind-Value="_model.IconUrl" class="input" placeholder="https://example.com/icon.png" />
+                            <p class="text-xs text-nebula-text-muted mt-1">URL to a custom server icon. Leave empty to use the game's default icon.</p>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            @* Network Configuration *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Network Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="primaryPort" class="label">Primary Port <span class="text-nebula-error">*</span></label>
+                            <InputNumber id="primaryPort" @bind-Value="_model.PrimaryPort" class="input" min="1" max="65535" />
+                            <ValidationMessage For="@(() => _model.PrimaryPort)" class="text-nebula-error text-xs mt-1" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="bindAddress" class="label">Bind Address</label>
+                            <InputText id="bindAddress" @bind-Value="_model.BindAddress" class="input" placeholder="0.0.0.0" />
+                            <p class="text-xs text-nebula-text-muted mt-1">IP address to bind to (default: 0.0.0.0)</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="rconPort" class="label">RCON Port</label>
+                            <InputNumber id="rconPort" @bind-Value="_model.RconPort" class="input" min="0" max="65535" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Port for remote console (0 to disable)</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="queryPort" class="label">Query Port</label>
+                            <InputNumber id="queryPort" @bind-Value="_model.QueryPort" class="input" min="0" max="65535" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Port for server query (0 to disable)</p>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            @* Deployment Configuration *@
+            @if (_server.DeploymentType == ServerDeploymentType.Native)
+            {
+                <Card Class="mb-6">
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Native Configuration</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-group">
+                                <label for="workingDir" class="label">Working Directory</label>
+                                <InputText id="workingDir" @bind-Value="_model.NativeWorkingDirectory" class="input" placeholder="@_model.InstallPath" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Leave empty to use install path</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="executable" class="label">Executable Path</label>
+                                <InputText id="executable" @bind-Value="_model.NativeExecutablePath" class="input" placeholder="server.jar" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Relative to working directory</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="javaPath" class="label">Java Path</label>
+                                <InputText id="javaPath" @bind-Value="_model.JavaPath" class="input" placeholder="java" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Path to Java executable</p>
+                            </div>
+                        </div>
+
+                        @* Advanced JVM Settings (Collapsible) *@
+                        <div class="border border-nebula-border-subtle rounded-nebula overflow-hidden mt-4">
+                            <button type="button"
+                                    class="w-full flex items-center justify-between p-4 text-left hover:bg-nebula-bg-tertiary transition-colors"
+                                    @onclick="() => _showAdvancedJvmSettings = !_showAdvancedJvmSettings"
+                                    @onclick:preventDefault>
+                                <span class="text-sm font-medium text-nebula-text-primary">Advanced JVM Settings</span>
+                                <Icon Name="@(_showAdvancedJvmSettings ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            </button>
+                            @if (_showAdvancedJvmSettings)
+                            {
+                                <div class="p-4 pt-0 border-t border-nebula-border-subtle space-y-4">
+                                    <div class="form-group">
+                                        <label for="arguments" class="label">Command Arguments</label>
+                                        <InputText id="arguments" @bind-Value="_model.NativeArguments" class="input font-mono text-sm" placeholder="-Xms2048M -Xmx4096M -jar server.jar" />
+                                        <p class="text-xs text-nebula-text-muted mt-1">
+                                            Full command line arguments passed to Java. For Hytale/Minecraft servers, this includes memory settings, custom JVM args, and the -jar command.
+                                        </p>
+                                        @if (!string.IsNullOrEmpty(_model.NativeArguments) && _model.NativeArguments.Contains("-jar"))
+                                        {
+                                            <div class="flex items-start gap-2 mt-2 p-2 bg-nebula-info/10 rounded text-xs text-nebula-info">
+                                                <Icon Name="info" Size="IconSize.Small" Class="flex-shrink-0 mt-0.5" />
+                                                <span>Custom JVM arguments should be placed between the memory settings (<code>-Xmx</code>/<code>-Xms</code>) and <code>-jar</code>. Example: <code>-Xms2G -Xmx4G <strong>-XX:+UseG1GC</strong> -jar server.jar</code></span>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label for="javaArgs" class="label">Additional Java Arguments</label>
+                                        <InputText id="javaArgs" @bind-Value="_model.JavaArguments" class="input" placeholder="-XX:+UseG1GC -Dfile.encoding=UTF-8" />
+                                        <p class="text-xs text-nebula-text-muted mt-1">Additional JVM options (prepended to command arguments when starting)</p>
+                                    </div>
+
+                                    <div class="flex items-start gap-2 p-2 bg-nebula-warning/10 rounded text-xs text-nebula-warning">
+                                        <Icon Name="alert-triangle" Size="IconSize.Small" Class="flex-shrink-0 mt-0.5" />
+                                        <span>Invalid JVM arguments may prevent the server from starting. Test changes carefully.</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+            else if (_server.DeploymentType == ServerDeploymentType.Docker)
+            {
+                <Card Class="mb-6">
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Docker Configuration</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-group">
+                                <label for="dockerImage" class="label">Docker Image <span class="text-nebula-error">*</span></label>
+                                <InputText id="dockerImage" @bind-Value="_model.DockerImage" class="input" placeholder="itzg/minecraft-server" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="dockerTag" class="label">Tag</label>
+                                <InputText id="dockerTag" @bind-Value="_model.DockerTag" class="input" placeholder="latest" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="dockerNetwork" class="label">Network</label>
+                                <InputText id="dockerNetwork" @bind-Value="_model.DockerNetwork" class="input" placeholder="bridge" />
+                            </div>
+
+                            <div class="form-group">
+                                <label for="restartPolicy" class="label">Restart Policy</label>
+                                <InputSelect id="restartPolicy" @bind-Value="_model.RestartPolicy" class="input">
+                                    @foreach (var policy in Enum.GetValues<RestartPolicy>())
+                                    {
+                                        <option value="@policy">@policy</option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="dockerWorkingDir" class="label">Working Directory</label>
+                                <InputText id="dockerWorkingDir" @bind-Value="_model.DockerWorkingDirectory" class="input" placeholder="/server" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Working directory inside the container</p>
+                            </div>
+
+                            <div class="form-group flex items-center gap-3">
+                                <InputCheckbox id="runAsRoot" @bind-Value="_model.RunAsRoot" class="w-4 h-4 rounded border-nebula-border focus:ring-nebula-accent" />
+                                <div>
+                                    <label for="runAsRoot" class="label mb-0 cursor-pointer">Run as Root</label>
+                                    <p class="text-xs text-nebula-text-muted">Enable for images that require root permissions (e.g., tModLoader)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* Advanced JVM Settings (Collapsible) *@
+                        <div class="border border-nebula-border-subtle rounded-nebula overflow-hidden mt-4">
+                            <button type="button"
+                                    class="w-full flex items-center justify-between p-4 text-left hover:bg-nebula-bg-tertiary transition-colors"
+                                    @onclick="() => _showAdvancedJvmSettings = !_showAdvancedJvmSettings"
+                                    @onclick:preventDefault>
+                                <span class="text-sm font-medium text-nebula-text-primary">Advanced JVM Settings</span>
+                                <Icon Name="@(_showAdvancedJvmSettings ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            </button>
+                            @if (_showAdvancedJvmSettings)
+                            {
+                                <div class="p-4 pt-0 border-t border-nebula-border-subtle space-y-4">
+                                    <div class="form-group">
+                                        <label for="dockerCommand" class="label">Container Command</label>
+                                        <InputText id="dockerCommand" @bind-Value="_model.DockerCommand" class="input font-mono text-sm" placeholder="java -Xms2048M -Xmx4096M -jar server.jar" />
+                                        <p class="text-xs text-nebula-text-muted mt-1">
+                                            Full command executed in the container. For Java servers, this includes memory settings, custom JVM args, and the -jar command.
+                                        </p>
+                                        @if (!string.IsNullOrEmpty(_model.DockerCommand) && _model.DockerCommand.Contains("-jar"))
+                                        {
+                                            <div class="flex items-start gap-2 mt-2 p-2 bg-nebula-info/10 rounded text-xs text-nebula-info">
+                                                <Icon Name="info" Size="IconSize.Small" Class="flex-shrink-0 mt-0.5" />
+                                                <span>Custom JVM arguments should be placed between the memory settings (<code>-Xmx</code>/<code>-Xms</code>) and <code>-jar</code>. Example: <code>java -Xms2G -Xmx4G <strong>-XX:+UseG1GC</strong> -jar server.jar</code></span>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="flex items-start gap-2 p-2 bg-nebula-warning/10 rounded text-xs text-nebula-warning">
+                                        <Icon Name="alert-triangle" Size="IconSize.Small" Class="flex-shrink-0 mt-0.5" />
+                                        <span>Invalid JVM arguments may prevent the server from starting. Test changes carefully.</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            @* Resource Limits *@
+            <Card Class="mb-6">
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Resource Limits</h2>
+                        <span class="text-xs text-nebula-text-muted">Optional</span>
+                    </div>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label for="maxMemory" class="label">Max Memory (MB)</label>
+                            <InputNumber id="maxMemory" @bind-Value="_model.MaxMemoryMb" class="input" min="0" placeholder="4096" />
+                            <p class="text-xs text-nebula-text-muted mt-1">0 or empty for unlimited</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="maxCpu" class="label">Max CPU (%)</label>
+                            <InputNumber id="maxCpu" @bind-Value="_model.MaxCpuPercent" class="input" min="0" max="100" placeholder="100" />
+                            <p class="text-xs text-nebula-text-muted mt-1">0 or empty for unlimited</p>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            @* RCON Configuration *@
+            @if (_model.RconPort > 0)
+            {
+                <Card Class="mb-6">
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">RCON Configuration</h2>
+                    </Header>
+                    <ChildContent>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-group">
+                                <label for="rconProtocol" class="label">Protocol</label>
+                                <InputSelect id="rconProtocol" @bind-Value="_model.RconProtocol" class="input">
+                                    @foreach (var protocol in Enum.GetValues<RconProtocolType>())
+                                    {
+                                        <option value="@protocol">@protocol</option>
+                                    }
+                                </InputSelect>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="rconPassword" class="label">Password</label>
+                                <InputText id="rconPassword" @bind-Value="_model.RconPassword" class="input" type="password" placeholder="Enter new password or leave empty" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Leave empty to keep existing password</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="rconTimeout" class="label">Timeout (seconds)</label>
+                                <InputNumber id="rconTimeout" @bind-Value="_model.RconTimeout" class="input" min="1" max="300" />
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+
+            @* Actions *@
+            <div class="flex items-center justify-between gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+                <Button Type="submit" Variant="ButtonVariant.Primary" Text="Save Changes" IconName="check" Loading="_saving" />
+            </div>
+        </EditForm>
+    }
+</div>
+
+@* Relocate Server Modal *@
+<RelocateServerModal IsOpen="_showRelocateModal"
+                     OnClose="CloseRelocateModal"
+                     OnComplete="OnRelocationComplete"
+                     ServerId="ServerId"
+                     CurrentPath="@(_server?.InstallPath ?? "")" />
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    private bool _loading = true;
+    private bool _saving;
+    private bool _isDirty;
+    private bool _navigationAllowed;
+    private string? _error;
+    private string? _success;
+    private GameServerDto? _server;
+    private GameDto? _game;
+    private ServerEditModel _model = new();
+    private string _tagsInput = "";
+    private bool _showAdvancedJvmSettings;
+    private bool _showRelocateModal;
+
+    private async Task OnBeforeInternalNavigation(LocationChangingContext context)
+    {
+        if (_navigationAllowed || !_isDirty || _saving)
+            return;
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "You have unsaved changes. Are you sure you want to leave?");
+
+        if (!confirmed)
+        {
+            context.PreventNavigation();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadServerAsync();
+    }
+
+    private async Task LoadServerAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var result = await ServerService.GetServerByIdAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _server = result.Value;
+
+            // Load game details
+            var gameResult = await GameService.GetGameByIdAsync(_server.GameId);
+            if (gameResult.IsSuccess)
+            {
+                _game = gameResult.Value;
+            }
+
+            // Populate the form model
+            PopulateModel();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void PopulateModel()
+    {
+        if (_server is null) return;
+
+        _model.Name = _server.Name;
+        _model.Description = _server.Description;
+        _model.IconUrl = _server.IconPath;
+        _tagsInput = string.Join(", ", _server.Tags);
+        _model.InstallPath = _server.InstallPath;
+        _model.PrimaryPort = _server.PrimaryPort;
+        _model.BindAddress = _server.BindAddress;
+        _model.RconPort = _server.AdditionalPorts.GetValueOrDefault("rcon", 0);
+        _model.QueryPort = _server.AdditionalPorts.GetValueOrDefault("query", 0);
+
+        // Native config
+        if (_server.NativeConfig is not null)
+        {
+            _model.NativeWorkingDirectory = _server.NativeConfig.WorkingDirectory;
+            _model.NativeExecutablePath = _server.NativeConfig.ExecutablePath;
+            _model.NativeArguments = _server.NativeConfig.Arguments;
+            _model.JavaPath = _server.NativeConfig.JavaPath;
+            _model.JavaArguments = _server.NativeConfig.JavaArguments;
+        }
+
+        // Docker config
+        if (_server.DockerConfig is not null)
+        {
+            _model.DockerImage = _server.DockerConfig.Image;
+            _model.DockerTag = _server.DockerConfig.Tag;
+            _model.DockerNetwork = _server.DockerConfig.Network;
+            _model.RestartPolicy = _server.DockerConfig.RestartPolicy;
+            _model.DockerCommand = _server.DockerConfig.Command;
+            _model.DockerWorkingDirectory = _server.DockerConfig.WorkingDirectory;
+            _model.RunAsRoot = _server.DockerConfig.RunAsRoot;
+        }
+
+        // Resource limits
+        if (_server.ResourceLimits is not null)
+        {
+            _model.MaxMemoryMb = _server.ResourceLimits.MaxMemoryMb ?? 0;
+            _model.MaxCpuPercent = _server.ResourceLimits.MaxCpuPercent ?? 0;
+        }
+
+        // RCON config
+        if (_server.RconConfig is not null)
+        {
+            _model.RconProtocol = _server.RconConfig.Protocol;
+            _model.RconTimeout = _server.RconConfig.TimeoutSeconds;
+            // Don't populate password - user must enter new one if they want to change it
+        }
+    }
+
+    private async Task SaveChanges()
+    {
+        if (_server is null) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var additionalPorts = new Dictionary<string, int>();
+            if (_model.RconPort > 0)
+                additionalPorts["rcon"] = _model.RconPort;
+            if (_model.QueryPort > 0)
+                additionalPorts["query"] = _model.QueryPort;
+
+            var request = new UpdateGameServerRequest(
+                Name: _model.Name,
+                Description: string.IsNullOrWhiteSpace(_model.Description) ? null : _model.Description,
+                IconUrl: _model.IconUrl,
+                InstallPath: _model.InstallPath,
+                PrimaryPort: _model.PrimaryPort,
+                AdditionalPorts: additionalPorts.Count > 0 ? additionalPorts : null,
+                BindAddress: string.IsNullOrWhiteSpace(_model.BindAddress) ? null : _model.BindAddress,
+                DockerConfig: _server.DeploymentType == ServerDeploymentType.Docker ? BuildDockerConfig() : null,
+                NativeConfig: _server.DeploymentType == ServerDeploymentType.Native ? BuildNativeConfig() : null,
+                RconConfig: BuildRconConfig(),
+                ResourceLimits: BuildResourceLimits()
+            );
+
+            var result = await ServerService.UpdateServerAsync(ServerId, request);
+
+            if (result.IsSuccess)
+            {
+                // Save tags separately
+                var tags = _tagsInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Distinct().ToList();
+                await ServerService.UpdateTagsAsync(ServerId, tags);
+
+                _isDirty = false;
+                _success = "Server settings saved successfully.";
+                _server = result.Value;
+                PopulateModel();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private DockerConfigurationRequest? BuildDockerConfig()
+    {
+        if (string.IsNullOrWhiteSpace(_model.DockerImage))
+            return null;
+
+        // Start with existing volumes
+        var volumes = _server?.DockerConfig?.Volumes?
+            .Select(v => new VolumeMountRequest(v.HostPath, v.ContainerPath, v.ReadOnly))
+            .ToList() ?? [];
+
+        // Auto-add missing volume mount for DockerDataPath if configured on the game
+        var dockerDataPath = _game?.DockerDataPath;
+        if (!string.IsNullOrWhiteSpace(dockerDataPath) && !string.IsNullOrWhiteSpace(_model.InstallPath))
+        {
+            // Check if a mount to this container path already exists
+            var hasDataMount = volumes.Any(v =>
+                v.ContainerPath.Equals(dockerDataPath, StringComparison.OrdinalIgnoreCase));
+
+            if (!hasDataMount)
+            {
+                volumes.Add(new VolumeMountRequest(_model.InstallPath, dockerDataPath, ReadOnly: false));
+            }
+        }
+
+        return new DockerConfigurationRequest(
+            Image: _model.DockerImage,
+            Tag: string.IsNullOrWhiteSpace(_model.DockerTag) ? "latest" : _model.DockerTag,
+            EnvironmentVariables: _server?.DockerConfig?.EnvironmentVariables,
+            Volumes: volumes.Count > 0 ? volumes : null,
+            Ports: _server?.DockerConfig?.Ports?.Select(p => new PortMappingRequest(p.HostPort, p.ContainerPort, p.Protocol)).ToList(),
+            Network: string.IsNullOrWhiteSpace(_model.DockerNetwork) ? null : _model.DockerNetwork,
+            Limits: BuildResourceLimits(),
+            RestartPolicy: _model.RestartPolicy,
+            Command: string.IsNullOrWhiteSpace(_model.DockerCommand) ? null : _model.DockerCommand,
+            WorkingDirectory: string.IsNullOrWhiteSpace(_model.DockerWorkingDirectory) ? null : _model.DockerWorkingDirectory,
+            RunAsRoot: _model.RunAsRoot
+        );
+    }
+
+    private NativeConfigurationRequest? BuildNativeConfig()
+    {
+        var workingDir = string.IsNullOrWhiteSpace(_model.NativeWorkingDirectory) ? _model.InstallPath : _model.NativeWorkingDirectory;
+        var executable = string.IsNullOrWhiteSpace(_model.NativeExecutablePath) ? _game?.DefaultExecutablePath : _model.NativeExecutablePath;
+
+        return new NativeConfigurationRequest(
+            WorkingDirectory: workingDir ?? _model.InstallPath,
+            ExecutablePath: executable ?? "",
+            Arguments: _model.NativeArguments,
+            EnvironmentVariables: _server?.NativeConfig?.EnvironmentVariables,
+            JavaPath: string.IsNullOrWhiteSpace(_model.JavaPath) ? null : _model.JavaPath,
+            JavaArguments: string.IsNullOrWhiteSpace(_model.JavaArguments) ? null : _model.JavaArguments,
+            RunAsService: _server?.NativeConfig?.RunAsService ?? false,
+            RunAsUser: _server?.NativeConfig?.RunAsUser
+        );
+    }
+
+    private RconConfigurationRequest? BuildRconConfig()
+    {
+        if (_model.RconPort <= 0)
+            return null;
+
+        return new RconConfigurationRequest(
+            Enabled: true,
+            Protocol: _model.RconProtocol,
+            Host: "localhost",
+            Port: _model.RconPort,
+            Password: string.IsNullOrWhiteSpace(_model.RconPassword) ? _server?.RconConfig?.Password : _model.RconPassword,
+            UseWebSocket: _server?.RconConfig?.UseWebSocket ?? false,
+            WebRconPath: _server?.RconConfig?.WebRconPath,
+            TimeoutSeconds: _model.RconTimeout
+        );
+    }
+
+    private ResourceLimitsRequest? BuildResourceLimits()
+    {
+        if (_model.MaxMemoryMb <= 0 && _model.MaxCpuPercent <= 0)
+            return null;
+
+        return new ResourceLimitsRequest(
+            MaxMemoryMb: _model.MaxMemoryMb > 0 ? _model.MaxMemoryMb : null,
+            MaxCpuPercent: _model.MaxCpuPercent > 0 ? _model.MaxCpuPercent : null,
+            MaxDiskMb: _server?.ResourceLimits?.MaxDiskMb,
+            MaxNetworkMbps: _server?.ResourceLimits?.MaxNetworkMbps
+        );
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo($"/servers/{ServerId}");
+    }
+
+    private void OpenRelocateModal()
+    {
+        _showRelocateModal = true;
+    }
+
+    private void CloseRelocateModal()
+    {
+        _showRelocateModal = false;
+    }
+
+    private async Task OnRelocationComplete()
+    {
+        _showRelocateModal = false;
+        _success = "Server relocated successfully.";
+        // Reload server data to get updated paths
+        await LoadServerAsync();
+    }
+
+    private class ServerEditModel
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public string? IconUrl { get; set; }
+        public string InstallPath { get; set; } = "";
+        public int PrimaryPort { get; set; } = 25565;
+        public string BindAddress { get; set; } = "0.0.0.0";
+        public int RconPort { get; set; }
+        public int QueryPort { get; set; }
+
+        // Native config
+        public string? NativeWorkingDirectory { get; set; }
+        public string? NativeExecutablePath { get; set; }
+        public string? NativeArguments { get; set; }
+        public string? JavaPath { get; set; }
+        public string? JavaArguments { get; set; }
+
+        // Docker config
+        public string? DockerImage { get; set; }
+        public string? DockerTag { get; set; }
+        public string? DockerNetwork { get; set; }
+        public RestartPolicy RestartPolicy { get; set; } = RestartPolicy.None;
+        public string? DockerCommand { get; set; }
+        public string? DockerWorkingDirectory { get; set; }
+        public bool RunAsRoot { get; set; }
+
+        // Resource limits
+        public int MaxMemoryMb { get; set; }
+        public int MaxCpuPercent { get; set; }
+
+        // RCON config
+        public RconProtocolType RconProtocol { get; set; } = RconProtocolType.Source;
+        public string? RconPassword { get; set; }
+        public int RconTimeout { get; set; } = 10;
+    }
+}

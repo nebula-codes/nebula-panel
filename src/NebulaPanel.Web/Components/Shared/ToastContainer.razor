@@ -1,0 +1,138 @@
+@implements IDisposable
+@inject IToastService ToastService
+
+<div class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+    @foreach (var toast in _toasts)
+    {
+        <div class="@GetToastClasses(toast.Type) pointer-events-auto animate-slide-in"
+             @key="toast.Id">
+            <div class="flex items-start gap-3">
+                <div class="flex-shrink-0 mt-0.5">
+                    <Icon Name="@GetIconName(toast.Type)" Size="IconSize.Small" Class="@GetIconClass(toast.Type)" />
+                </div>
+                <div class="flex-1 min-w-0">
+                    @if (!string.IsNullOrEmpty(toast.Title))
+                    {
+                        <div class="flex items-center gap-2">
+                            <p class="font-medium text-nebula-text-primary text-sm">@toast.Title</p>
+                            @if (toast.Count > 1)
+                            {
+                                <span class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-nebula-bg-tertiary text-nebula-text-secondary">
+                                    @toast.Count
+                                </span>
+                            }
+                        </div>
+                    }
+                    <p class="text-sm text-nebula-text-secondary">
+                        @if (toast.Count > 1 && string.IsNullOrEmpty(toast.Title))
+                        {
+                            <span class="font-medium">(@toast.Count) </span>
+                        }
+                        @toast.Message
+                    </p>
+                </div>
+                <button @onclick="() => Dismiss(toast.Id)"
+                        class="flex-shrink-0 p-1 rounded hover:bg-nebula-bg-tertiary transition-colors -mr-1 -mt-1">
+                    <Icon Name="x" Size="IconSize.Small" Class="text-nebula-text-muted hover:text-nebula-text-primary" />
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<ToastMessage> _toasts = new();
+    private readonly Dictionary<Guid, Timer> _timers = new();
+    private static readonly TimeSpan GroupWindow = TimeSpan.FromSeconds(10);
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnShow += HandleShow;
+        ToastService.OnDismiss += Dismiss;
+    }
+
+    private void HandleShow(ToastMessage toast)
+    {
+        // Try to group with an existing toast that has the same GroupKey
+        var existing = _toasts.FirstOrDefault(t =>
+            t.GroupKey == toast.GroupKey &&
+            (DateTime.UtcNow - t.CreatedAt) < GroupWindow);
+
+        if (existing is not null)
+        {
+            // Merge: increment count, update message to latest
+            existing.Count++;
+
+            // Reset the auto-dismiss timer for the grouped toast
+            if (_timers.TryGetValue(existing.Id, out var existingTimer))
+            {
+                existingTimer.Change(toast.DurationMs, Timeout.Infinite);
+            }
+        }
+        else
+        {
+            // New toast
+            _toasts.Add(toast);
+
+            if (toast.DurationMs > 0)
+            {
+                var timer = new Timer(_ =>
+                {
+                    InvokeAsync(() => Dismiss(toast.Id));
+                }, null, toast.DurationMs, Timeout.Infinite);
+                _timers[toast.Id] = timer;
+            }
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Dismiss(Guid id)
+    {
+        _toasts.RemoveAll(t => t.Id == id);
+        if (_timers.TryGetValue(id, out var timer))
+        {
+            timer.Dispose();
+            _timers.Remove(id);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static string GetToastClasses(ToastType type) => type switch
+    {
+        ToastType.Success => "card p-4 border-l-4 border-l-nebula-success shadow-lg",
+        ToastType.Error => "card p-4 border-l-4 border-l-nebula-error shadow-lg",
+        ToastType.Warning => "card p-4 border-l-4 border-l-nebula-warning shadow-lg",
+        ToastType.Info => "card p-4 border-l-4 border-l-nebula-info shadow-lg",
+        _ => "card p-4 shadow-lg"
+    };
+
+    private static string GetIconName(ToastType type) => type switch
+    {
+        ToastType.Success => "check-circle",
+        ToastType.Error => "alert-circle",
+        ToastType.Warning => "alert-triangle",
+        ToastType.Info => "info",
+        _ => "info"
+    };
+
+    private static string GetIconClass(ToastType type) => type switch
+    {
+        ToastType.Success => "text-nebula-success",
+        ToastType.Error => "text-nebula-error",
+        ToastType.Warning => "text-nebula-warning",
+        ToastType.Info => "text-nebula-info",
+        _ => "text-nebula-text-muted"
+    };
+
+    public void Dispose()
+    {
+        ToastService.OnShow -= HandleShow;
+        ToastService.OnDismiss -= Dismiss;
+        foreach (var timer in _timers.Values)
+        {
+            timer.Dispose();
+        }
+        _timers.Clear();
+    }
+}

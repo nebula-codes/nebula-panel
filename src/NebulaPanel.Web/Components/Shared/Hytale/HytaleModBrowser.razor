@@ -1,0 +1,729 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Web.Components.Shared.DataGrid
+@inject IHytaleModService ModService
+@inject IToastService ToastService
+@implements IDisposable
+
+<div class="hytale-mod-browser">
+    @* Search Bar *@
+    <div class="mb-4">
+        <div class="relative">
+            <Icon Name="search" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+            <input type="text"
+                   class="input pl-10"
+                   placeholder="Search mods..."
+                   @bind="_searchQuery"
+                   @bind:after="OnSearchChanged" />
+            @if (!string.IsNullOrEmpty(_searchQuery))
+            {
+                <button type="button"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-nebula-text-muted hover:text-nebula-text-primary"
+                        @onclick="ClearSearch">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            }
+        </div>
+    </div>
+
+    @* Filters *@
+    <div class="flex flex-wrap items-center gap-4 mb-4">
+        @* Provider Pills *@
+        <div class="flex items-center gap-2">
+            <span class="text-sm text-nebula-text-muted">Provider:</span>
+            <FilterPills TValue="ModProviderType?"
+                         Options="_providerOptions"
+                         SelectedValue="_selectedProvider"
+                         SelectedValueChanged="OnProviderChanged"
+                         ShowAllOption="true"
+                         AllLabel="All" />
+        </div>
+
+        @* Sort By *@
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-nebula-text-muted">Sort:</label>
+            <select class="input input-sm w-40" @bind="_sortBy" @bind:after="OnFilterChanged">
+                <option value="@ModSearchSort.Downloads">Downloads</option>
+                <option value="@ModSearchSort.Updated">Recently Updated</option>
+                <option value="@ModSearchSort.Created">Newest</option>
+                <option value="@ModSearchSort.Name">Name</option>
+            </select>
+        </div>
+
+        @* View Toggle *@
+        <div class="ml-auto">
+            <ViewToggle Value="_viewMode" ValueChanged="OnViewModeChanged" StorageKey="hytale-mod-browser-view" />
+        </div>
+    </div>
+
+    @* Results Info *@
+    @if (!_isLoading && _totalResults > 0)
+    {
+        <div class="flex flex-wrap items-center gap-3 mb-4 text-sm">
+            <span class="text-nebula-text-secondary font-medium">
+                @_totalResults.ToString("N0") result@(_totalResults != 1 ? "s" : "")
+            </span>
+            @if (_resultCountByProvider.Count > 0)
+            {
+                <span class="text-nebula-text-muted">|</span>
+                @foreach (var (provider, count) in _resultCountByProvider.OrderByDescending(x => x.Value))
+                {
+                    <span class="px-2 py-0.5 rounded-full text-xs font-medium @GetProviderBadgeClass(provider)">
+                        @GetProviderName(provider): @count.ToString("N0")
+                    </span>
+                }
+            }
+        </div>
+    }
+
+    @* Error Display *@
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4 mb-6">
+            <div class="flex items-center gap-2">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                <span>@_error</span>
+                <button type="button" class="ml-auto hover:opacity-80" @onclick="() => _error = null">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            </div>
+        </div>
+    }
+
+    @* Results Section *@
+    <div>
+        @if (_isLoading)
+        {
+            @if (_viewMode == ViewMode.Grid)
+            {
+                <div class="text-center text-sm text-nebula-text-muted mb-4">@(_loadingStatus ?? "Loading mods...")</div>
+                <div class="results-grid">
+                    @for (int i = 0; i < 8; i++)
+                    {
+                        <SkeletonCard />
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="flex flex-col items-center justify-center py-12">
+                    <span class="spinner w-6 h-6"></span>
+                    <span class="mt-2 text-nebula-text-muted">@(_loadingStatus ?? "Loading mods...")</span>
+                </div>
+            }
+        }
+        else if (_displayedMods.Count > 0)
+        {
+            @if (_viewMode == ViewMode.Grid)
+            {
+                <div class="results-grid">
+                    @foreach (var mod in _displayedMods)
+                    {
+                        <HytaleModCard Mod="@mod"
+                                       OnClick="@(() => HandleViewDetails(mod))"
+                                       OnInstallClick="OpenInstallModal"
+                                       ShowProviderBadge="true"
+                                       ShowInstallButton="true" />
+                    }
+                </div>
+            }
+            else
+            {
+                @* Table/DataGrid View *@
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-nebula-border text-left text-nebula-text-muted">
+                                <th class="pb-3 font-medium cursor-pointer hover:text-nebula-text-primary select-none"
+                                    @onclick="@(() => SortByColumn("name"))">
+                                    <div class="flex items-center gap-1">
+                                        Mod
+                                        @if (_tableSortColumn == "name")
+                                        {
+                                            <Icon Name="@(_tableSortAscending ? "chevron-up" : "chevron-down")"
+                                                  Size="IconSize.XSmall" Class="text-nebula-accent" />
+                                        }
+                                    </div>
+                                </th>
+                                <th class="pb-3 font-medium cursor-pointer hover:text-nebula-text-primary select-none"
+                                    @onclick="@(() => SortByColumn("author"))">
+                                    <div class="flex items-center gap-1">
+                                        Author
+                                        @if (_tableSortColumn == "author")
+                                        {
+                                            <Icon Name="@(_tableSortAscending ? "chevron-up" : "chevron-down")"
+                                                  Size="IconSize.XSmall" Class="text-nebula-accent" />
+                                        }
+                                    </div>
+                                </th>
+                                <th class="pb-3 font-medium cursor-pointer hover:text-nebula-text-primary select-none"
+                                    @onclick="@(() => SortByColumn("provider"))">
+                                    <div class="flex items-center gap-1">
+                                        Provider
+                                        @if (_tableSortColumn == "provider")
+                                        {
+                                            <Icon Name="@(_tableSortAscending ? "chevron-up" : "chevron-down")"
+                                                  Size="IconSize.XSmall" Class="text-nebula-accent" />
+                                        }
+                                    </div>
+                                </th>
+                                <th class="pb-3 font-medium text-right cursor-pointer hover:text-nebula-text-primary select-none"
+                                    @onclick="@(() => SortByColumn("downloads"))">
+                                    <div class="flex items-center justify-end gap-1">
+                                        Downloads
+                                        @if (_tableSortColumn == "downloads")
+                                        {
+                                            <Icon Name="@(_tableSortAscending ? "chevron-up" : "chevron-down")"
+                                                  Size="IconSize.XSmall" Class="text-nebula-accent" />
+                                        }
+                                    </div>
+                                </th>
+                                <th class="pb-3 font-medium text-right cursor-pointer hover:text-nebula-text-primary select-none"
+                                    @onclick="@(() => SortByColumn("updated"))">
+                                    <div class="flex items-center justify-end gap-1">
+                                        Updated
+                                        @if (_tableSortColumn == "updated")
+                                        {
+                                            <Icon Name="@(_tableSortAscending ? "chevron-up" : "chevron-down")"
+                                                  Size="IconSize.XSmall" Class="text-nebula-accent" />
+                                        }
+                                    </div>
+                                </th>
+                                <th class="pb-3 font-medium text-right w-24">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-nebula-border-subtle">
+                            @foreach (var mod in _displayedMods)
+                            {
+                                <tr class="hover:bg-nebula-bg-secondary cursor-pointer transition-colors"
+                                    @onclick="@(() => HandleViewDetails(mod))">
+                                    <td class="py-3">
+                                        <div class="flex items-center gap-3">
+                                            @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                            {
+                                                <img src="@mod.IconUrl" alt="@mod.Name" class="w-8 h-8 rounded object-cover" />
+                                            }
+                                            else
+                                            {
+                                                <div class="w-8 h-8 rounded bg-nebula-bg-tertiary flex items-center justify-center">
+                                                    <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                                </div>
+                                            }
+                                            <div>
+                                                <div class="font-medium text-nebula-text-primary">@mod.Name</div>
+                                                @if (!string.IsNullOrEmpty(mod.Summary))
+                                                {
+                                                    <div class="text-xs text-nebula-text-muted truncate max-w-xs">@mod.Summary</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 text-nebula-text-secondary">@mod.Author</td>
+                                    <td class="py-3">
+                                        <span class="px-2 py-0.5 rounded-full text-xs font-medium @GetProviderBadgeClass(mod.Provider)">
+                                            @GetProviderName(mod.Provider)
+                                        </span>
+                                    </td>
+                                    <td class="py-3 text-right text-nebula-text-secondary">@FormatNumber(mod.Downloads)</td>
+                                    <td class="py-3 text-right text-nebula-text-muted">@FormatRelativeTime(mod.UpdatedAt)</td>
+                                    <td class="py-3 text-right" @onclick:stopPropagation="true">
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Size="ButtonSize.Small"
+                                                Text="Install"
+                                                IconName="download"
+                                                OnClick="@(() => OpenInstallModal(mod))" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @* Pagination / Load More *@
+            @if (_viewMode == ViewMode.Grid)
+            {
+                @* Grid view: Load More button *@
+                @if (_hasMore)
+                {
+                    <div class="flex justify-center mt-6">
+                        <Button Variant="ButtonVariant.Secondary"
+                                Text="Load More"
+                                OnClick="LoadMore" />
+                    </div>
+                }
+            }
+            else
+            {
+                @* Table view: Pagination controls *@
+                @if (_totalResults > CurrentPageSize)
+                {
+                    <div class="flex items-center justify-between mt-6 pt-4 border-t border-nebula-border-subtle">
+                        <span class="text-sm text-nebula-text-muted">
+                            Showing @((_currentPage - 1) * CurrentPageSize + 1)-@Math.Min(_currentPage * CurrentPageSize, _totalResults) of @_totalResults
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="ButtonVariant.Secondary"
+                                    Size="ButtonSize.Small"
+                                    Text="Previous"
+                                    Disabled="@(_currentPage <= 1)"
+                                    OnClick="GoToPreviousPage" />
+                            <span class="text-sm text-nebula-text-secondary px-3">
+                                Page @_currentPage of @TotalPages
+                            </span>
+                            <Button Variant="ButtonVariant.Secondary"
+                                    Size="ButtonSize.Small"
+                                    Text="Next"
+                                    Disabled="@(_currentPage >= TotalPages)"
+                                    OnClick="GoToNextPage" />
+                        </div>
+                    </div>
+                }
+            }
+        }
+        else if (!_isLoading)
+        {
+            <EmptyState
+                IconName="package"
+                Heading="No mods found"
+                Description="@GetEmptyStateDescription()" />
+        }
+    </div>
+</div>
+
+@* Mod Details Modal *@
+<HytaleModBrowseDetailsModal Mod="_selectedModForDetails"
+                              IsOpen="_showDetailModal"
+                              OnClose="CloseDetailModal"
+                              OnInstall="HandleInstallFromDetails" />
+
+@* Install Modal *@
+<HytaleModInstallModal Mod="_modToInstall"
+                       Provider="@(_modToInstall?.Provider ?? ModProviderType.Modtale)"
+                       ServerId="ServerId"
+                       IsOpen="_showInstallModal"
+                       OnClose="CloseInstallModal"
+                       OnInstalled="HandleModInstalled" />
+
+@code {
+    /// <summary>
+    /// The server ID to install mods to.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Callback when a mod is selected for viewing details / installing.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ModSearchItem> OnModSelected { get; set; }
+
+    /// <summary>
+    /// Callback when a mod has been installed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnModInstalled { get; set; }
+
+    // Search/filter state
+    private string _searchQuery = "";
+    private ModProviderType? _selectedProvider;
+    private ModSearchSort _sortBy = ModSearchSort.Downloads;
+    private ViewMode _viewMode = ViewMode.Grid;
+
+    // All mods (loaded once)
+    private List<ModSearchItem> _allMods = [];
+    private Dictionary<ModProviderType, int> _providerTotals = new();
+
+    // Filtered/paginated results (computed from _allMods)
+    private List<ModSearchItem> _filteredMods = [];
+    private List<ModSearchItem> _displayedMods = [];
+    private int _currentPage = 1;
+
+    // Loading state
+    private bool _isLoading;
+    private string? _error;
+    private string? _loadingStatus;
+
+    // Debounce for search
+    private Timer? _debounceTimer;
+    private const int DebounceMs = 150;
+
+    // Filter options
+    private readonly List<FilterPillOption<ModProviderType?>> _providerOptions =
+    [
+        new(ModProviderType.Modtale, "Modtale"),
+        new(ModProviderType.CurseForge, "CurseForge")
+    ];
+
+    // Pagination - different sizes per view
+    private const int GridPageSize = 12;
+    private const int TablePageSize = 10;
+
+    // Table sorting state
+    private string _tableSortColumn = "downloads";
+    private bool _tableSortAscending = false; // Descending by default for downloads
+
+    // Detail modal state
+    private bool _showDetailModal;
+    private ModSearchItem? _selectedModForDetails;
+
+    // Install modal state
+    private bool _showInstallModal;
+    private ModSearchItem? _modToInstall;
+
+    // Computed properties
+    private int CurrentPageSize => _viewMode == ViewMode.Grid ? GridPageSize : TablePageSize;
+    private int TotalPages => _filteredMods.Count > 0 ? (int)Math.Ceiling((double)_filteredMods.Count / CurrentPageSize) : 1;
+    private int _totalResults => _filteredMods.Count;
+    private Dictionary<ModProviderType, int> _resultCountByProvider =>
+        _filteredMods.GroupBy(m => m.Provider).ToDictionary(g => g.Key, g => g.Count());
+    private bool _hasMore => _displayedMods.Count < _filteredMods.Count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllModsAsync();
+    }
+
+    private async Task LoadAllModsAsync()
+    {
+        _isLoading = true;
+        _error = null;
+        _loadingStatus = "Loading mods from all providers...";
+        StateHasChanged();
+
+        try
+        {
+            var allMods = new List<ModSearchItem>();
+
+            // Load from all providers in parallel with large page sizes
+            var tasks = new List<Task<List<ModSearchItem>>>();
+
+            // Load Modtale (max 100 per page)
+            tasks.Add(LoadProviderModsAsync(ModProviderType.Modtale, 100));
+
+            // Load CurseForge (max 50 per page)
+            tasks.Add(LoadProviderModsAsync(ModProviderType.CurseForge, 50));
+
+            var results = await Task.WhenAll(tasks);
+
+            foreach (var mods in results)
+            {
+                allMods.AddRange(mods);
+            }
+
+            _allMods = allMods;
+            _providerTotals = _allMods.GroupBy(m => m.Provider).ToDictionary(g => g.Key, g => g.Count());
+
+            // Apply initial filter/sort
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load mods: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            _loadingStatus = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<List<ModSearchItem>> LoadProviderModsAsync(ModProviderType provider, int pageSize)
+    {
+        var allMods = new List<ModSearchItem>();
+        var page = 1;
+        var hasMore = true;
+
+        while (hasMore)
+        {
+            try
+            {
+                _loadingStatus = $"Loading {provider} mods (page {page})...";
+                await InvokeAsync(StateHasChanged);
+
+                var query = new ModSearchQuery(
+                    Query: null,
+                    GameSlug: "hytale",
+                    GameVersion: null,
+                    ModLoader: null,
+                    Sort: ModSearchSort.Downloads,
+                    Page: page,
+                    PageSize: pageSize
+                );
+
+                var result = await ModService.SearchProviderAsync(provider, query);
+                allMods.AddRange(result.Mods);
+
+                hasMore = result.Mods.Count == pageSize && page < result.TotalPages;
+                page++;
+
+                // Safety limit
+                if (page > 50) break;
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail entirely
+                Console.WriteLine($"Error loading {provider} page {page}: {ex.Message}");
+                break;
+            }
+        }
+
+        return allMods;
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = _allMods.AsEnumerable();
+
+        // Filter by provider
+        if (_selectedProvider.HasValue)
+        {
+            filtered = filtered.Where(m => m.Provider == _selectedProvider.Value);
+        }
+
+        // Filter by search query
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            var query = _searchQuery.ToLowerInvariant();
+            filtered = filtered.Where(m =>
+                m.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                (m.Summary?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.Author?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        // Apply sorting based on view mode
+        if (_viewMode == ViewMode.Table)
+        {
+            // Table view: use column sorting
+            filtered = (_tableSortColumn, _tableSortAscending) switch
+            {
+                ("name", true) => filtered.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase),
+                ("name", false) => filtered.OrderByDescending(m => m.Name, StringComparer.OrdinalIgnoreCase),
+                ("author", true) => filtered.OrderBy(m => m.Author ?? "", StringComparer.OrdinalIgnoreCase),
+                ("author", false) => filtered.OrderByDescending(m => m.Author ?? "", StringComparer.OrdinalIgnoreCase),
+                ("provider", true) => filtered.OrderBy(m => m.Provider.ToString()),
+                ("provider", false) => filtered.OrderByDescending(m => m.Provider.ToString()),
+                ("downloads", true) => filtered.OrderBy(m => m.Downloads),
+                ("downloads", false) => filtered.OrderByDescending(m => m.Downloads),
+                ("updated", true) => filtered.OrderBy(m => m.UpdatedAt ?? DateTime.MinValue),
+                ("updated", false) => filtered.OrderByDescending(m => m.UpdatedAt ?? DateTime.MinValue),
+                _ => filtered.OrderByDescending(m => m.Downloads)
+            };
+        }
+        else
+        {
+            // Grid view: use dropdown sort
+            filtered = _sortBy switch
+            {
+                ModSearchSort.Downloads => filtered.OrderByDescending(m => m.Downloads),
+                ModSearchSort.Updated => filtered.OrderByDescending(m => m.UpdatedAt ?? DateTime.MinValue),
+                ModSearchSort.Created => filtered.OrderByDescending(m => m.UpdatedAt ?? DateTime.MinValue),
+                ModSearchSort.Name => filtered.OrderBy(m => m.Name),
+                _ => filtered.OrderByDescending(m => m.Downloads)
+            };
+        }
+
+        _filteredMods = filtered.ToList();
+        _currentPage = 1;
+        UpdateDisplayedMods();
+    }
+
+    private void UpdateDisplayedMods()
+    {
+        var pageSize = CurrentPageSize;
+        if (_viewMode == ViewMode.Grid)
+        {
+            // Grid view: show all loaded so far (for infinite scroll / load more)
+            _displayedMods = _filteredMods.Take(_currentPage * pageSize).ToList();
+        }
+        else
+        {
+            // Table view: show current page only
+            _displayedMods = _filteredMods
+                .Skip((_currentPage - 1) * pageSize)
+                .Take(pageSize)
+                .ToList();
+        }
+        StateHasChanged();
+    }
+
+    private void OnSearchChanged()
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                ApplyFilters();
+                StateHasChanged();
+            });
+        }, null, DebounceMs, Timeout.Infinite);
+    }
+
+    private void OnFilterChanged()
+    {
+        ApplyFilters();
+    }
+
+    private void OnProviderChanged(ModProviderType? provider)
+    {
+        _selectedProvider = provider;
+        ApplyFilters();
+    }
+
+    private void ClearSearch()
+    {
+        _searchQuery = "";
+        ApplyFilters();
+    }
+
+    private void LoadMore()
+    {
+        _currentPage++;
+        UpdateDisplayedMods();
+    }
+
+    private void GoToPreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+            UpdateDisplayedMods();
+        }
+    }
+
+    private void GoToNextPage()
+    {
+        if (_currentPage < TotalPages)
+        {
+            _currentPage++;
+            UpdateDisplayedMods();
+        }
+    }
+
+    private void OnViewModeChanged(ViewMode newMode)
+    {
+        var oldMode = _viewMode;
+        _viewMode = newMode;
+
+        // When switching views, reset to page 1 and reapply filters (includes sorting)
+        if (newMode != oldMode)
+        {
+            _currentPage = 1;
+            ApplyFilters();
+        }
+    }
+
+    private void SortByColumn(string column)
+    {
+        if (_tableSortColumn == column)
+        {
+            _tableSortAscending = !_tableSortAscending;
+        }
+        else
+        {
+            _tableSortColumn = column;
+            // Default descending for numeric columns, ascending for text
+            _tableSortAscending = column is "name" or "author" or "provider";
+        }
+        ApplyFilters();
+    }
+
+    private void HandleViewDetails(ModSearchItem mod)
+    {
+        _selectedModForDetails = mod;
+        _showDetailModal = true;
+    }
+
+    private void CloseDetailModal()
+    {
+        _showDetailModal = false;
+        _selectedModForDetails = null;
+    }
+
+    private void HandleInstallFromDetails(ModSearchItem mod)
+    {
+        CloseDetailModal();
+        OpenInstallModal(mod);
+    }
+
+    private void OpenInstallModal(ModSearchItem mod)
+    {
+        _modToInstall = mod;
+        _showInstallModal = true;
+    }
+
+    private void CloseInstallModal()
+    {
+        _showInstallModal = false;
+        _modToInstall = null;
+    }
+
+    private async Task HandleModInstalled()
+    {
+        CloseInstallModal();
+        ToastService.ShowSuccess("Mod installed successfully!");
+        await OnModInstalled.InvokeAsync();
+    }
+
+    private string GetEmptyStateDescription()
+    {
+        if (!string.IsNullOrEmpty(_searchQuery))
+        {
+            return $"No mods found matching \"{_searchQuery}\". Try broadening your search.";
+        }
+        if (_selectedProvider != null)
+        {
+            return "No mods found from this provider. Try selecting a different provider.";
+        }
+        return "Unable to load mods. Please try again later.";
+    }
+
+    private static string GetProviderBadgeClass(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "bg-blue-500/20 text-blue-400",
+        ModProviderType.CurseForge => "bg-orange-500/20 text-orange-400",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static string GetProviderName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.CurseForge => "CurseForge",
+        _ => provider.ToString()
+    };
+
+    private static string FormatNumber(long number)
+    {
+        return number switch
+        {
+            >= 1_000_000 => $"{number / 1_000_000.0:0.#}M",
+            >= 1_000 => $"{number / 1_000.0:0.#}K",
+            _ => number.ToString("N0")
+        };
+    }
+
+    private static string FormatRelativeTime(DateTime? date)
+    {
+        if (!date.HasValue)
+            return "Unknown";
+        var diff = DateTime.UtcNow - date.Value;
+        if (diff.TotalDays < 1)
+            return diff.TotalHours < 1 ? "Just now" : $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7)
+            return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30)
+            return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365)
+            return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

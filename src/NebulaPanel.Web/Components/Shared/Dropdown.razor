@@ -1,0 +1,126 @@
+@implements IDisposable
+
+<div class="relative inline-block" @onclick:stopPropagation="true">
+    <div @onclick="Toggle">
+        @if (Trigger != null)
+        {
+            @Trigger
+        }
+        else
+        {
+            <Button Variant="Button.ButtonVariant.Ghost"
+                    Size="Button.ButtonSize.Small"
+                    IconName="@(TriggerIcon ?? "more-vertical")"
+                    IconOnly="true" />
+        }
+    </div>
+
+    @if (_isOpen)
+    {
+        <CascadingValue Value="this" IsFixed="true">
+            <div class="@MenuClasses" style="@MenuStyle">
+                @ChildContent
+            </div>
+        </CascadingValue>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? Trigger { get; set; }
+
+    [Parameter]
+    public string? TriggerIcon { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public DropdownPosition Position { get; set; } = DropdownPosition.BottomRight;
+
+    [Parameter]
+    public string? Width { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public EventCallback OnOpen { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private bool _isOpen;
+
+    private string MenuClasses
+    {
+        get
+        {
+            var classes = new List<string>
+            {
+                "dropdown-menu",
+                GetPositionClass()
+            };
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string MenuStyle
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Width))
+                return $"min-width: {Width};";
+            return "min-width: 160px;";
+        }
+    }
+
+    private string GetPositionClass() => Position switch
+    {
+        DropdownPosition.BottomLeft => "dropdown-bottom-left",
+        DropdownPosition.BottomRight => "dropdown-bottom-right",
+        DropdownPosition.TopLeft => "dropdown-top-left",
+        DropdownPosition.TopRight => "dropdown-top-right",
+        _ => "dropdown-bottom-right"
+    };
+
+    private async Task Toggle()
+    {
+        _isOpen = !_isOpen;
+        if (_isOpen)
+        {
+            await OnOpen.InvokeAsync();
+        }
+        else
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    public async Task Close()
+    {
+        if (_isOpen)
+        {
+            _isOpen = false;
+            await OnClose.InvokeAsync();
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        // Clean up if needed
+    }
+
+    public enum DropdownPosition
+    {
+        BottomLeft,
+        BottomRight,
+        TopLeft,
+        TopRight
+    }
+}

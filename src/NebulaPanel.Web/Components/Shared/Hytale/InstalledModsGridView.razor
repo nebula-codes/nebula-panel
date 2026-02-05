@@ -1,0 +1,289 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+
+<div class="installed-mods-gridview">
+    @if (Loading)
+    {
+        <div class="grid-skeleton">
+            @for (var i = 0; i < 6; i++)
+            {
+                <div class="skeleton-card">
+                    <div class="skeleton-header">
+                        <div class="skeleton-icon"></div>
+                        <div class="skeleton-toggle"></div>
+                    </div>
+                    <div class="skeleton-body">
+                        <div class="skeleton-name"></div>
+                        <div class="skeleton-author"></div>
+                        <div class="skeleton-meta"></div>
+                        <div class="skeleton-date"></div>
+                    </div>
+                    <div class="skeleton-footer"></div>
+                </div>
+            }
+        </div>
+    }
+    else if (!Mods.Any())
+    {
+        <EmptyState IconName="package"
+                    Heading="No mods installed"
+                    Description="Browse and install mods to enhance your server.">
+            <Actions>
+                <Button Text="Browse Mods"
+                        Variant="Button.ButtonVariant.Primary"
+                        IconName="search"
+                        OnClick="HandleBrowseMods" />
+            </Actions>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="mods-grid">
+            @foreach (var mod in SortedMods)
+            {
+                <div class="mod-card @GetCardClasses(mod)" @onclick="() => HandleViewDetails(mod)">
+                    @* Update banner *@
+                    @if (mod.UpdateAvailable)
+                    {
+                        <div class="update-banner">
+                            <Icon Name="upload" Size="Icon.IconSize.XSmall" Class="update-icon" />
+                            <span class="update-text">Update: @mod.LatestVersion</span>
+                            <button class="update-btn"
+                                    disabled="@_busyMods.Contains(mod.Id)"
+                                    @onclick="() => HandleUpdate(mod)"
+                                    @onclick:stopPropagation="true">
+                                @if (_busyMods.Contains(mod.Id))
+                                {
+                                    <Icon Name="loader" Size="Icon.IconSize.XSmall" Class="animate-spin" />
+                                }
+                                else
+                                {
+                                    <span>Update</span>
+                                }
+                            </button>
+                        </div>
+                    }
+
+                    @* Card header with icon *@
+                    <div class="card-header">
+                        <div class="mod-icon-wrapper">
+                            @if (!string.IsNullOrEmpty(mod.IconUrl))
+                            {
+                                <img src="@mod.IconUrl" alt="@mod.Name" class="mod-icon" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="mod-icon-placeholder">
+                                    <Icon Name="package" Size="Icon.IconSize.Large" />
+                                </div>
+                            }
+
+                            @* Provider badge overlay *@
+                            <span class="provider-badge-small provider-@mod.Provider.ToString().ToLowerInvariant()"
+                                  title="@GetProviderDisplayName(mod.Provider)">
+                                @GetProviderIcon(mod.Provider)
+                            </span>
+                        </div>
+
+                        @* Enable/disable toggle *@
+                        <div @onclick:stopPropagation="true">
+                            <Toggle Value="@mod.IsEnabled"
+                                    ValueChanged="@(enabled => HandleToggleEnabled(mod, enabled))"
+                                    Size="Toggle.ToggleSize.Small"
+                                    Disabled="@_busyMods.Contains(mod.Id)" />
+                        </div>
+                    </div>
+
+                    @* Card body *@
+                    <div class="card-body">
+                        <h4 class="mod-name" title="@mod.Name">@mod.Name</h4>
+                        <p class="mod-author">by @(mod.Author ?? "Unknown")</p>
+
+                        <div class="mod-meta">
+                            <span class="version-badge">v@(mod.InstalledVersion)</span>
+                            <span class="file-size">@FormatFileSize(mod.FileSizeBytes)</span>
+                        </div>
+
+                        <p class="installed-date" title="@mod.InstalledAt.ToString("F")">
+                            Installed @FormatRelativeDate(mod.InstalledAt)
+                        </p>
+                    </div>
+
+                    @* Card footer actions *@
+                    <div class="card-footer" @onclick:stopPropagation="true">
+                        <Button Text="Details"
+                                IconName="eye"
+                                Variant="Button.ButtonVariant.Ghost"
+                                Size="Button.ButtonSize.Small"
+                                OnClick="@(() => HandleViewDetails(mod))" />
+                        <Button Text="Delete"
+                                IconName="trash-2"
+                                Variant="Button.ButtonVariant.Ghost"
+                                Size="Button.ButtonSize.Small"
+                                Class="btn-danger"
+                                Disabled="@_busyMods.Contains(mod.Id)"
+                                OnClick="@(() => HandleUninstall(mod))" />
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The list of installed mods to display.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<HytaleInstalledModInfo> Mods { get; set; } = [];
+
+    /// <summary>
+    /// Whether the data is currently loading.
+    /// </summary>
+    [Parameter]
+    public bool Loading { get; set; }
+
+    /// <summary>
+    /// Set of mod IDs currently being operated on (update, toggle, etc.).
+    /// </summary>
+    [Parameter]
+    public HashSet<Guid> BusyMods { get; set; } = [];
+
+    /// <summary>
+    /// Callback when user toggles a mod's enabled state.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(HytaleInstalledModInfo Mod, bool Enabled)> OnToggleEnabled { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks update on a mod.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnUpdate { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks uninstall on a mod.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnUninstall { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks to view mod details.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnViewDetails { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks browse mods button.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnBrowseMods { get; set; }
+
+    // Internal state for sorting
+    private string _sortColumn = "name";
+    private bool _sortAscending = true;
+    private HashSet<Guid> _busyMods => BusyMods;
+
+    private IEnumerable<HytaleInstalledModInfo> SortedMods => SortMods(Mods);
+
+    private async Task HandleToggleEnabled(HytaleInstalledModInfo mod, bool enabled)
+    {
+        await OnToggleEnabled.InvokeAsync((mod, enabled));
+    }
+
+    private async Task HandleUpdate(HytaleInstalledModInfo mod)
+    {
+        await OnUpdate.InvokeAsync(mod);
+    }
+
+    private async Task HandleUninstall(HytaleInstalledModInfo mod)
+    {
+        await OnUninstall.InvokeAsync(mod);
+    }
+
+    private async Task HandleViewDetails(HytaleInstalledModInfo mod)
+    {
+        await OnViewDetails.InvokeAsync(mod);
+    }
+
+    private async Task HandleBrowseMods()
+    {
+        await OnBrowseMods.InvokeAsync();
+    }
+
+    private IEnumerable<HytaleInstalledModInfo> SortMods(IEnumerable<HytaleInstalledModInfo> mods)
+    {
+        return _sortColumn switch
+        {
+            "name" => _sortAscending
+                ? mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+                : mods.OrderByDescending(m => m.Name, StringComparer.OrdinalIgnoreCase),
+            "author" => _sortAscending
+                ? mods.OrderBy(m => m.Author ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : mods.OrderByDescending(m => m.Author ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "size" => _sortAscending
+                ? mods.OrderBy(m => m.FileSizeBytes)
+                : mods.OrderByDescending(m => m.FileSizeBytes),
+            "installed" => _sortAscending
+                ? mods.OrderBy(m => m.InstalledAt)
+                : mods.OrderByDescending(m => m.InstalledAt),
+            _ => mods
+        };
+    }
+
+    private string GetCardClasses(HytaleInstalledModInfo mod)
+    {
+        var classes = new List<string> { "cursor-pointer" };
+
+        if (!mod.IsEnabled)
+            classes.Add("disabled");
+
+        if (mod.UpdateAvailable)
+            classes.Add("has-update");
+
+        if (_busyMods.Contains(mod.Id))
+            classes.Add("busy");
+
+        return string.Join(" ", classes);
+    }
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string GetProviderIcon(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "M",
+        ModProviderType.CurseForge => "C",
+        ModProviderType.Modrinth => "R",
+        ModProviderType.Local => "L",
+        _ => "?"
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+
+    private static string FormatRelativeDate(DateTime date)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - date.ToUniversalTime();
+
+        if (diff.TotalSeconds < 60) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+}

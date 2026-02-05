@@ -1,0 +1,780 @@
+@page "/servers/create/hytale"
+@attribute [Authorize]
+@using System.Security.Claims
+@using Microsoft.AspNetCore.SignalR.Client
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Web.Components.Shared.Hytale
+@inject IHytaleAuthService AuthService
+@inject IHytaleServerInstallService InstallService
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Create Hytale Server - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    @* Breadcrumb *@
+    <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-4">
+        <a href="/servers" class="hover:text-nebula-text-primary transition-colors">Servers</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <a href="/servers/create" class="hover:text-nebula-text-primary transition-colors">Create</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Hytale</span>
+    </nav>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Create Hytale Server</h1>
+    <p class="text-nebula-text-muted mb-6">Configure and install a new Hytale server.</p>
+
+    @* Step Indicator *@
+    <div class="flex items-center justify-center mb-8">
+        @for (int i = 1; i <= 3; i++)
+        {
+            var step = i;
+            <div class="flex items-center">
+                <div class="@GetStepClass(step)">
+                    @if (_currentStep > step)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" />
+                    }
+                    else
+                    {
+                        @step
+                    }
+                </div>
+                <span class="@GetStepLabelClass(step) ml-2 text-sm hidden sm:inline">@GetStepLabel(step)</span>
+                @if (i < 3)
+                {
+                    <div class="w-6 sm:w-12 h-0.5 mx-2 sm:mx-3 @(_currentStep > step ? "bg-nebula-accent" : "bg-nebula-border-subtle")"></div>
+                }
+            </div>
+        }
+    </div>
+
+    @* Error Display *@
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Step Content *@
+    @switch (_currentStep)
+    {
+        case 1:
+            @* Step 1: Authentication & Version Selection *@
+            @if (!_isAuthenticated)
+            {
+                @* Not authenticated - show connect prompt *@
+                <Card>
+                    <ChildContent>
+                        <div class="text-center py-8">
+                            <div class="w-20 h-20 bg-nebula-bg-tertiary rounded-full flex items-center justify-center mx-auto mb-6">
+                                <Icon Name="lock" Size="IconSize.XLarge" Class="text-nebula-accent" />
+                            </div>
+                            <h2 class="text-xl font-semibold text-nebula-text-primary mb-3">Connect Your Hytale Account</h2>
+                            <p class="text-nebula-text-muted mb-6 max-w-md mx-auto">
+                                To create a Hytale server, you need to connect your Hytale account.
+                                This allows Nebula Panel to download server files on your behalf.
+                            </p>
+                            <Button Variant="ButtonVariant.Primary" Text="Connect Hytale Account" OnClick="ShowAuthModal" />
+                        </div>
+                    </ChildContent>
+                </Card>
+
+                <div class="flex items-center justify-end gap-3 mt-6">
+                    <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+                </div>
+            }
+            else
+            {
+                @* Authenticated - show version selection *@
+                <Card>
+                    <Header>
+                        <div class="flex items-center justify-between w-full">
+                            <h2 class="text-lg font-medium text-nebula-text-primary">Select Version</h2>
+                            <HytaleTokenIndicator Credentials="_credentials" OnDisconnect="HandleDisconnect" />
+                        </div>
+                    </Header>
+                    <ChildContent>
+                        @if (_loadingVersions)
+                        {
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+                                <span class="ml-3 text-nebula-text-muted">Loading versions...</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-nebula-text-muted mb-6">
+                                Choose which release channel you want to use for your server.
+                            </p>
+
+                            <div class="space-y-4">
+                                @foreach (var patchline in InstallService.GetPatchlineInfos())
+                                {
+                                    var versionInfo = _versions.GetValueOrDefault(patchline.Patchline);
+                                    <div class="@GetPatchlineClass(patchline.Patchline)"
+                                         @onclick="() => SelectPatchline(patchline.Patchline)">
+                                        <div class="flex items-start gap-4">
+                                            <div class="pt-1">
+                                                <div class="@GetRadioClass(patchline.Patchline)">
+                                                    @if (_wizardData.Patchline == patchline.Patchline)
+                                                    {
+                                                        <div class="w-2.5 h-2.5 rounded-full bg-white"></div>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="flex-1">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-medium text-nebula-text-primary">@patchline.DisplayName</span>
+                                                    @if (patchline.IsRecommended)
+                                                    {
+                                                        <span class="text-xs px-2 py-0.5 rounded-full bg-nebula-accent/20 text-nebula-accent">Recommended</span>
+                                                    }
+                                                </div>
+                                                <p class="text-sm text-nebula-text-muted mt-1">@patchline.Description</p>
+                                                @if (versionInfo != null)
+                                                {
+                                                    <p class="text-sm text-nebula-accent mt-2">
+                                                        <Icon Name="package" Size="IconSize.Small" Class="inline mr-1" />
+                                                        Version: @versionInfo.Version
+                                                    </p>
+                                                }
+                                                else
+                                                {
+                                                    <p class="text-sm text-nebula-text-disabled mt-2">
+                                                        <Icon Name="alert-circle" Size="IconSize.Small" Class="inline mr-1" />
+                                                        Version unavailable
+                                                    </p>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </ChildContent>
+                </Card>
+
+                <div class="flex items-center justify-end gap-3 mt-6">
+                    <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+                    <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                            Disabled="@(string.IsNullOrEmpty(_wizardData.Patchline) || !_versions.ContainsKey(_wizardData.Patchline))"
+                            OnClick="NextStep" />
+                </div>
+            }
+            break;
+
+        case 2:
+            @* Step 2: Server Configuration *@
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between w-full">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Server Configuration</h2>
+                        <HytaleTokenIndicator Credentials="_credentials" Compact="true" ShowDisconnect="false" />
+                    </div>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-6">
+                        @* Server Name *@
+                        <div>
+                            <label class="block text-sm font-medium text-nebula-text-primary mb-2">Server Name</label>
+                            <input type="text" @bind="_wizardData.ServerName" @bind:event="oninput"
+                                   @onblur="UpdateInstallPath"
+                                   class="input" placeholder="My Hytale Server" />
+                        </div>
+
+                        @* Install Path *@
+                        <div>
+                            <label class="block text-sm font-medium text-nebula-text-primary mb-2">Install Path</label>
+                            <input type="text" @bind="_wizardData.InstallPath" class="input"
+                                   placeholder="@InstallService.GetDefaultInstallPath("hytale-server")" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Directory where server files will be installed.</p>
+                        </div>
+
+                        @* Port *@
+                        <div>
+                            <label class="block text-sm font-medium text-nebula-text-primary mb-2">Port</label>
+                            <input type="number" @bind="_wizardData.Port" class="input" min="1" max="65535" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Default Hytale port is 5520.</p>
+                        </div>
+
+                        @* Memory Allocation *@
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-nebula-text-primary mb-2">Min Memory (MB)</label>
+                                <input type="number" @bind="_wizardData.MinMemoryMb" class="input" min="512" step="512" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-nebula-text-primary mb-2">Max Memory (MB)</label>
+                                <input type="number" @bind="_wizardData.MaxMemoryMb" class="input" min="1024" step="512" />
+                            </div>
+                        </div>
+
+                        @* Advanced JVM Settings (Collapsible) *@
+                        <div class="border border-nebula-border-subtle rounded-nebula overflow-hidden">
+                            <button type="button"
+                                    class="w-full flex items-center justify-between p-4 text-left hover:bg-nebula-bg-tertiary transition-colors"
+                                    @onclick="() => _showAdvancedSettings = !_showAdvancedSettings">
+                                <span class="text-sm font-medium text-nebula-text-primary">Advanced JVM Settings</span>
+                                <Icon Name="@(_showAdvancedSettings ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            </button>
+                            @if (_showAdvancedSettings)
+                            {
+                                <div class="p-4 pt-0 border-t border-nebula-border-subtle">
+                                    <div>
+                                        <label class="block text-sm font-medium text-nebula-text-primary mb-2">Custom JVM Arguments</label>
+                                        <input type="text" @bind="_wizardData.CustomJvmArguments" class="input"
+                                               placeholder="-XX:+UseG1GC -Dfile.encoding=UTF-8" />
+                                        <p class="text-xs text-nebula-text-muted mt-1">
+                                            Optional JVM arguments appended after memory settings. Example: <code class="text-nebula-accent">-XX:+UseG1GC</code>
+                                        </p>
+                                        <div class="flex items-start gap-2 mt-2 p-2 bg-nebula-warning/10 rounded text-xs text-nebula-warning">
+                                            <Icon Name="alert-triangle" Size="IconSize.Small" Class="flex-shrink-0 mt-0.5" />
+                                            <span>Invalid arguments may prevent the server from starting. Memory settings (-Xms, -Xmx) should be set using the fields above.</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @* Deployment Type *@
+                        <div>
+                            <label class="block text-sm font-medium text-nebula-text-primary mb-2">Deployment Type</label>
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="@GetDeploymentClass(ServerDeploymentType.Native)"
+                                     @onclick="() => _wizardData.DeploymentType = ServerDeploymentType.Native">
+                                    <Icon Name="terminal" Size="IconSize.Large" Class="mb-2 text-nebula-accent" />
+                                    <span class="font-medium text-nebula-text-primary">Native Process</span>
+                                    <span class="text-xs text-nebula-text-muted mt-1">Run directly on host</span>
+                                </div>
+                                <div class="@GetDeploymentClass(ServerDeploymentType.Docker)"
+                                     @onclick="() => _wizardData.DeploymentType = ServerDeploymentType.Docker">
+                                    <Icon Name="box" Size="IconSize.Large" Class="mb-2 text-nebula-secondary" />
+                                    <span class="font-medium text-nebula-text-primary">Docker Container</span>
+                                    <span class="text-xs text-nebula-text-muted mt-1">Isolated environment</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                        Disabled="@(!IsConfigValid())" OnClick="NextStep" />
+            </div>
+            break;
+
+        case 3:
+            @* Step 3: Review & Install *@
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between w-full">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Review & Install</h2>
+                        <HytaleTokenIndicator Credentials="_credentials" Compact="true" ShowDisconnect="false" />
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (!_installing)
+                    {
+                        <div class="space-y-4">
+                            <div class="bg-nebula-bg-tertiary rounded-nebula p-4 space-y-3">
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Server Name</span>
+                                    <span class="text-nebula-text-primary font-medium">@_wizardData.ServerName</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Version</span>
+                                    <span class="text-nebula-text-primary font-medium">@GetVersionDisplay()</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Install Path</span>
+                                    <span class="text-nebula-text-primary font-medium text-sm truncate max-w-xs">@_wizardData.InstallPath</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Port</span>
+                                    <span class="text-nebula-text-primary font-medium">@_wizardData.Port</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Memory</span>
+                                    <span class="text-nebula-text-primary font-medium">@_wizardData.MinMemoryMb MB - @_wizardData.MaxMemoryMb MB</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Deployment</span>
+                                    <span class="text-nebula-text-primary font-medium">@(_wizardData.DeploymentType == ServerDeploymentType.Native ? "Native Process" : "Docker")</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(_wizardData.CustomJvmArguments))
+                                {
+                                    <div class="flex justify-between">
+                                        <span class="text-nebula-text-muted">Custom JVM Args</span>
+                                        <span class="text-nebula-text-primary font-medium text-sm truncate max-w-xs" title="@_wizardData.CustomJvmArguments">@_wizardData.CustomJvmArguments</span>
+                                    </div>
+                                }
+                            </div>
+
+                            @if (_credentials != null && _credentials.TimeRemaining.TotalHours < 24)
+                            {
+                                <div class="bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula p-4">
+                                    <div class="flex items-center gap-2">
+                                        <Icon Name="alert-triangle" Size="IconSize.Small" />
+                                        <span>Your Hytale token expires in @FormatTimeRemaining(_credentials.TimeRemaining). Consider refreshing before installation.</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        @* Installation Progress *@
+                        <div class="space-y-6">
+                            <div class="text-center">
+                                <div class="text-lg font-medium text-nebula-text-primary mb-2">
+                                    @(_currentProgress?.Phase ?? "Installing")
+                                </div>
+                                <div class="text-sm text-nebula-text-muted">
+                                    @(_currentProgress?.Message ?? "Please wait...")
+                                </div>
+                            </div>
+
+                            @* Progress Bar *@
+                            <div class="h-2 bg-nebula-bg-tertiary rounded-full overflow-hidden">
+                                <div class="h-full bg-gradient-to-r from-nebula-accent to-purple-400 transition-all duration-300 ease-out progress-bar-animated"
+                                     style="width: @(_currentProgress?.Percentage ?? 0)%"></div>
+                            </div>
+
+                            @if (_currentProgress?.BytesDownloaded > 0 && _currentProgress?.TotalBytes > 0)
+                            {
+                                <div class="text-center text-sm text-nebula-text-muted">
+                                    @FormatBytes(_currentProgress.BytesDownloaded.Value) / @FormatBytes(_currentProgress.TotalBytes.Value)
+                                </div>
+                            }
+
+                            @if (_currentProgress?.HasError == true)
+                            {
+                                <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4">
+                                    <div class="flex items-center gap-2">
+                                        <Icon Name="x-circle" Size="IconSize.Small" />
+                                        <span>@_currentProgress.ErrorMessage</span>
+                                    </div>
+                                </div>
+                            }
+
+                            @if (_installedServerId.HasValue)
+                            {
+                                <div class="text-center">
+                                    <div class="w-16 h-16 rounded-full bg-nebula-success/20 flex items-center justify-center mx-auto mb-4">
+                                        <Icon Name="check-circle" Size="IconSize.XLarge" Class="text-nebula-success" />
+                                    </div>
+                                    <p class="text-nebula-text-primary font-medium mb-4">Server installed successfully!</p>
+                                    <Button Variant="ButtonVariant.Primary" Text="View Server"
+                                            OnClick="@(() => Navigation.NavigateTo($"/servers/{_installedServerId}"))" />
+                                </div>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                @if (!_installing)
+                {
+                    <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                    <Button Variant="ButtonVariant.Primary" Text="Create Server" OnClick="StartInstallation"
+                            Disabled="@(_credentials == null || !_credentials.IsValid)" />
+                }
+                else if (_currentProgress?.HasError == true)
+                {
+                    <Button Variant="ButtonVariant.Secondary" Text="Back" OnClick="ResetInstallation" />
+                    <Button Variant="ButtonVariant.Primary" Text="Retry" OnClick="StartInstallation" />
+                }
+                else if (!_installedServerId.HasValue)
+                {
+                    <div></div>
+                    <Button Variant="ButtonVariant.Danger" Text="Cancel" OnClick="CancelInstallation" />
+                }
+            </div>
+            break;
+    }
+</div>
+
+@* Auth Modal *@
+<HytaleAuthModal @bind-IsOpen="_showAuthModal" OnAuthSuccess="HandleAuthSuccess" />
+
+@code {
+    private int _currentStep = 1;
+    private string? _error;
+    private bool _isAuthenticated;
+    private HytaleUserCredentials? _credentials;
+    private bool _showAuthModal;
+    private bool _loadingVersions;
+    private IReadOnlyDictionary<string, HytaleVersionInfo> _versions = new Dictionary<string, HytaleVersionInfo>();
+
+    private HytaleServerWizardData _wizardData = new()
+    {
+        Patchline = "release",
+        Port = 5520,
+        MinMemoryMb = 2048,
+        MaxMemoryMb = 4096,
+        DeploymentType = ServerDeploymentType.Native
+    };
+
+    private Guid? _userId;
+    private Guid _installationId = Guid.NewGuid();
+    private bool _installing;
+    private HytaleInstallProgressDto? _currentProgress;
+    private Guid? _installedServerId;
+    private HubConnection? _hubConnection;
+    private readonly List<string> _installLogs = new();
+    private bool _showAdvancedSettings;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAuthenticationAsync().ConfigureAwait(false);
+    }
+
+    private async Task CheckAuthenticationAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync().ConfigureAwait(false);
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+        {
+            _userId = userId;
+            _isAuthenticated = await AuthService.HasValidCredentialsAsync(userId).ConfigureAwait(false);
+            if (_isAuthenticated)
+            {
+                _credentials = await AuthService.GetCredentialsAsync(userId).ConfigureAwait(false);
+                await LoadVersionsAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task LoadVersionsAsync()
+    {
+        if (!_userId.HasValue) return;
+
+        _loadingVersions = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            _versions = await InstallService.GetAllVersionsAsync(_userId.Value).ConfigureAwait(false);
+
+            // Set default version if available
+            if (_versions.TryGetValue(_wizardData.Patchline, out var versionInfo))
+            {
+                _wizardData.ServerVersion = versionInfo.Version;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load versions: {ex.Message}";
+        }
+        finally
+        {
+            _loadingVersions = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ShowAuthModal()
+    {
+        _showAuthModal = true;
+    }
+
+    private async Task HandleAuthSuccess(HytaleUserCredentials credentials)
+    {
+        _credentials = credentials;
+        _isAuthenticated = true;
+        _showAuthModal = false;
+        await LoadVersionsAsync().ConfigureAwait(false);
+    }
+
+    private async Task HandleDisconnect()
+    {
+        if (_userId.HasValue)
+        {
+            await AuthService.RevokeCredentialsAsync(_userId.Value).ConfigureAwait(false);
+            _credentials = null;
+            _isAuthenticated = false;
+            _versions = new Dictionary<string, HytaleVersionInfo>();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SelectPatchline(string patchline)
+    {
+        _wizardData.Patchline = patchline;
+        if (_versions.TryGetValue(patchline, out var versionInfo))
+        {
+            _wizardData.ServerVersion = versionInfo.Version;
+        }
+    }
+
+    private void UpdateInstallPath()
+    {
+        if (!string.IsNullOrWhiteSpace(_wizardData.ServerName) && string.IsNullOrWhiteSpace(_wizardData.InstallPath))
+        {
+            _wizardData.InstallPath = InstallService.GetDefaultInstallPath(_wizardData.ServerName);
+        }
+    }
+
+    private bool IsConfigValid()
+    {
+        return !string.IsNullOrWhiteSpace(_wizardData.ServerName)
+               && !string.IsNullOrWhiteSpace(_wizardData.InstallPath)
+               && _wizardData.Port >= 1 && _wizardData.Port <= 65535
+               && _wizardData.MinMemoryMb >= 512
+               && _wizardData.MaxMemoryMb >= _wizardData.MinMemoryMb;
+    }
+
+    private async Task StartInstallation()
+    {
+        if (!_userId.HasValue) return;
+
+        // Verify credentials are still valid
+        _credentials = await AuthService.GetCredentialsAsync(_userId.Value);
+        if (_credentials == null || !_credentials.IsValid)
+        {
+            _error = "Your Hytale credentials have expired. Please reconnect your account.";
+            _isAuthenticated = false;
+            _currentStep = 1;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _error = null;
+        _installing = true;
+        _currentProgress = HytaleInstallProgressDto.Starting(Guid.Empty); // Show initial state
+        _installedServerId = null;
+        _installationId = Guid.NewGuid();
+
+        // Update UI to show installation view
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await ConnectToSignalRAsync();
+
+            // Start installation in background
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await InstallService.InstallServerAsync(
+                        _wizardData,
+                        _userId.Value,
+                        _installationId);
+
+                    if (result.IsFailure)
+                    {
+                        _currentProgress = HytaleInstallProgressDto.Failed(_installationId, result.Error ?? "Installation failed");
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _currentProgress = HytaleInstallProgressDto.Failed(_installationId, $"Installation error: {ex.Message}");
+                    await InvokeAsync(StateHasChanged);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _currentProgress = HytaleInstallProgressDto.Failed(_installationId, $"Failed to connect: {ex.Message}");
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task<string?> GetAccessTokenAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ConnectToSignalRAsync()
+    {
+        var hubUrl = Navigation.ToAbsoluteUri("/hubs/install-progress");
+        var token = await GetAccessTokenAsync();
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(hubUrl, options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<MinecraftInstallProgressDto>("ReceiveProgress", async progress =>
+        {
+            // Only process progress for our installation
+            if (progress.InstallationId != _installationId) return;
+
+            // Convert MinecraftInstallProgressDto back to Hytale (same structure)
+            _currentProgress = new HytaleInstallProgressDto
+            {
+                InstallationId = progress.InstallationId,
+                Phase = progress.Phase,
+                Message = progress.Message,
+                Percentage = progress.Percentage,
+                BytesDownloaded = progress.BytesDownloaded,
+                TotalBytes = progress.TotalBytes,
+                Timestamp = progress.Timestamp,
+                IsComplete = progress.IsComplete,
+                HasError = progress.HasError,
+                ErrorMessage = progress.ErrorMessage
+            };
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<Guid, bool, string?>("InstallationComplete", async (serverId, success, error) =>
+        {
+            _installedServerId = success ? serverId : null;
+            if (!success && !string.IsNullOrEmpty(error))
+            {
+                _currentProgress = HytaleInstallProgressDto.Failed(_installationId, error);
+            }
+            else if (success)
+            {
+                _currentProgress = HytaleInstallProgressDto.Completed(_installationId);
+            }
+            await InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<Guid, string>("ReceiveLogLine", async (installationId, line) =>
+        {
+            if (installationId == _installationId)
+            {
+                _installLogs.Add(line);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        await _hubConnection.StartAsync();
+        await _hubConnection.InvokeAsync("JoinInstallation", _installationId);
+    }
+
+    private async Task CancelInstallation()
+    {
+        await InstallService.CancelInstallationAsync(_installationId).ConfigureAwait(false);
+    }
+
+    private void ResetInstallation()
+    {
+        _installing = false;
+        _currentProgress = null;
+        _installedServerId = null;
+        _installLogs.Clear();
+    }
+
+    private void NextStep()
+    {
+        _error = null;
+        _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _error = null;
+        _currentStep--;
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/servers/create");
+    }
+
+    private string GetVersionDisplay()
+    {
+        if (_versions.TryGetValue(_wizardData.Patchline, out var version))
+        {
+            var patchlineInfo = InstallService.GetPatchlineInfos()
+                .FirstOrDefault(p => p.Patchline == _wizardData.Patchline);
+            return $"{patchlineInfo?.DisplayName ?? _wizardData.Patchline} - {version.Version}";
+        }
+        return _wizardData.Patchline;
+    }
+
+    private string GetStepClass(int step) => step switch
+    {
+        _ when _currentStep > step => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-accent text-white",
+        _ when _currentStep == step => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-accent text-white",
+        _ => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private string GetStepLabelClass(int step) => step switch
+    {
+        _ when _currentStep >= step => "text-nebula-text-primary",
+        _ => "text-nebula-text-muted"
+    };
+
+    private string GetStepLabel(int step) => step switch
+    {
+        1 => "Version",
+        2 => "Config",
+        3 => "Install",
+        _ => ""
+    };
+
+    private string GetPatchlineClass(string patchline) =>
+        _wizardData.Patchline == patchline
+            ? "p-4 rounded-nebula border-2 border-nebula-accent bg-nebula-accent/5 cursor-pointer transition-all"
+            : "p-4 rounded-nebula border-2 border-nebula-border-subtle cursor-pointer hover:border-nebula-accent/50 transition-all";
+
+    private string GetRadioClass(string patchline) =>
+        _wizardData.Patchline == patchline
+            ? "w-5 h-5 rounded-full border-2 border-nebula-accent bg-nebula-accent flex items-center justify-center"
+            : "w-5 h-5 rounded-full border-2 border-nebula-border";
+
+    private string GetDeploymentClass(ServerDeploymentType type) =>
+        _wizardData.DeploymentType == type
+            ? "flex flex-col items-center justify-center p-4 rounded-nebula border-2 border-nebula-accent bg-nebula-accent/5 cursor-pointer transition-all"
+            : "flex flex-col items-center justify-center p-4 rounded-nebula border-2 border-nebula-border-subtle cursor-pointer hover:border-nebula-accent/50 transition-all";
+
+    private static string FormatTimeRemaining(TimeSpan remaining)
+    {
+        if (remaining.TotalDays >= 1)
+            return $"{(int)remaining.TotalDays} days";
+        if (remaining.TotalHours >= 1)
+            return $"{(int)remaining.TotalHours} hours";
+        return $"{(int)remaining.TotalMinutes} minutes";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB"];
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+        {
+            try
+            {
+                await _hubConnection.InvokeAsync("LeaveInstallation", _installationId).ConfigureAwait(false);
+                await _hubConnection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
+}

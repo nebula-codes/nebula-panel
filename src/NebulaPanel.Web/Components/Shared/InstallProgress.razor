@@ -1,0 +1,221 @@
+@using NebulaPanel.Application.DTOs
+
+<Card>
+    <Header>
+        <div class="flex items-center justify-between">
+            <h2 class="text-lg font-medium text-nebula-text-primary">
+                @GetTitle()
+            </h2>
+            @if (Progress?.HasError == true)
+            {
+                <StatusBadge Status="StatusBadge.StatusType.Error" Text="Failed" />
+            }
+            else if (Progress?.IsComplete == true)
+            {
+                <StatusBadge Status="StatusBadge.StatusType.Success" Text="Complete" />
+            }
+            else
+            {
+                <StatusBadge Status="StatusBadge.StatusType.Warning" Text="Installing" ShowDot="true" />
+            }
+        </div>
+    </Header>
+    <ChildContent>
+        @* Phase Steps *@
+        <div class="phase-steps">
+            @foreach (var phase in Phases)
+            {
+                var status = GetPhaseStatus(phase);
+                <div class="phase-step">
+                    <div class="phase-step-circle @status">
+                        @if (status == "complete")
+                        {
+                            <Icon Name="check" Size="IconSize.Small" />
+                        }
+                        else if (status == "active")
+                        {
+                            <div class="animate-spin">
+                                <Icon Name="loader-2" Size="IconSize.Small" />
+                            </div>
+                        }
+                        else
+                        {
+                            @(Phases.IndexOf(phase) + 1)
+                        }
+                    </div>
+                    <span class="phase-step-label @(status == "pending" ? "text-nebula-text-muted" : "text-nebula-text-secondary")">
+                        @phase
+                    </span>
+                </div>
+                @if (Phases.IndexOf(phase) < Phases.Count - 1)
+                {
+                    <div class="phase-connector @(GetPhaseStatus(phase) == "complete" ? "complete" : "")"></div>
+                }
+            }
+        </div>
+
+        @* Progress Bar *@
+        <div class="mb-6">
+            <div class="flex justify-between text-sm mb-2">
+                <span class="text-nebula-text-secondary">@(Progress?.Message ?? "Preparing...")</span>
+                <span class="text-nebula-text-primary font-medium">@(Progress?.Percentage ?? 0)%</span>
+            </div>
+            <div class="progress-container">
+                <div class="progress-bar @(Progress?.IsComplete != true && Progress?.HasError != true ? "animated" : "")"
+                     style="width: @(Progress?.Percentage ?? 0)%"></div>
+            </div>
+            @if (Progress?.TotalBytes > 0)
+            {
+                <div class="text-xs text-nebula-text-muted mt-2 text-right">
+                    @FormatBytes(Progress?.BytesDownloaded ?? 0) / @FormatBytes(Progress?.TotalBytes ?? 0)
+                </div>
+            }
+        </div>
+
+        @* Log Output *@
+        <div class="log-container">
+            <div class="log-header" @onclick="ToggleLogs">
+                <span class="text-sm font-medium text-nebula-text-secondary">Installation Log</span>
+                <Icon Name="@(ShowLogs ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+            </div>
+            @if (ShowLogs)
+            {
+                <div class="log-viewer" @ref="_logViewerRef">
+                    @if (Logs.Count == 0)
+                    {
+                        <div class="text-nebula-text-muted italic">Waiting for output...</div>
+                    }
+                    else
+                    {
+                        @foreach (var log in Logs)
+                        {
+                            <div class="log-line">@log</div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        @* Error Message *@
+        @if (Progress?.HasError == true)
+        {
+            <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-4 mt-6">
+                <div class="flex items-center gap-2">
+                    <Icon Name="alert-circle" Size="IconSize.Small" />
+                    <span>@Progress.ErrorMessage</span>
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <div class="flex items-center justify-end gap-3">
+            @if (Progress?.HasError == true)
+            {
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="OnCancel" />
+                <Button Variant="ButtonVariant.Primary" Text="Retry" IconName="refresh-cw" OnClick="OnRetry" />
+            }
+            else if (Progress?.IsComplete == true)
+            {
+                <Button Variant="ButtonVariant.Primary" Text="View Server" IconName="arrow-right" OnClick="OnViewServer" />
+            }
+            else
+            {
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel Installation" OnClick="OnCancel" />
+            }
+        </div>
+    </Footer>
+</Card>
+
+@code {
+    [Parameter]
+    public MinecraftInstallProgressDto? Progress { get; set; }
+
+    [Parameter]
+    public List<string> Logs { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public EventCallback OnViewServer { get; set; }
+
+    private ElementReference _logViewerRef;
+    private bool ShowLogs { get; set; } = true;
+
+    private static readonly List<string> Phases = ["Preparing", "Downloading", "Configuring", "Complete"];
+
+    private string GetTitle()
+    {
+        if (Progress?.HasError == true)
+        {
+            return "Installation Failed";
+        }
+        if (Progress?.IsComplete == true)
+        {
+            return "Installation Complete";
+        }
+        return "Installing Server...";
+    }
+
+    private string GetPhaseStatus(string phase)
+    {
+        if (Progress?.HasError == true)
+        {
+            return "error";
+        }
+
+        var currentPhase = Progress?.Phase ?? "Preparing";
+
+        // Map phase names to indices
+        var currentIndex = GetPhaseIndex(currentPhase);
+        var phaseIndex = Phases.IndexOf(phase);
+
+        if (Progress?.IsComplete == true)
+        {
+            return "complete";
+        }
+        if (phaseIndex < currentIndex)
+        {
+            return "complete";
+        }
+        if (phaseIndex == currentIndex)
+        {
+            return "active";
+        }
+        return "pending";
+    }
+
+    private int GetPhaseIndex(string phaseName)
+    {
+        // Map various phase names to our display phases
+        return phaseName.ToLowerInvariant() switch
+        {
+            "preparing" or "validating" or "starting" => 0,
+            "downloading" or "fetching" => 1,
+            "configuring" or "extracting" or "installing" => 2,
+            "complete" or "completed" or "finished" => 3,
+            _ => Phases.IndexOf(phaseName) >= 0 ? Phases.IndexOf(phaseName) : 0
+        };
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024)
+        {
+            return $"{bytes} B";
+        }
+        if (bytes < 1024 * 1024)
+        {
+            return $"{bytes / 1024.0:F1} KB";
+        }
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
+    }
+
+    private void ToggleLogs()
+    {
+        ShowLogs = !ShowLogs;
+    }
+}

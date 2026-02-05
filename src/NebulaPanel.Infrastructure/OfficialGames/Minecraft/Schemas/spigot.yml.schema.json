@@ -1,0 +1,224 @@
+{
+  "$schema": "https://nebula-panel.dev/schemas/config-schema-v1.json",
+  "schemaVersion": "1.0",
+  "fileName": "spigot.yml",
+  "fileType": "Yaml",
+  "fields": [
+    {
+      "key": "settings.debug",
+      "displayName": "Debug Mode",
+      "description": "Enable debug logging.",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Settings"
+    },
+    {
+      "key": "settings.bungeecord",
+      "displayName": "BungeeCord Mode",
+      "description": "Enable BungeeCord IP forwarding. Only enable behind a BungeeCord proxy!",
+      "type": "Bool",
+      "defaultValue": false,
+      "category": "Settings"
+    },
+    {
+      "key": "settings.timeout-time",
+      "displayName": "Timeout Time",
+      "description": "Seconds before a player times out.",
+      "type": "Int",
+      "defaultValue": 60,
+      "validation": { "minValue": 1 },
+      "category": "Settings"
+    },
+    {
+      "key": "settings.restart-on-crash",
+      "displayName": "Restart on Crash",
+      "description": "Automatically restart server after crash.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Settings"
+    },
+    {
+      "key": "settings.restart-script",
+      "displayName": "Restart Script",
+      "description": "Path to script to run for server restart.",
+      "type": "String",
+      "defaultValue": "./start.sh",
+      "category": "Settings"
+    },
+    {
+      "key": "settings.netty-threads",
+      "displayName": "Netty Threads",
+      "description": "Number of network threads (0 = auto).",
+      "type": "Int",
+      "defaultValue": 4,
+      "validation": { "minValue": 0 },
+      "category": "Settings"
+    },
+    {
+      "key": "settings.sample-count",
+      "displayName": "Player Sample Count",
+      "description": "Number of players shown in server list hover.",
+      "type": "Int",
+      "defaultValue": 12,
+      "validation": { "minValue": 0 },
+      "category": "Settings"
+    },
+    {
+      "key": "settings.user-cache-size",
+      "displayName": "User Cache Size",
+      "description": "Number of user profiles to cache.",
+      "type": "Int",
+      "defaultValue": 1000,
+      "validation": { "minValue": 0 },
+      "category": "Settings"
+    },
+    {
+      "key": "commands.tab-complete",
+      "displayName": "Tab Complete",
+      "description": "Minimum characters before tab completion (-1 = disabled).",
+      "type": "Int",
+      "defaultValue": 0,
+      "validation": { "minValue": -1 },
+      "category": "Commands"
+    },
+    {
+      "key": "commands.log",
+      "displayName": "Log Commands",
+      "description": "Log player commands to console.",
+      "type": "Bool",
+      "defaultValue": true,
+      "category": "Commands"
+    },
+    {
+      "key": "messages.whitelist",
+      "displayName": "Whitelist Message",
+      "description": "Message shown when non-whitelisted player tries to join.",
+      "type": "String",
+      "defaultValue": "You are not whitelisted on this server!",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.unknown-command",
+      "displayName": "Unknown Command Message",
+      "description": "Message shown for unknown commands.",
+      "type": "String",
+      "defaultValue": "Unknown command. Type \"/help\" for help.",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.server-full",
+      "displayName": "Server Full Message",
+      "description": "Message shown when server is full.",
+      "type": "String",
+      "defaultValue": "The server is full!",
+      "category": "Messages"
+    },
+    {
+      "key": "messages.restart",
+      "displayName": "Restart Message",
+      "description": "Message shown during server restart.",
+      "type": "String",
+      "defaultValue": "Server is restarting",
+      "category": "Messages"
+    },
+    {
+      "key": "world-settings.default.mob-spawn-range",
+      "displayName": "Mob Spawn Range",
+      "description": "Chunk radius for mob spawning.",
+      "type": "Int",
+      "defaultValue": 8,
+      "validation": { "minValue": 1 },
+      "category": "World Settings"
+    },
+    {
+      "key": "world-settings.default.item-despawn-rate",
+      "displayName": "Item Despawn Rate",
+      "description": "Ticks before dropped items despawn (6000 = 5 min).",
+      "type": "Int",
+      "defaultValue": 6000,
+      "validation": { "minValue": 1 },
+      "category": "World Settings"
+    },
+    {
+      "key": "world-settings.default.entity-activation-range.animals",
+      "displayName": "Animal Activation Range",
+      "description": "Block radius for animal AI activation.",
+      "type": "Int",
+      "defaultValue": 32,
+      "validation": { "minValue": 0 },
+      "category": "Entity Activation"
+    },
+    {
+      "key": "world-settings.default.entity-activation-range.monsters",
+      "displayName": "Monster Activation Range",
+      "description": "Block radius for monster AI activation.",
+      "type": "Int",
+      "defaultValue": 32,
+      "validation": { "minValue": 0 },
+      "category": "Entity Activation"
+    },
+    {
+      "key": "world-settings.default.entity-activation-range.villagers",
+      "displayName": "Villager Activation Range",
+      "description": "Block radius for villager AI activation.",
+      "type": "Int",
+      "defaultValue": 32,
+      "validation": { "minValue": 0 },
+      "category": "Entity Activation"
+    },
+    {
+      "key": "world-settings.default.entity-tracking-range.players",
+      "displayName": "Player Tracking Range",
+      "description": "Block radius for player visibility to clients.",
+      "type": "Int",
+      "defaultValue": 48,
+      "validation": { "minValue": 0 },
+      "category": "Entity Tracking"
+    },
+    {
+      "key": "world-settings.default.entity-tracking-range.animals",
+      "displayName": "Animal Tracking Range",
+      "description": "Block radius for animal visibility to clients.",
+      "type": "Int",
+      "defaultValue": 48,
+      "validation": { "minValue": 0 },
+      "category": "Entity Tracking"
+    },
+    {
+      "key": "world-settings.default.entity-tracking-range.monsters",
+      "displayName": "Monster Tracking Range",
+      "description": "Block radius for monster visibility to clients.",
+      "type": "Int",
+      "defaultValue": 48,
+      "validation": { "minValue": 0 },
+      "category": "Entity Tracking"
+    },
+    {
+      "key": "world-settings.default.ticks-per.hopper-transfer",
+      "displayName": "Hopper Transfer Interval",
+      "description": "Ticks between hopper item transfers.",
+      "type": "Int",
+      "defaultValue": 8,
+      "validation": { "minValue": 1 },
+      "category": "Hopper"
+    },
+    {
+      "key": "world-settings.default.hopper-amount",
+      "displayName": "Hopper Transfer Amount",
+      "description": "Items transferred per hopper operation.",
+      "type": "Int",
+      "defaultValue": 1,
+      "validation": { "minValue": 1 },
+      "category": "Hopper"
+    },
+    {
+      "key": "world-settings.default.max-entity-collisions",
+      "displayName": "Max Entity Collisions",
+      "description": "Maximum entities processed for collision per tick.",
+      "type": "Int",
+      "defaultValue": 8,
+      "validation": { "minValue": 0 },
+      "category": "Performance"
+    }
+  ]
+}

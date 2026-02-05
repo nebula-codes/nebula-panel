@@ -1,0 +1,237 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@inject IHytaleAuthService HytaleAuthService
+
+<CascadingValue Name="SidebarCollapsed" Value="@IsCollapsed">
+    <aside class="@SidebarClasses">
+        @* Logo / Header *@
+        <div class="sidebar-header">
+            <div class="w-8 h-8 rounded-nebula bg-nebula-gradient flex items-center justify-center shadow-nebula-glow flex-shrink-0">
+                <Icon Name="zap" Size="IconSize.Small" Class="text-white" />
+            </div>
+            <span class="@LogoTextClasses">Nebula Panel</span>
+        </div>
+
+        @* Primary Navigation *@
+        <nav class="sidebar-nav">
+            <SidebarNavItem Href="/" Icon="home" Label="Dashboard" Match="NavLinkMatch.All" />
+            <SidebarNavItem Href="/servers" Icon="server" Label="Servers" />
+            <SidebarNavItem Href="/games" Icon="gamepad" Label="Games" />
+            <SidebarNavItem Href="/backups" Icon="database" Label="Backups" />
+            <SidebarNavItem Href="/schedules" Icon="clock" Label="Schedules" />
+
+            @* System Section (Admin Only) *@
+            @if (_isAdmin)
+            {
+                <div class="@SectionLabelClasses">System</div>
+                <SidebarNavItem Href="/users" Icon="users" Label="Users" />
+                <SidebarNavItem Href="/roles" Icon="shield" Label="Roles" />
+            }
+        </nav>
+
+        @* Footer *@
+        <div class="sidebar-footer">
+            @* Settings *@
+            <div class="py-2">
+                <SidebarNavItem Href="/settings" Icon="settings" Label="Settings" />
+            </div>
+
+            @* Hytale Token Indicator *@
+            @if (_hytaleCredentials?.IsValid == true)
+            {
+                <div class="py-1 px-2">
+                    <NavLink href="/settings/integrations/hytale"
+                             class="sidebar-nav-item"
+                             title="@HytaleTooltip">
+                        <Icon Name="lock" Size="IconSize.Small" Class="@HytaleIconClass" />
+                        @if (!IsCollapsed)
+                        {
+                            <span class="sidebar-nav-label">@HytaleShortText</span>
+                        }
+                    </NavLink>
+                </div>
+            }
+
+            @* User Section *@
+            <div class="sidebar-user-section">
+                <div class="@UserSectionClasses">
+                    <div class="user-avatar flex-shrink-0">
+                        <Icon Name="user" Size="IconSize.Small" Class="text-nebula-accent" />
+                    </div>
+                    @if (!IsCollapsed)
+                    {
+                        <div class="flex-1 min-w-0 overflow-hidden">
+                            <p class="text-sm font-medium text-nebula-text-primary truncate">@_userName</p>
+                            <p class="text-xs text-nebula-text-muted truncate">@_userRole</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* Collapse Toggle *@
+            <button @onclick="ToggleCollapsed"
+                    class="sidebar-collapse-btn"
+                    aria-label="@(IsCollapsed ? "Expand sidebar" : "Collapse sidebar")"
+                    title="@(IsCollapsed ? "Expand sidebar" : "Collapse sidebar")">
+                <Icon Name="@(IsCollapsed ? "panel-left-open" : "panel-left-close")" Size="IconSize.Small" />
+            </button>
+        </div>
+    </aside>
+</CascadingValue>
+
+@code {
+    [Parameter]
+    public bool IsCollapsed { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsCollapsedChanged { get; set; }
+
+    [Parameter]
+    public bool IsMobileOpen { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private bool _isAdmin;
+    private string _userName = "User";
+    private string _userRole = "Member";
+    private HytaleUserCredentials? _hytaleCredentials;
+    private bool _credentialsLoaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _isAdmin = state.User.IsInRole("Admin");
+
+            var nameClaim = state.User.FindFirst(ClaimTypes.Name);
+            if (nameClaim is not null)
+            {
+                _userName = nameClaim.Value;
+            }
+
+            _userRole = _isAdmin ? "Administrator" : "Member";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_credentialsLoaded && AuthState is not null)
+        {
+            _credentialsLoaded = true;
+            await LoadHytaleCredentialsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadHytaleCredentialsAsync()
+    {
+        try
+        {
+            if (AuthState is null) return;
+
+            var state = await AuthState;
+            var userIdClaim = state.User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                _hytaleCredentials = await HytaleAuthService.GetCredentialsAsync(userId);
+            }
+        }
+        catch
+        {
+            // Silently fail - credentials are optional
+            _hytaleCredentials = null;
+        }
+    }
+
+    private string HytaleIconClass
+    {
+        get
+        {
+            if (_hytaleCredentials == null || !_hytaleCredentials.IsValid)
+                return "text-nebula-text-muted";
+
+            var days = _hytaleCredentials.TimeRemaining.TotalDays;
+            if (days >= 7) return "text-nebula-success";
+            if (days >= 1) return "text-nebula-warning";
+            return "text-nebula-error";
+        }
+    }
+
+    private string HytaleShortText
+    {
+        get
+        {
+            if (_hytaleCredentials == null || !_hytaleCredentials.IsValid)
+                return "Expired";
+
+            var remaining = _hytaleCredentials.TimeRemaining;
+            if (remaining.TotalDays >= 1)
+                return $"Hytale: {(int)remaining.TotalDays}d";
+            if (remaining.TotalHours >= 1)
+                return $"Hytale: {(int)remaining.TotalHours}h";
+            return $"Hytale: {(int)remaining.TotalMinutes}m";
+        }
+    }
+
+    private string HytaleTooltip
+    {
+        get
+        {
+            if (_hytaleCredentials == null || !_hytaleCredentials.IsValid)
+                return "Hytale token expired";
+
+            var remaining = _hytaleCredentials.TimeRemaining;
+            if (remaining.TotalDays >= 1)
+                return $"Hytale token expires in {(int)remaining.TotalDays} days";
+            if (remaining.TotalHours >= 1)
+                return $"Hytale token expires in {(int)remaining.TotalHours} hours";
+            return $"Hytale token expires in {(int)remaining.TotalMinutes} minutes";
+        }
+    }
+
+    private async Task ToggleCollapsed()
+    {
+        IsCollapsed = !IsCollapsed;
+        await IsCollapsedChanged.InvokeAsync(IsCollapsed);
+    }
+
+    private string SidebarClasses
+    {
+        get
+        {
+            var classes = new List<string> { "sidebar-shell" };
+
+            if (IsCollapsed)
+            {
+                classes.Add("sidebar-collapsed");
+            }
+            else
+            {
+                classes.Add("sidebar-expanded");
+            }
+
+            if (IsMobileOpen)
+            {
+                classes.Add("sidebar-mobile-visible");
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string LogoTextClasses => IsCollapsed
+        ? "text-lg font-bold text-gradient opacity-0 w-0 overflow-hidden whitespace-nowrap transition-all duration-300"
+        : "text-lg font-bold text-gradient opacity-100 transition-all duration-300";
+
+    private string SectionLabelClasses => IsCollapsed
+        ? "sidebar-section-label opacity-0"
+        : "sidebar-section-label opacity-100";
+
+    private string UserSectionClasses => IsCollapsed
+        ? "flex items-center justify-center"
+        : "flex items-center gap-3";
+}

@@ -1,0 +1,71 @@
+@* Circular gauge component for system health metrics *@
+
+<div class="flex flex-col items-center">
+    <div class="relative w-24 h-24">
+        @* Background circle *@
+        <svg class="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+            <circle
+                cx="50"
+                cy="50"
+                r="42"
+                stroke="currentColor"
+                stroke-width="8"
+                fill="none"
+                class="text-nebula-bg-tertiary" />
+            <circle
+                cx="50"
+                cy="50"
+                r="42"
+                stroke="currentColor"
+                stroke-width="8"
+                fill="none"
+                stroke-linecap="round"
+                class="text-nebula-@GetColorClass()"
+                stroke-dasharray="@GetDashArray()"
+                stroke-dashoffset="0" />
+        </svg>
+        @* Center text *@
+        <div class="absolute inset-0 flex items-center justify-center">
+            <span class="text-lg font-bold text-nebula-text-primary">@Percentage.ToString("0")%</span>
+        </div>
+    </div>
+    <div class="mt-2 text-center">
+        <p class="text-sm font-medium text-nebula-text-primary">@Label</p>
+        @if (!string.IsNullOrEmpty(SubLabel))
+        {
+            <p class="text-xs text-nebula-text-muted">@SubLabel</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? SubLabel { get; set; }
+
+    [Parameter]
+    public double Percentage { get; set; }
+
+    [Parameter]
+    public double WarningThreshold { get; set; } = 70;
+
+    [Parameter]
+    public double DangerThreshold { get; set; } = 90;
+
+    private string GetColorClass()
+    {
+        if (Percentage >= DangerThreshold) return "error";
+        if (Percentage >= WarningThreshold) return "warning";
+        return "success";
+    }
+
+    private string GetDashArray()
+    {
+        // Circle circumference = 2 * PI * r = 2 * 3.14159 * 42 ≈ 264
+        var circumference = 2 * Math.PI * 42;
+        var filled = (Percentage / 100) * circumference;
+        return $"{filled} {circumference}";
+    }
+}

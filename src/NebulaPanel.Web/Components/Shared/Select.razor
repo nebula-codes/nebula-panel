@@ -1,0 +1,330 @@
+@typeparam TValue
+@inherits ComponentBase
+@implements IDisposable
+@inject IJSRuntime JSRuntime
+
+<div class="@ContainerClasses" @onclick:stopPropagation="true">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="label">
+            @Label
+            @if (Required)
+            {
+                <span class="text-nebula-error ml-1">*</span>
+            }
+        </label>
+    }
+
+    <div class="relative" @ref="_containerRef">
+        <button type="button"
+                class="@TriggerClasses"
+                disabled="@Disabled"
+                aria-expanded="@_isOpen"
+                aria-haspopup="listbox"
+                @onclick="Toggle"
+                @onkeydown="HandleKeyDown">
+            <div class="flex-1 text-left truncate">
+                @if (Multiple && SelectedValues.Any())
+                {
+                    <div class="flex flex-wrap items-center -mb-1">
+                        @foreach (var value in SelectedValues.Take(MaxDisplayedTags))
+                        {
+                            <span class="select-multi-value">
+                                @GetLabel(value)
+                                <button type="button"
+                                        class="select-multi-remove"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => RemoveValue(value)"
+                                        aria-label="Remove @GetLabel(value)">
+                                    <Icon Name="x" Size="IconSize.XSmall" />
+                                </button>
+                            </span>
+                        }
+                        @if (SelectedValues.Count() > MaxDisplayedTags)
+                        {
+                            <span class="text-xs text-nebula-text-muted">
+                                +@(SelectedValues.Count() - MaxDisplayedTags) more
+                            </span>
+                        }
+                    </div>
+                }
+                else if (Value != null && !Value.Equals(default(TValue)))
+                {
+                    <span>@GetLabel(Value)</span>
+                }
+                else
+                {
+                    <span class="select-trigger-placeholder">@Placeholder</span>
+                }
+            </div>
+            <Icon Name="chevron-down" Class="select-chevron ml-2" Size="IconSize.Small" />
+        </button>
+
+        @if (_isOpen)
+        {
+            <div class="select-menu" role="listbox" aria-label="@Label">
+                @if (Searchable)
+                {
+                    <div class="select-search">
+                        <input type="text"
+                               class="select-search-input"
+                               placeholder="Search..."
+                               @bind="_searchQuery"
+                               @bind:event="oninput"
+                               @ref="_searchInputRef"
+                               @onkeydown="HandleSearchKeyDown" />
+                    </div>
+                }
+
+                @if (FilteredOptions.Any())
+                {
+                    <div class="max-h-48 overflow-y-auto">
+                        @foreach (var option in FilteredOptions)
+                        {
+                            <button type="button"
+                                    class="@GetOptionClass(option)"
+                                    role="option"
+                                    aria-selected="@IsSelected(option)"
+                                    @onclick="() => SelectOption(option)">
+                                @if (Multiple)
+                                {
+                                    <span class="@(IsSelected(option) ? "checkbox-custom checkbox-custom-sm" : "checkbox-custom checkbox-custom-sm")"
+                                          aria-checked="@IsSelected(option).ToString().ToLower()">
+                                        @if (IsSelected(option))
+                                        {
+                                            <Icon Name="check" Class="checkbox-check opacity-100" Style="transform: scale(1);" Size="IconSize.XSmall" />
+                                        }
+                                    </span>
+                                }
+                                <span class="truncate">@GetLabel(option)</span>
+                                @if (!Multiple && IsSelected(option))
+                                {
+                                    <Icon Name="check" Size="IconSize.Small" Class="ml-auto text-nebula-accent" />
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="select-empty">
+                        @(string.IsNullOrEmpty(_searchQuery) ? "No options available" : "No matches found")
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(HelperText) && !HasError)
+    {
+        <p class="text-xs text-nebula-text-muted mt-1">@HelperText</p>
+    }
+
+    @if (HasError)
+    {
+        <p class="text-xs text-nebula-error mt-1">@ErrorMessage</p>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Label { get; set; }
+
+    [Parameter]
+    public TValue? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<TValue?> ValueChanged { get; set; }
+
+    [Parameter]
+    public IEnumerable<TValue> SelectedValues { get; set; } = Enumerable.Empty<TValue>();
+
+    [Parameter]
+    public EventCallback<IEnumerable<TValue>> SelectedValuesChanged { get; set; }
+
+    [Parameter, EditorRequired]
+    public IEnumerable<TValue> Options { get; set; } = Enumerable.Empty<TValue>();
+
+    [Parameter]
+    public Func<TValue, string>? LabelSelector { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; } = "Select an option";
+
+    [Parameter]
+    public bool Multiple { get; set; }
+
+    [Parameter]
+    public bool Searchable { get; set; }
+
+    [Parameter]
+    public bool Required { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? HelperText { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    [Parameter]
+    public int MaxDisplayedTags { get; set; } = 3;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string? ContainerClass { get; set; }
+
+    private bool _isOpen;
+    private string _searchQuery = string.Empty;
+    private ElementReference _searchInputRef;
+    private ElementReference _containerRef;
+
+    private bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+
+    private string ContainerClasses
+    {
+        get
+        {
+            var classes = new List<string> { "form-group" };
+            if (!string.IsNullOrEmpty(ContainerClass))
+                classes.Add(ContainerClass);
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string TriggerClasses
+    {
+        get
+        {
+            var classes = new List<string> { "select-trigger" };
+            if (_isOpen) classes.Add("select-trigger-open");
+            if (HasError) classes.Add("select-trigger-error");
+            if (!string.IsNullOrEmpty(Class)) classes.Add(Class);
+            return string.Join(" ", classes);
+        }
+    }
+
+    private IEnumerable<TValue> FilteredOptions
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_searchQuery))
+                return Options;
+
+            return Options.Where(o =>
+                GetLabel(o).Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isOpen && Searchable)
+        {
+            try
+            {
+                await _searchInputRef.FocusAsync();
+            }
+            catch
+            {
+                // Ignore focus errors
+            }
+        }
+    }
+
+    private string GetLabel(TValue value)
+    {
+        if (LabelSelector != null)
+            return LabelSelector(value);
+        return value?.ToString() ?? "";
+    }
+
+    private bool IsSelected(TValue value)
+    {
+        if (Multiple)
+            return SelectedValues.Contains(value);
+        return Value != null && Value.Equals(value);
+    }
+
+    private string GetOptionClass(TValue option)
+    {
+        var classes = new List<string> { "select-option" };
+        if (IsSelected(option)) classes.Add("select-option-selected");
+        return string.Join(" ", classes);
+    }
+
+    private void Toggle()
+    {
+        if (!Disabled)
+        {
+            _isOpen = !_isOpen;
+            if (!_isOpen)
+            {
+                _searchQuery = string.Empty;
+            }
+        }
+    }
+
+    private void Close()
+    {
+        _isOpen = false;
+        _searchQuery = string.Empty;
+    }
+
+    private async Task SelectOption(TValue option)
+    {
+        if (Multiple)
+        {
+            var list = SelectedValues.ToList();
+            if (list.Contains(option))
+                list.Remove(option);
+            else
+                list.Add(option);
+
+            await SelectedValuesChanged.InvokeAsync(list);
+        }
+        else
+        {
+            await ValueChanged.InvokeAsync(option);
+            Close();
+        }
+    }
+
+    private async Task RemoveValue(TValue value)
+    {
+        var list = SelectedValues.ToList();
+        list.Remove(value);
+        await SelectedValuesChanged.InvokeAsync(list);
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            Close();
+        }
+        else if (e.Key == "Enter" || e.Key == " ")
+        {
+            if (!_isOpen)
+            {
+                Toggle();
+            }
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            Close();
+        }
+    }
+
+    public void Dispose()
+    {
+        // Cleanup if needed for future enhancements (e.g., click outside handling)
+    }
+}

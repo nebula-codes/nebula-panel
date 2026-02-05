@@ -1,0 +1,113 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+@using Microsoft.AspNetCore.Components.Web
+
+<nav class="file-breadcrumb">
+    <button class="file-breadcrumb-item"
+            @onclick="() => OnNavigate.InvokeAsync(string.Empty)"
+            title="Root">
+        <Icon Name="home" Size="IconSize.Small" />
+    </button>
+
+    @foreach (var segment in GetPathSegments())
+    {
+        <Icon Name="chevron-right" Size="IconSize.XSmall" Class="text-nebula-text-muted mx-1" />
+        <button class="file-breadcrumb-item" @onclick="() => OnNavigate.InvokeAsync(segment.Path)">
+            @segment.Name
+        </button>
+    }
+
+    <div class="flex-1"></div>
+
+    <button class="file-breadcrumb-edit"
+            @onclick="TogglePathInput"
+            title="Edit path">
+        <Icon Name="edit" Size="IconSize.XSmall" />
+    </button>
+
+    @if (_isEditing)
+    {
+        <div class="file-breadcrumb-input-overlay">
+            <input type="text"
+                   class="file-breadcrumb-input"
+                   @bind="_editPath"
+                   @bind:event="oninput"
+                   @onkeydown="HandleKeyDown"
+                   @onblur="HandleBlur"
+                   @ref="_inputElement" />
+            <Button Variant="ButtonVariant.Ghost"
+                    Size="ButtonSize.Small"
+                    IconName="x"
+                    IconOnly="true"
+                    OnClick="CancelEdit" />
+        </div>
+    }
+</nav>
+
+@code {
+    [Parameter] public string CurrentPath { get; set; } = "";
+    [Parameter] public EventCallback<string> OnNavigate { get; set; }
+
+    private bool _isEditing;
+    private string _editPath = "";
+    private ElementReference _inputElement;
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+
+    private IEnumerable<(string Name, string Path)> GetPathSegments()
+    {
+        if (string.IsNullOrEmpty(CurrentPath)) yield break;
+
+        var parts = CurrentPath.Split('/');
+        var currentPath = "";
+
+        foreach (var part in parts.Where(p => !string.IsNullOrEmpty(p)))
+        {
+            currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
+            yield return (part, currentPath);
+        }
+    }
+
+    private async Task TogglePathInput()
+    {
+        _isEditing = !_isEditing;
+        _editPath = CurrentPath;
+
+        if (_isEditing)
+        {
+            await Task.Delay(50); // Wait for render
+            await JS.InvokeVoidAsync("eval", $"document.querySelector('.file-breadcrumb-input')?.focus()");
+        }
+    }
+
+    private void CancelEdit()
+    {
+        _isEditing = false;
+        _editPath = "";
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await OnNavigate.InvokeAsync(_editPath);
+            _isEditing = false;
+        }
+        else if (e.Key == "Escape")
+        {
+            _isEditing = false;
+        }
+    }
+
+    private void HandleBlur()
+    {
+        // Small delay to allow click on cancel button
+        Task.Delay(100).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _isEditing = false;
+                StateHasChanged();
+            });
+        });
+    }
+}

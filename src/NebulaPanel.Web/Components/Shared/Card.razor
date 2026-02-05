@@ -1,0 +1,109 @@
+<div class="@ComputedClasses" @onclick="HandleClick" @attributes="AdditionalAttributes">
+    @if (Header != null)
+    {
+        <div class="@HeaderClasses">
+            @Header
+        </div>
+    }
+
+    <div class="@BodyClasses">
+        @ChildContent
+    </div>
+
+    @if (Footer != null)
+    {
+        <div class="@FooterClasses">
+            @Footer
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? Header { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public RenderFragment? Footer { get; set; }
+
+    [Parameter]
+    public CardVariant Variant { get; set; } = CardVariant.Default;
+
+    [Parameter]
+    public bool Interactive { get; set; }
+
+    [Parameter]
+    public bool Compact { get; set; }
+
+    [Parameter]
+    public bool NoPadding { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string ComputedClasses
+    {
+        get
+        {
+            var classes = new List<string>();
+
+            classes.Add(Variant switch
+            {
+                CardVariant.Default => "card",
+                CardVariant.Elevated => "card-elevated",
+                CardVariant.Interactive => "card-interactive",
+                CardVariant.Glass => "card-glass",
+                _ => "card"
+            });
+
+            if (Interactive || OnClick.HasDelegate)
+                classes.Add("cursor-pointer");
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string HeaderClasses => Compact
+        ? "px-4 py-3 border-b border-nebula-border-subtle"
+        : "px-6 py-4 border-b border-nebula-border-subtle";
+
+    private string BodyClasses
+    {
+        get
+        {
+            if (NoPadding) return "";
+            return Compact ? "p-4" : "p-6";
+        }
+    }
+
+    private string FooterClasses => Compact
+        ? "px-4 py-3 border-t border-nebula-border-subtle"
+        : "px-6 py-4 border-t border-nebula-border-subtle";
+
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync();
+        }
+    }
+
+    public enum CardVariant
+    {
+        Default,
+        Elevated,
+        Interactive,
+        Glass
+    }
+}

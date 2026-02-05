@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/Nebula-Codes/nebula-panel/wiki
+    about: Check the wiki for guides and documentation
+  - name: Discussions
+    url: https://github.com/Nebula-Codes/nebula-panel/discussions
+    about: Ask questions and discuss ideas

@@ -1,0 +1,213 @@
+@page "/settings/integrations"
+@attribute [Authorize]
+@using System.Security.Claims
+@using Microsoft.Extensions.Options
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Domain.Settings
+@inject NavigationManager Navigation
+@inject IHytaleAuthService HytaleAuthService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IOptions<SteamApiSettings> SteamApiOptions
+@inject IConfiguration Configuration
+@rendermode InteractiveServer
+
+<PageTitle>Integrations - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    @* Breadcrumb *@
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Integrations</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Integrations</h1>
+    <p class="text-nebula-text-muted mb-6">Connect external accounts to enable additional features.</p>
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else
+    {
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            @* Hytale Integration Card *@
+            <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/integrations/hytale"))">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-nebula @HytaleIconBgClass flex items-center justify-center">
+                        <Icon Name="@HytaleIconName" Size="IconSize.Medium" Class="@HytaleIconColorClass" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-medium text-nebula-text-primary">Hytale</h3>
+                            @if (_hytaleCredentials?.IsValid == true)
+                            {
+                                <StatusBadge Status="StatusType.Success" Text="Connected" Size="BadgeSize.Small" />
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusType.Neutral" Text="Not Connected" Size="BadgeSize.Small" />
+                            }
+                        </div>
+                        <p class="text-sm text-nebula-text-muted mt-1">
+                            @if (_hytaleCredentials?.IsValid == true)
+                            {
+                                <span>Token expires in @FormatTimeRemaining(_hytaleCredentials.TimeRemaining)</span>
+                            }
+                            else
+                            {
+                                <span>Connect to download and manage Hytale servers.</span>
+                            }
+                        </p>
+                    </div>
+                    <Icon Name="chevron-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                </div>
+            </Card>
+
+            @* Steam Web API Card *@
+            <Card Interactive="false">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-nebula bg-[#1b2838] flex items-center justify-center">
+                        <Icon Name="cloud" Size="IconSize.Medium" Class="text-white" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-medium text-nebula-text-primary">Steam Web API</h3>
+                            @if (_steamApiConfigured)
+                            {
+                                <StatusBadge Status="StatusType.Success" Text="Configured" Size="BadgeSize.Small" />
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusType.Warning" Text="Not Configured" Size="BadgeSize.Small" />
+                            }
+                        </div>
+                        <p class="text-sm text-nebula-text-muted mt-1">
+                            Required for Steam Workshop mod browsing. Configure in appsettings.json.
+                        </p>
+                    </div>
+                </div>
+            </Card>
+
+            @* CurseForge Card *@
+            <Card Interactive="false">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-nebula bg-[#F16436] flex items-center justify-center">
+                        <Icon Name="package" Size="IconSize.Medium" Class="text-white" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-medium text-nebula-text-primary">CurseForge</h3>
+                            @if (_curseforgeConfigured)
+                            {
+                                <StatusBadge Status="StatusType.Success" Text="Configured" Size="BadgeSize.Small" />
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusType.Warning" Text="Not Configured" Size="BadgeSize.Small" />
+                            }
+                        </div>
+                        <p class="text-sm text-nebula-text-muted mt-1">
+                            For downloading mods from CurseForge. Configure API key in appsettings.json.
+                        </p>
+                    </div>
+                </div>
+            </Card>
+
+            @* Modrinth Card *@
+            <Card Interactive="false">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-nebula bg-[#1bd96a] flex items-center justify-center">
+                        <Icon Name="box" Size="IconSize.Medium" Class="text-white" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-medium text-nebula-text-primary">Modrinth</h3>
+                            <StatusBadge Status="StatusType.Success" Text="Available" Size="BadgeSize.Small" />
+                        </div>
+                        <p class="text-sm text-nebula-text-muted mt-1">
+                            No configuration required. Public API is used for Minecraft mods.
+                        </p>
+                    </div>
+                </div>
+            </Card>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private HytaleUserCredentials? _hytaleCredentials;
+    private bool _steamApiConfigured;
+    private bool _curseforgeConfigured;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadDataAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            // Check Steam API configuration
+            var steamSettings = SteamApiOptions.Value;
+            _steamApiConfigured = !string.IsNullOrWhiteSpace(steamSettings.ApiKey);
+
+            // Check CurseForge configuration
+            var curseforgeKey = Configuration["CurseForge:ApiKey"];
+            _curseforgeConfigured = !string.IsNullOrWhiteSpace(curseforgeKey);
+
+            // Check Hytale credentials for current user
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                _hytaleCredentials = await HytaleAuthService.GetCredentialsAsync(userId);
+            }
+        }
+        catch
+        {
+            // Silently fail - credentials are optional
+            _hytaleCredentials = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void NavigateTo(string path)
+    {
+        Navigation.NavigateTo(path);
+    }
+
+    private string HytaleIconBgClass => _hytaleCredentials?.IsValid == true
+        ? "bg-nebula-success/10"
+        : "bg-nebula-accent/10";
+
+    private string HytaleIconName => _hytaleCredentials?.IsValid == true
+        ? "check-circle"
+        : "gamepad-2";
+
+    private string HytaleIconColorClass => _hytaleCredentials?.IsValid == true
+        ? "text-nebula-success"
+        : "text-nebula-accent";
+
+    private static string FormatTimeRemaining(TimeSpan remaining)
+    {
+        if (remaining.TotalDays >= 1)
+            return $"{(int)remaining.TotalDays} days";
+        if (remaining.TotalHours >= 1)
+            return $"{(int)remaining.TotalHours} hours";
+        return $"{(int)remaining.TotalMinutes} minutes";
+    }
+}

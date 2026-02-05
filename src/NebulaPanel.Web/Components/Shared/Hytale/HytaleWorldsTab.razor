@@ -1,0 +1,875 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IHytaleWorldService WorldService
+@inject IToastService ToastService
+
+<div class="space-y-4">
+    @* Header with Actions *@
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-lg font-medium text-nebula-text-primary">Worlds</h2>
+            <p class="text-sm text-nebula-text-muted">Manage worlds in <code class="bg-nebula-bg-tertiary px-1 rounded text-xs">Server/universe/worlds</code></p>
+        </div>
+        <div class="flex items-center gap-2">
+            <Button Variant="Button.ButtonVariant.Secondary"
+                    Text="Refresh"
+                    IconName="refresh-cw"
+                    Loading="_loading"
+                    OnClick="LoadWorlds" />
+            <Button Variant="Button.ButtonVariant.Primary"
+                    Text="New World"
+                    IconName="plus"
+                    Disabled="_loading"
+                    OnClick="ShowCreateModal" />
+        </div>
+    </div>
+
+    @* Loading State *@
+    @if (_loading && _worlds.Count == 0)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="flex flex-col items-center gap-4">
+                <span class="spinner w-6 h-6"></span>
+                <span class="text-sm text-nebula-text-muted">Loading worlds...</span>
+            </div>
+        </div>
+    }
+    @* Empty State *@
+    else if (_worlds.Count == 0)
+    {
+        <Card>
+            <div class="text-center py-8">
+                <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-nebula-bg-tertiary flex items-center justify-center">
+                    <Icon Name="globe" Size="Icon.IconSize.Large" Class="text-nebula-text-muted" />
+                </div>
+                <h3 class="font-medium text-nebula-text-primary mb-1">No worlds found</h3>
+                <p class="text-sm text-nebula-text-muted mb-4">
+                    Create a new world or start the server to generate the default world.
+                </p>
+                <Button Variant="Button.ButtonVariant.Primary"
+                        Text="Create World"
+                        IconName="plus"
+                        OnClick="ShowCreateModal" />
+            </div>
+        </Card>
+    }
+    @* World List *@
+    else
+    {
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            @foreach (var world in _worlds)
+            {
+                var config = world.Config;
+                <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border overflow-hidden transition-all @(SelectedWorld == world.Name ? "ring-2 ring-nebula-primary" : "hover:border-nebula-border-hover")">
+                    @* World Header - Always Visible *@
+                    <button class="w-full p-4 text-left" @onclick="() => ToggleWorld(world.Name)">
+                        <div class="flex items-start justify-between">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="w-10 h-10 rounded-lg bg-nebula-bg-tertiary flex items-center justify-center flex-shrink-0">
+                                    <Icon Name="globe" Size="Icon.IconSize.Medium" Class="text-nebula-primary" />
+                                </div>
+                                <div class="min-w-0">
+                                    <h3 class="font-medium text-nebula-text-primary truncate">@world.Name</h3>
+                                    <div class="flex items-center gap-2 text-xs text-nebula-text-muted">
+                                        @if (config?.WorldGen is not null)
+                                        {
+                                            <span>@config.WorldGen.Name generator</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                                <span class="text-xs text-nebula-text-muted">@FormatSize(world.SizeBytes)</span>
+                                <Icon Name="@(SelectedWorld == world.Name ? "chevron-up" : "chevron-down")"
+                                      Size="Icon.IconSize.Small"
+                                      Class="text-nebula-text-muted" />
+                            </div>
+                        </div>
+
+                        @* Quick Info Row *@
+                        <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                            @if (config is not null)
+                            {
+                                <span class="flex items-center gap-1 text-nebula-text-muted" title="Seed">
+                                    <Icon Name="key" Size="Icon.IconSize.XSmall" />
+                                    <span class="font-mono">@config.Seed</span>
+                                </span>
+                                <StatusBadge Status="@(config.IsPvpEnabled ? StatusType.Error : StatusType.Neutral)"
+                                             Text="@(config.IsPvpEnabled ? "PvP On" : "PvP Off")"
+                                             Size="BadgeSize.Small" />
+                                @if (!config.IsFallDamageEnabled)
+                                {
+                                    <StatusBadge Status="StatusType.Info" Text="No Fall Damage" Size="BadgeSize.Small" />
+                                }
+                                @if (config.IsAllNPCFrozen)
+                                {
+                                    <StatusBadge Status="StatusType.Warning" Text="NPCs Frozen" Size="BadgeSize.Small" />
+                                }
+                            }
+                            <span class="flex items-center gap-1 text-nebula-text-muted ml-auto" title="Last Modified">
+                                <Icon Name="clock" Size="Icon.IconSize.XSmall" />
+                                @world.LastModified.ToString("MMM d, yyyy")
+                            </span>
+                        </div>
+                    </button>
+
+                    @* Expanded Details *@
+                    @if (SelectedWorld == world.Name)
+                    {
+                        <div class="border-t border-nebula-border">
+                            @* Action Bar *@
+                            <div class="px-4 py-2 bg-nebula-bg-tertiary flex items-center gap-2">
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Text="Edit Settings"
+                                        IconName="settings"
+                                        Size="Button.ButtonSize.Small"
+                                        OnClick="() => ShowEditConfig(world)" />
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Text="Duplicate"
+                                        IconName="copy"
+                                        Size="Button.ButtonSize.Small"
+                                        OnClick="() => ShowDuplicateModal(world)" />
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Text="Open in Files"
+                                        IconName="folder-open"
+                                        Size="Button.ButtonSize.Small"
+                                        OnClick="() => OpenInFiles(world)" />
+                                <div class="flex-1"></div>
+                                <Button Variant="Button.ButtonVariant.Danger"
+                                        Text="Delete"
+                                        IconName="trash-2"
+                                        Size="Button.ButtonSize.Small"
+                                        OnClick="() => ShowDeleteConfirm(world)" />
+                            </div>
+
+                            @* Config Details *@
+                            @if (config is not null)
+                            {
+                                <div class="p-4 space-y-4">
+                                    @* World Generation *@
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                                        <div>
+                                            <span class="text-xs text-nebula-text-muted block">Seed</span>
+                                            <span class="text-nebula-text-primary font-mono text-xs">@config.Seed</span>
+                                        </div>
+                                        @if (config.WorldGen is not null)
+                                        {
+                                            <div>
+                                                <span class="text-xs text-nebula-text-muted block">World Gen</span>
+                                                <span class="text-nebula-text-secondary">@config.WorldGen.Type / @config.WorldGen.Name</span>
+                                            </div>
+                                        }
+                                        @if (config.GameplayConfig is not null)
+                                        {
+                                            <div>
+                                                <span class="text-xs text-nebula-text-muted block">Gameplay Config</span>
+                                                <span class="text-nebula-text-secondary">@config.GameplayConfig</span>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    @* Gameplay Toggles *@
+                                    <div>
+                                        <span class="text-xs text-nebula-text-muted block mb-2">Gameplay Settings</span>
+                                        <div class="flex flex-wrap gap-2">
+                                            <ToggleBadge Label="PvP" Enabled="config.IsPvpEnabled" />
+                                            <ToggleBadge Label="Fall Damage" Enabled="config.IsFallDamageEnabled" />
+                                            <ToggleBadge Label="NPC Spawning" Enabled="config.IsSpawningNPC" />
+                                            <ToggleBadge Label="NPCs Frozen" Enabled="config.IsAllNPCFrozen" Warning="true" />
+                                            <ToggleBadge Label="Time Paused" Enabled="config.IsGameTimePaused" Warning="true" />
+                                        </div>
+                                    </div>
+
+                                    @* Technical Settings *@
+                                    <div>
+                                        <span class="text-xs text-nebula-text-muted block mb-2">Technical</span>
+                                        <div class="flex flex-wrap gap-2">
+                                            <ToggleBadge Label="Ticking" Enabled="config.IsTicking" />
+                                            <ToggleBadge Label="Block Ticking" Enabled="config.IsBlockTicking" />
+                                            <ToggleBadge Label="Saving Players" Enabled="config.IsSavingPlayers" />
+                                            <ToggleBadge Label="Saving Chunks" Enabled="config.IsSavingChunks" />
+                                            <ToggleBadge Label="Unloading Chunks" Enabled="config.IsUnloadingChunks" />
+                                        </div>
+                                    </div>
+
+                                    @if (!world.HasConfig)
+                                    {
+                                        <div class="text-xs text-nebula-warning flex items-center gap-1 pt-2">
+                                            <Icon Name="alert-triangle" Size="Icon.IconSize.XSmall" />
+                                            <span>No config.json found - using defaults</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="p-4 text-sm text-nebula-text-muted">
+                                    No configuration data available
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* Create World Modal *@
+<Modal IsOpen="_showCreateModal" OnClose="() => _showCreateModal = false">
+    <Header>
+        <h2 class="text-lg font-semibold">Create New World</h2>
+    </Header>
+    <Body>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-primary mb-1">World Name</label>
+                <input type="text"
+                       @bind="_createName"
+                       class="w-full px-3 py-2 bg-nebula-bg-tertiary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-primary focus:border-transparent"
+                       placeholder="my_world" />
+                <p class="text-xs text-nebula-text-muted mt-1">This will be the folder name</p>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-primary mb-1">Seed (optional)</label>
+                <input type="number"
+                       @bind="_createSeed"
+                       class="w-full px-3 py-2 bg-nebula-bg-tertiary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-primary focus:border-transparent"
+                       placeholder="Leave empty for random" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-primary mb-1">World Generator</label>
+                <select @bind="_createWorldGenName"
+                        class="w-full px-3 py-2 bg-nebula-bg-tertiary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-primary focus:border-transparent">
+                    <option value="Default">Default</option>
+                    <option value="Flat">Flat</option>
+                </select>
+            </div>
+        </div>
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost"
+                Text="Cancel"
+                OnClick="() => _showCreateModal = false" />
+        <Button Variant="Button.ButtonVariant.Primary"
+                Text="Create"
+                IconName="plus"
+                Loading="_creating"
+                Disabled="string.IsNullOrWhiteSpace(_createName)"
+                OnClick="CreateWorld" />
+    </Footer>
+</Modal>
+
+@* Duplicate World Modal *@
+<Modal IsOpen="_showDuplicateModal" OnClose="() => _showDuplicateModal = false">
+    <Header>
+        <h2 class="text-lg font-semibold">Duplicate World</h2>
+    </Header>
+    <Body>
+        <div class="space-y-4">
+            <p class="text-sm text-nebula-text-secondary">
+                Create a copy of <span class="font-medium text-nebula-text-primary">@_worldToDuplicate?.Name</span>
+            </p>
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-primary mb-1">New World Name</label>
+                <input type="text"
+                       @bind="_duplicateName"
+                       class="w-full px-3 py-2 bg-nebula-bg-tertiary border border-nebula-border rounded-nebula text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-primary focus:border-transparent"
+                       placeholder="@($"{_worldToDuplicate?.Name}_copy")" />
+            </div>
+            <p class="text-xs text-nebula-text-muted">
+                A new UUID will be generated for the duplicated world.
+            </p>
+        </div>
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost"
+                Text="Cancel"
+                OnClick="() => _showDuplicateModal = false" />
+        <Button Variant="Button.ButtonVariant.Primary"
+                Text="Duplicate"
+                IconName="copy"
+                Loading="_duplicating"
+                Disabled="string.IsNullOrWhiteSpace(_duplicateName)"
+                OnClick="DuplicateWorld" />
+    </Footer>
+</Modal>
+
+@* Delete Confirmation Modal *@
+<Modal IsOpen="_showDeleteModal" OnClose="() => _showDeleteModal = false">
+    <Header>
+        <h2 class="text-lg font-semibold text-nebula-error">Delete World</h2>
+    </Header>
+    <Body>
+        <div class="space-y-4">
+            <p class="text-sm text-nebula-text-secondary">
+                Are you sure you want to delete <span class="font-medium text-nebula-text-primary">@_worldToDelete?.Name</span>?
+            </p>
+            <div class="p-3 bg-nebula-error/10 border border-nebula-error/30 rounded-lg text-sm text-nebula-error flex items-start gap-2">
+                <Icon Name="alert-triangle" Size="Icon.IconSize.Small" Class="mt-0.5 flex-shrink-0" />
+                <span>This action cannot be undone. All world data will be permanently deleted.</span>
+            </div>
+        </div>
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost"
+                Text="Cancel"
+                OnClick="() => _showDeleteModal = false" />
+        <Button Variant="Button.ButtonVariant.Danger"
+                Text="Delete World"
+                IconName="trash-2"
+                Loading="_deleting"
+                OnClick="DeleteWorld" />
+    </Footer>
+</Modal>
+
+@* Edit Config Modal *@
+<Modal IsOpen="_showEditModal" OnClose="() => _showEditModal = false" Size="Modal.ModalSize.Large">
+    <Header>
+        <div class="flex items-center justify-between w-full">
+            <h2 class="text-lg font-semibold">World Settings - @_worldToEdit?.Name</h2>
+            <Button Variant="Button.ButtonVariant.Ghost"
+                    Text="@(_editMode == EditMode.Form ? "Raw JSON" : "Form View")"
+                    IconName="@(_editMode == EditMode.Form ? "code" : "list")"
+                    Size="Button.ButtonSize.Small"
+                    OnClick="ToggleEditMode" />
+        </div>
+    </Header>
+    <Body>
+        @if (_editMode == EditMode.Form)
+        {
+            <div class="space-y-6">
+                @* Gameplay Settings *@
+                <div>
+                    <h3 class="text-sm font-medium text-nebula-text-primary mb-3">Gameplay</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsPvpEnabled" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">PvP Enabled</span>
+                                <p class="text-xs text-nebula-text-muted">Allow player vs player combat</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsFallDamageEnabled" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Fall Damage</span>
+                                <p class="text-xs text-nebula-text-muted">Players take damage from falling</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsSpawningNPC" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">NPC Spawning</span>
+                                <p class="text-xs text-nebula-text-muted">Allow NPCs to spawn naturally</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsAllNPCFrozen" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Freeze All NPCs</span>
+                                <p class="text-xs text-nebula-text-muted">Prevent all NPC movement and AI</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsGameTimePaused" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Pause Game Time</span>
+                                <p class="text-xs text-nebula-text-muted">Stop day/night cycle progression</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsSpawnMarkersEnabled" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Spawn Markers</span>
+                                <p class="text-xs text-nebula-text-muted">Show spawn point markers</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsObjectiveMarkersEnabled" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Objective Markers</span>
+                                <p class="text-xs text-nebula-text-muted">Show objective markers</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsCompassUpdating" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Compass Updates</span>
+                                <p class="text-xs text-nebula-text-muted">Keep compass pointing updated</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                @* World Processing *@
+                <div>
+                    <h3 class="text-sm font-medium text-nebula-text-primary mb-3">World Processing</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsTicking" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">World Ticking</span>
+                                <p class="text-xs text-nebula-text-muted">Process world updates</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsBlockTicking" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Block Ticking</span>
+                                <p class="text-xs text-nebula-text-muted">Process block updates (growth, etc.)</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                @* Persistence *@
+                <div>
+                    <h3 class="text-sm font-medium text-nebula-text-primary mb-3">Persistence</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsSavingPlayers" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Save Players</span>
+                                <p class="text-xs text-nebula-text-muted">Persist player data</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsSavingChunks" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Save Chunks</span>
+                                <p class="text-xs text-nebula-text-muted">Persist chunk data</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.SaveNewChunks" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Save New Chunks</span>
+                                <p class="text-xs text-nebula-text-muted">Save newly generated chunks</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.IsUnloadingChunks" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Unload Chunks</span>
+                                <p class="text-xs text-nebula-text-muted">Unload chunks when not needed</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                @* Danger Zone *@
+                <div>
+                    <h3 class="text-sm font-medium text-nebula-error mb-3">Danger Zone</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.DeleteOnUniverseStart" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Delete on Universe Start</span>
+                                <p class="text-xs text-nebula-error">Delete world when universe starts</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" @bind="_editConfig.DeleteOnRemove" class="rounded border-nebula-border w-4 h-4" />
+                            <div>
+                                <span class="text-sm text-nebula-text-primary">Delete on Remove</span>
+                                <p class="text-xs text-nebula-error">Delete world files when removed</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div>
+                <textarea @bind="_rawConfig"
+                          rows="20"
+                          class="w-full px-3 py-2 bg-nebula-bg-tertiary border border-nebula-border rounded-nebula text-nebula-text-primary font-mono text-sm focus:outline-none focus:ring-2 focus:ring-nebula-primary focus:border-transparent resize-none"></textarea>
+                @if (_jsonError is not null)
+                {
+                    <p class="text-xs text-nebula-error mt-1">@_jsonError</p>
+                }
+            </div>
+        }
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost"
+                Text="Cancel"
+                OnClick="() => _showEditModal = false" />
+        <Button Variant="Button.ButtonVariant.Primary"
+                Text="Save Changes"
+                IconName="save"
+                Loading="_saving"
+                OnClick="SaveConfig" />
+    </Footer>
+</Modal>
+
+@* Toggle Badge Helper Component *@
+@code {
+    [Parameter, EditorRequired]
+    public Guid ServerId { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnNavigateToFiles { get; set; }
+
+    private List<HytaleWorldDto> _worlds = [];
+    private bool _loading;
+    private string? SelectedWorld;
+
+    // Create
+    private bool _showCreateModal;
+    private bool _creating;
+    private string _createName = "";
+    private long? _createSeed;
+    private string _createWorldGenName = "Default";
+
+    // Duplicate
+    private bool _showDuplicateModal;
+    private bool _duplicating;
+    private HytaleWorldDto? _worldToDuplicate;
+    private string _duplicateName = "";
+
+    // Delete
+    private bool _showDeleteModal;
+    private bool _deleting;
+    private HytaleWorldDto? _worldToDelete;
+
+    // Edit
+    private bool _showEditModal;
+    private bool _saving;
+    private HytaleWorldDto? _worldToEdit;
+    private EditConfigModel _editConfig = new();
+    private string _rawConfig = "";
+    private string? _jsonError;
+    private EditMode _editMode = EditMode.Form;
+
+    private enum EditMode { Form, Raw }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadWorlds();
+    }
+
+    private async Task LoadWorlds()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var worlds = await WorldService.GetWorldsAsync(ServerId);
+            _worlds = worlds.ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load worlds: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleWorld(string worldName)
+    {
+        SelectedWorld = SelectedWorld == worldName ? null : worldName;
+    }
+
+    private void ShowCreateModal()
+    {
+        _createName = "";
+        _createSeed = null;
+        _createWorldGenName = "Default";
+        _showCreateModal = true;
+    }
+
+    private async Task CreateWorld()
+    {
+        if (string.IsNullOrWhiteSpace(_createName)) return;
+
+        _creating = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = new CreateHytaleWorldRequest(
+                Name: _createName.Trim(),
+                Seed: _createSeed,
+                WorldGenType: "Hytale",
+                WorldGenName: _createWorldGenName
+            );
+
+            var result = await WorldService.CreateWorldAsync(ServerId, request);
+            if (result is not null)
+            {
+                ToastService.ShowSuccess($"World '{result.Name}' created");
+                _showCreateModal = false;
+                await LoadWorlds();
+                SelectedWorld = result.Name;
+            }
+            else
+            {
+                ToastService.ShowError("Failed to create world - it may already exist");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to create world: {ex.Message}");
+        }
+        finally
+        {
+            _creating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDuplicateModal(HytaleWorldDto world)
+    {
+        _worldToDuplicate = world;
+        _duplicateName = $"{world.Name}_copy";
+        _showDuplicateModal = true;
+    }
+
+    private async Task DuplicateWorld()
+    {
+        if (_worldToDuplicate is null || string.IsNullOrWhiteSpace(_duplicateName)) return;
+
+        _duplicating = true;
+        StateHasChanged();
+
+        try
+        {
+            var request = new DuplicateHytaleWorldRequest(_worldToDuplicate.Name, _duplicateName.Trim());
+            var result = await WorldService.DuplicateWorldAsync(ServerId, request);
+
+            if (result is not null)
+            {
+                ToastService.ShowSuccess($"World duplicated as '{result.Name}'");
+                _showDuplicateModal = false;
+                await LoadWorlds();
+                SelectedWorld = result.Name;
+            }
+            else
+            {
+                ToastService.ShowError("Failed to duplicate world");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to duplicate world: {ex.Message}");
+        }
+        finally
+        {
+            _duplicating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowDeleteConfirm(HytaleWorldDto world)
+    {
+        _worldToDelete = world;
+        _showDeleteModal = true;
+    }
+
+    private async Task DeleteWorld()
+    {
+        if (_worldToDelete is null) return;
+
+        _deleting = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await WorldService.DeleteWorldAsync(ServerId, _worldToDelete.Name);
+            if (success)
+            {
+                ToastService.ShowSuccess($"World '{_worldToDelete.Name}' deleted");
+                _showDeleteModal = false;
+                if (SelectedWorld == _worldToDelete.Name)
+                {
+                    SelectedWorld = null;
+                }
+                await LoadWorlds();
+            }
+            else
+            {
+                ToastService.ShowError("Failed to delete world");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete world: {ex.Message}");
+        }
+        finally
+        {
+            _deleting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowEditConfig(HytaleWorldDto world)
+    {
+        _worldToEdit = world;
+        _editMode = EditMode.Form;
+        _jsonError = null;
+
+        // Load current config
+        var config = world.Config;
+        if (config is not null)
+        {
+            _editConfig = new EditConfigModel
+            {
+                IsPvpEnabled = config.IsPvpEnabled,
+                IsFallDamageEnabled = config.IsFallDamageEnabled,
+                IsSpawningNPC = config.IsSpawningNPC,
+                IsAllNPCFrozen = config.IsAllNPCFrozen,
+                IsGameTimePaused = config.IsGameTimePaused,
+                IsTicking = config.IsTicking,
+                IsBlockTicking = config.IsBlockTicking,
+                IsSpawnMarkersEnabled = config.IsSpawnMarkersEnabled,
+                IsObjectiveMarkersEnabled = config.IsObjectiveMarkersEnabled,
+                IsCompassUpdating = config.IsCompassUpdating,
+                IsSavingPlayers = config.IsSavingPlayers,
+                IsSavingChunks = config.IsSavingChunks,
+                SaveNewChunks = config.SaveNewChunks,
+                IsUnloadingChunks = config.IsUnloadingChunks,
+                DeleteOnUniverseStart = config.DeleteOnUniverseStart,
+                DeleteOnRemove = config.DeleteOnRemove
+            };
+        }
+        else
+        {
+            _editConfig = new EditConfigModel();
+        }
+
+        // Also load raw config
+        _rawConfig = await WorldService.GetWorldConfigRawAsync(ServerId, world.Name) ?? "{}";
+
+        _showEditModal = true;
+    }
+
+    private void ToggleEditMode()
+    {
+        _editMode = _editMode == EditMode.Form ? EditMode.Raw : EditMode.Form;
+        _jsonError = null;
+    }
+
+    private async Task SaveConfig()
+    {
+        if (_worldToEdit is null) return;
+
+        _saving = true;
+        _jsonError = null;
+        StateHasChanged();
+
+        try
+        {
+            bool success;
+
+            if (_editMode == EditMode.Raw)
+            {
+                success = await WorldService.SaveWorldConfigRawAsync(ServerId, _worldToEdit.Name, _rawConfig);
+                if (!success)
+                {
+                    _jsonError = "Invalid JSON or failed to save";
+                    _saving = false;
+                    StateHasChanged();
+                    return;
+                }
+            }
+            else
+            {
+                var request = new UpdateHytaleWorldConfigRequest(
+                    WorldName: _worldToEdit.Name,
+                    IsPvpEnabled: _editConfig.IsPvpEnabled,
+                    IsFallDamageEnabled: _editConfig.IsFallDamageEnabled,
+                    IsSpawningNPC: _editConfig.IsSpawningNPC,
+                    IsAllNPCFrozen: _editConfig.IsAllNPCFrozen,
+                    IsGameTimePaused: _editConfig.IsGameTimePaused,
+                    IsTicking: _editConfig.IsTicking,
+                    IsBlockTicking: _editConfig.IsBlockTicking,
+                    IsSpawnMarkersEnabled: _editConfig.IsSpawnMarkersEnabled,
+                    IsObjectiveMarkersEnabled: _editConfig.IsObjectiveMarkersEnabled,
+                    IsCompassUpdating: _editConfig.IsCompassUpdating,
+                    IsSavingPlayers: _editConfig.IsSavingPlayers,
+                    IsSavingChunks: _editConfig.IsSavingChunks,
+                    SaveNewChunks: _editConfig.SaveNewChunks,
+                    IsUnloadingChunks: _editConfig.IsUnloadingChunks,
+                    DeleteOnUniverseStart: _editConfig.DeleteOnUniverseStart,
+                    DeleteOnRemove: _editConfig.DeleteOnRemove,
+                    GameplayConfig: null
+                );
+                success = await WorldService.UpdateWorldConfigAsync(ServerId, request);
+            }
+
+            if (success)
+            {
+                ToastService.ShowSuccess("World settings saved");
+                _showEditModal = false;
+                await LoadWorlds();
+            }
+            else
+            {
+                ToastService.ShowError("Failed to save settings");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save settings: {ex.Message}");
+        }
+        finally
+        {
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenInFiles(HytaleWorldDto world)
+    {
+        var relativePath = $"Server/universe/worlds/{world.Name}";
+        await OnNavigateToFiles.InvokeAsync(relativePath);
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+    }
+
+    private class EditConfigModel
+    {
+        public bool IsPvpEnabled { get; set; }
+        public bool IsFallDamageEnabled { get; set; } = true;
+        public bool IsSpawningNPC { get; set; } = true;
+        public bool IsAllNPCFrozen { get; set; }
+        public bool IsGameTimePaused { get; set; }
+        public bool IsTicking { get; set; } = true;
+        public bool IsBlockTicking { get; set; } = true;
+        public bool IsSpawnMarkersEnabled { get; set; } = true;
+        public bool IsObjectiveMarkersEnabled { get; set; } = true;
+        public bool IsCompassUpdating { get; set; } = true;
+        public bool IsSavingPlayers { get; set; } = true;
+        public bool IsSavingChunks { get; set; } = true;
+        public bool SaveNewChunks { get; set; } = true;
+        public bool IsUnloadingChunks { get; set; } = true;
+        public bool DeleteOnUniverseStart { get; set; }
+        public bool DeleteOnRemove { get; set; }
+    }
+}
+
+@* Inline ToggleBadge component *@
+@code {
+    private RenderFragment ToggleBadge(string label, bool enabled, bool warning = false) => __builder =>
+    {
+        var status = enabled
+            ? (warning ? StatusType.Warning : StatusType.Success)
+            : StatusType.Neutral;
+        var text = enabled ? label : $"No {label}";
+
+        <StatusBadge Status="@status" Text="@(enabled ? label : $"No {label}")" Size="BadgeSize.Small" />
+    };
+}

@@ -1,0 +1,182 @@
+@using NebulaPanel.Application.DTOs
+
+<div class="permission-tree @Class">
+    @foreach (var category in Categories)
+    {
+        var isExpanded = _expandedCategories.Contains(category.Category);
+        var selectedCount = category.Permissions.Count(p => SelectedPermissionIds.Contains(p.Id));
+        var totalCount = category.Permissions.Count;
+
+        <div class="permission-category">
+            <div class="category-header" @onclick="() => ToggleCategory(category.Category)">
+                <div class="flex items-center gap-2">
+                    <Icon Name="@(isExpanded ? "chevron-down" : "chevron-right")" Size="IconSize.Small" />
+                    <Icon Name="@GetCategoryIcon(category.Category)" Size="IconSize.Small" Class="text-nebula-text-secondary" />
+                    <span class="font-medium">@category.DisplayName</span>
+                    <span class="text-xs px-2 py-0.5 rounded-full @(selectedCount > 0 ? "bg-nebula-accent/20 text-nebula-accent" : "bg-nebula-bg-tertiary text-nebula-text-secondary")">
+                        @selectedCount/@totalCount
+                    </span>
+                </div>
+                @if (!ReadOnly)
+                {
+                    <div class="flex items-center gap-2" @onclick:stopPropagation="true">
+                        <button type="button" class="text-xs text-nebula-accent hover:underline" @onclick="() => SelectAllInCategory(category)">
+                            Select all
+                        </button>
+                        <span class="text-nebula-text-muted">|</span>
+                        <button type="button" class="text-xs text-nebula-text-secondary hover:underline" @onclick="() => ClearAllInCategory(category)">
+                            Clear
+                        </button>
+                    </div>
+                }
+            </div>
+
+            @if (isExpanded)
+            {
+                <div class="permission-list">
+                    @foreach (var permission in category.Permissions)
+                    {
+                        var isSelected = SelectedPermissionIds.Contains(permission.Id);
+                        <label class="permission-item @(ReadOnly ? "cursor-default" : "cursor-pointer") @(isSelected ? "selected" : "")">
+                            <input type="checkbox"
+                                   checked="@isSelected"
+                                   disabled="@ReadOnly"
+                                   @onchange="() => TogglePermission(permission.Id)" />
+                            <div class="permission-info">
+                                <span class="permission-name">@permission.Name</span>
+                                <code class="permission-code">@permission.Code</code>
+                            </div>
+                            @if (!string.IsNullOrEmpty(permission.Description))
+                            {
+                                <span class="permission-description" title="@permission.Description">
+                                    <Icon Name="info" Size="IconSize.XSmall" Class="text-nebula-text-muted" />
+                                </span>
+                            }
+                        </label>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (Categories.Count == 0)
+    {
+        <div class="text-center py-8 text-nebula-text-secondary">
+            <Icon Name="shield-off" Size="IconSize.Large" Class="mx-auto mb-2 opacity-50" />
+            <p>No permissions available</p>
+        </div>
+    }
+
+    @if (!ReadOnly && Categories.Count > 0)
+    {
+        <div class="permission-footer">
+            <span class="text-sm text-nebula-text-secondary">
+                @SelectedPermissionIds.Count permission(s) selected
+            </span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public IReadOnlyList<PermissionCategoryDto> Categories { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<Guid> SelectedPermissionIds { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<IReadOnlyList<Guid>> SelectedPermissionIdsChanged { get; set; }
+
+    [Parameter]
+    public bool ReadOnly { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private HashSet<string> _expandedCategories = [];
+
+    protected override void OnInitialized()
+    {
+        // Expand all categories by default
+        foreach (var category in Categories)
+        {
+            _expandedCategories.Add(category.Category);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Ensure new categories are expanded
+        foreach (var category in Categories)
+        {
+            if (!_expandedCategories.Contains(category.Category))
+            {
+                _expandedCategories.Add(category.Category);
+            }
+        }
+    }
+
+    private void ToggleCategory(string category)
+    {
+        if (_expandedCategories.Contains(category))
+        {
+            _expandedCategories.Remove(category);
+        }
+        else
+        {
+            _expandedCategories.Add(category);
+        }
+    }
+
+    private async Task TogglePermission(Guid permissionId)
+    {
+        if (ReadOnly) return;
+
+        var newList = SelectedPermissionIds.ToList();
+        if (newList.Contains(permissionId))
+        {
+            newList.Remove(permissionId);
+        }
+        else
+        {
+            newList.Add(permissionId);
+        }
+
+        await SelectedPermissionIdsChanged.InvokeAsync(newList);
+    }
+
+    private async Task SelectAllInCategory(PermissionCategoryDto category)
+    {
+        if (ReadOnly) return;
+
+        var newList = SelectedPermissionIds.ToList();
+        foreach (var permission in category.Permissions)
+        {
+            if (!newList.Contains(permission.Id))
+            {
+                newList.Add(permission.Id);
+            }
+        }
+
+        await SelectedPermissionIdsChanged.InvokeAsync(newList);
+    }
+
+    private async Task ClearAllInCategory(PermissionCategoryDto category)
+    {
+        if (ReadOnly) return;
+
+        var categoryPermissionIds = category.Permissions.Select(p => p.Id).ToHashSet();
+        var newList = SelectedPermissionIds.Where(id => !categoryPermissionIds.Contains(id)).ToList();
+
+        await SelectedPermissionIdsChanged.InvokeAsync(newList);
+    }
+
+    private static string GetCategoryIcon(string category) => category.ToLowerInvariant() switch
+    {
+        "system" => "settings",
+        "users" => "users",
+        "games" => "gamepad-2",
+        "servers" => "server",
+        _ => "folder"
+    };
+}

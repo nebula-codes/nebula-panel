@@ -1,0 +1,365 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using System.Text.Json
+@inject ISettingsService SettingsService
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <Modal IsOpen="true" OnClose="Close" Size="ModalSize.Medium">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">
+                @(_mode == Mode.Export ? "Export Settings" : "Import Settings")
+            </h3>
+        </Header>
+        <Body>
+            <ErrorAlert Message="@_error" Class="mb-4" />
+
+            @if (_mode == Mode.Export)
+            {
+                <div class="space-y-4">
+                    <p class="text-nebula-text-secondary">
+                        Export your settings to a JSON file. This includes general settings, update preferences, and appearance configuration.
+                    </p>
+
+                    <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                        <h4 class="font-medium text-nebula-text-primary mb-2">What will be exported:</h4>
+                        <ul class="text-sm text-nebula-text-muted space-y-1">
+                            <li class="flex items-center gap-2">
+                                <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                General settings (app name, URL, maintenance mode)
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                Update settings (channel, auto-check preferences)
+                            </li>
+                            <li class="flex items-center gap-2">
+                                <Icon Name="check" Size="IconSize.Small" Class="text-nebula-success" />
+                                Appearance settings (theme, accent color)
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                        <div class="flex items-start gap-2">
+                            <Icon Name="info" Size="IconSize.Small" Class="text-nebula-accent mt-0.5" />
+                            <p class="text-sm text-nebula-text-muted">
+                                User accounts, server configurations, and database data are <strong>not</strong> included in this export.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="space-y-4">
+                    @if (_preview is null)
+                    {
+                        <p class="text-nebula-text-secondary">
+                            Paste your settings JSON or upload a settings file to import.
+                        </p>
+
+                        <div class="form-group">
+                            <label class="label">Settings JSON</label>
+                            <textarea @bind="_importJson"
+                                      class="input font-mono text-sm"
+                                      rows="10"
+                                      placeholder='{"version": "1.0", "general": {...}}'></textarea>
+                        </div>
+
+                        <div class="flex items-center gap-4">
+                            <span class="text-sm text-nebula-text-muted">Or</span>
+                            <label class="btn btn-secondary cursor-pointer">
+                                <Icon Name="upload" Size="IconSize.Small" />
+                                <span>Upload File</span>
+                                <InputFile OnChange="HandleFileUpload" accept=".json" class="hidden" />
+                            </label>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="bg-nebula-bg-secondary rounded-nebula p-4 mb-4">
+                            <h4 class="font-medium text-nebula-text-primary mb-3">Select what to import:</h4>
+
+                            <div class="space-y-3">
+                                @if (_preview.General is not null)
+                                {
+                                    <label class="flex items-start gap-3 cursor-pointer">
+                                        <input type="checkbox" @bind="_importGeneral" class="mt-1" />
+                                        <div>
+                                            <p class="font-medium text-nebula-text-primary">General Settings</p>
+                                            <p class="text-sm text-nebula-text-muted">App name: @_preview.General.ApplicationName</p>
+                                        </div>
+                                    </label>
+                                }
+
+                                @if (_preview.Update is not null)
+                                {
+                                    <label class="flex items-start gap-3 cursor-pointer">
+                                        <input type="checkbox" @bind="_importUpdate" class="mt-1" />
+                                        <div>
+                                            <p class="font-medium text-nebula-text-primary">Update Settings</p>
+                                            <p class="text-sm text-nebula-text-muted">Channel: @_preview.Update.Channel, Auto-check: @(_preview.Update.AutoCheck ? "Yes" : "No")</p>
+                                        </div>
+                                    </label>
+                                }
+
+                                @if (_preview.Appearance is not null)
+                                {
+                                    <label class="flex items-start gap-3 cursor-pointer">
+                                        <input type="checkbox" @bind="_importAppearance" class="mt-1" />
+                                        <div>
+                                            <p class="font-medium text-nebula-text-primary">Appearance Settings</p>
+                                            <p class="text-sm text-nebula-text-muted">Theme: @_preview.Appearance.DefaultTheme, Accent: @_preview.Appearance.AccentColor</p>
+                                        </div>
+                                    </label>
+                                }
+                            </div>
+                        </div>
+
+                        @if (_preview.Warnings.Count > 0)
+                        {
+                            <div class="bg-nebula-warning/10 border border-nebula-warning rounded-nebula p-3">
+                                <h4 class="font-medium text-nebula-warning mb-2">Warnings</h4>
+                                <ul class="text-sm text-nebula-warning space-y-1">
+                                    @foreach (var warning in _preview.Warnings)
+                                    {
+                                        <li>@warning</li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Close" />
+
+                @if (_mode == Mode.Export)
+                {
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="Export"
+                            IconName="download"
+                            Loading="_processing"
+                            OnClick="ExportSettings" />
+                }
+                else if (_preview is null)
+                {
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="Preview"
+                            IconName="eye"
+                            Loading="_processing"
+                            Disabled="@string.IsNullOrWhiteSpace(_importJson)"
+                            OnClick="PreviewImport" />
+                }
+                else
+                {
+                    <Button Variant="ButtonVariant.Ghost" Text="Back" OnClick="ResetPreview" />
+                    <Button Variant="ButtonVariant.Primary"
+                            Text="Import"
+                            IconName="upload"
+                            Loading="_processing"
+                            Disabled="@(!_importGeneral && !_importUpdate && !_importAppearance)"
+                            OnClick="ImportSettings" />
+                }
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback OnImported { get; set; }
+
+    [Parameter]
+    public Mode InitialMode { get; set; } = Mode.Export;
+
+    private Mode _mode;
+    private bool _processing;
+    private string? _error;
+
+    // Import state
+    private string _importJson = string.Empty;
+    private SettingsImportPreviewDto? _preview;
+    private bool _importGeneral = true;
+    private bool _importUpdate = true;
+    private bool _importAppearance = true;
+
+    public enum Mode
+    {
+        Export,
+        Import
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen)
+        {
+            _mode = InitialMode;
+            _error = null;
+            _importJson = string.Empty;
+            _preview = null;
+            _importGeneral = true;
+            _importUpdate = true;
+            _importAppearance = true;
+        }
+    }
+
+    private async Task Close()
+    {
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task ExportSettings()
+    {
+        try
+        {
+            _processing = true;
+            _error = null;
+
+            var result = await SettingsService.ExportSettingsAsync();
+
+            if (result.IsSuccess && result.Value is not null)
+            {
+                var json = JsonSerializer.Serialize(result.Value, new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                var fileName = $"nebula-settings-{DateTime.UtcNow:yyyy-MM-dd}.json";
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+
+                await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(bytes), "application/json");
+
+                await Close();
+            }
+            else
+            {
+                _error = result.Error ?? "Failed to export settings.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private async Task HandleFileUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            _error = null;
+            var file = e.File;
+
+            if (file.Size > 1024 * 1024) // 1MB limit
+            {
+                _error = "File is too large. Maximum size is 1MB.";
+                return;
+            }
+
+            using var stream = file.OpenReadStream();
+            using var reader = new StreamReader(stream);
+            _importJson = await reader.ReadToEndAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task PreviewImport()
+    {
+        try
+        {
+            _processing = true;
+            _error = null;
+
+            var result = await SettingsService.PreviewImportAsync(_importJson);
+
+            if (result.IsSuccess)
+            {
+                _preview = result.Value;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void ResetPreview()
+    {
+        _preview = null;
+        _error = null;
+    }
+
+    private async Task ImportSettings()
+    {
+        try
+        {
+            _processing = true;
+            _error = null;
+
+            var request = new SettingsImportRequest(
+                _importGeneral,
+                _importUpdate,
+                _importAppearance,
+                _importJson);
+
+            var result = await SettingsService.ImportSettingsAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                await OnImported.InvokeAsync();
+                await Close();
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+}

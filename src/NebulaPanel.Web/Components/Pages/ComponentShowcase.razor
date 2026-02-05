@@ -1,0 +1,463 @@
+@page "/components"
+
+<div class="p-6 space-y-12 max-w-6xl mx-auto">
+    <header class="mb-8">
+        <h1 class="text-h1 text-nebula-text-primary mb-2">Component Library</h1>
+        <p class="text-nebula-text-secondary">
+            Interactive showcase of all Nebula Panel UI components with the Cosmic Mission Control theme.
+        </p>
+    </header>
+
+    @* ================================================
+       BUTTONS SECTION
+       ================================================ *@
+    <section class="space-y-6">
+        <h2 class="text-h2 text-nebula-text-primary border-b border-nebula-border pb-2">Buttons</h2>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Variants</h3>
+            </Header>
+            <ChildContent>
+                <div class="flex flex-wrap items-center gap-4">
+                    <Button Variant="Button.ButtonVariant.Primary" Text="Primary" />
+                    <Button Variant="Button.ButtonVariant.Secondary" Text="Secondary" />
+                    <Button Variant="Button.ButtonVariant.Ghost" Text="Ghost" />
+                    <Button Variant="Button.ButtonVariant.Danger" Text="Danger" />
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Sizes</h3>
+            </Header>
+            <ChildContent>
+                <div class="flex flex-wrap items-center gap-4">
+                    <Button Size="Button.ButtonSize.Small" Text="Small" />
+                    <Button Size="Button.ButtonSize.Medium" Text="Medium" />
+                    <Button Size="Button.ButtonSize.Large" Text="Large" />
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">States</h3>
+            </Header>
+            <ChildContent>
+                <div class="flex flex-wrap items-center gap-4">
+                    <Button Text="Default" />
+                    <Button Text="Disabled" Disabled="true" />
+                    <Button Loading="true" LoadingText="Loading..." />
+                    <Button IconName="plus" Text="With Icon" />
+                    <Button IconName="settings" IconOnly="true" aria-label="Settings" />
+                </div>
+            </ChildContent>
+        </Card>
+    </section>
+
+    @* ================================================
+       FORM CONTROLS SECTION
+       ================================================ *@
+    <section class="space-y-6">
+        <h2 class="text-h2 text-nebula-text-primary border-b border-nebula-border pb-2">Form Controls</h2>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Toggle Switch</h3>
+            </Header>
+            <ChildContent>
+                <div class="space-y-4">
+                    <div class="flex items-center gap-8">
+                        <Toggle @bind-Value="_toggleValue" Label="Default toggle" />
+                        <span class="text-sm text-nebula-text-muted">Value: @(_toggleValue ? "On" : "Off")</span>
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <Toggle @bind-Value="_toggleSmall" Size="Toggle.ToggleSize.Small" Label="Small" />
+                        <Toggle @bind-Value="_toggleMedium" Size="Toggle.ToggleSize.Medium" Label="Medium" />
+                        <Toggle @bind-Value="_toggleLarge" Size="Toggle.ToggleSize.Large" Label="Large" />
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <Toggle Value="true" Disabled="true" Label="Disabled (on)" />
+                        <Toggle Value="false" Disabled="true" Label="Disabled (off)" />
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Checkbox</h3>
+            </Header>
+            <ChildContent>
+                <div class="space-y-4">
+                    <div class="flex items-center gap-8">
+                        <Checkbox @bind-Value="_checkbox1" Label="Default checkbox" />
+                        <span class="text-sm text-nebula-text-muted">Value: @_checkbox1</span>
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <Checkbox @bind-Value="_checkboxSm" Size="Checkbox.CheckboxSize.Small" Label="Small" />
+                        <Checkbox @bind-Value="_checkboxMd" Size="Checkbox.CheckboxSize.Medium" Label="Medium" />
+                        <Checkbox @bind-Value="_checkboxLg" Size="Checkbox.CheckboxSize.Large" Label="Large" />
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <Checkbox Value="true" Disabled="true" Label="Disabled (checked)" />
+                        <Checkbox Value="false" Disabled="true" Label="Disabled (unchecked)" />
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Radio</h3>
+            </Header>
+            <ChildContent>
+                <div class="space-y-4">
+                    <div class="flex items-center gap-8">
+                        <Radio TValue="string" Value="@("option1")" GroupValue="@_radioValue" GroupValueChanged="@(v => _radioValue = v)" Label="Option 1" />
+                        <Radio TValue="string" Value="@("option2")" GroupValue="@_radioValue" GroupValueChanged="@(v => _radioValue = v)" Label="Option 2" />
+                        <Radio TValue="string" Value="@("option3")" GroupValue="@_radioValue" GroupValueChanged="@(v => _radioValue = v)" Label="Option 3" />
+                        <span class="text-sm text-nebula-text-muted">Selected: @_radioValue</span>
+                    </div>
+                    <div class="flex items-center gap-8">
+                        <Radio TValue="string" Value="@("a")" GroupValue="@("a")" Size="Radio<string>.RadioSize.Small" Label="Small" Disabled="true" />
+                        <Radio TValue="string" Value="@("b")" GroupValue="@("b")" Size="Radio<string>.RadioSize.Medium" Label="Medium" Disabled="true" />
+                        <Radio TValue="string" Value="@("c")" GroupValue="@("c")" Size="Radio<string>.RadioSize.Large" Label="Large" Disabled="true" />
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Select</h3>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Select TValue="string"
+                            Label="Basic Select"
+                            @bind-Value="_selectedOption"
+                            Options="@_selectOptions"
+                            Placeholder="Choose an option" />
+
+                    <Select TValue="string"
+                            Label="Searchable Select"
+                            @bind-Value="_searchableOption"
+                            Options="@_manyOptions"
+                            Searchable="true"
+                            Placeholder="Search options..." />
+
+                    <Select TValue="string"
+                            Label="Multi-Select"
+                            @bind-SelectedValues="_multiSelectValues"
+                            Options="@_selectOptions"
+                            Multiple="true"
+                            Placeholder="Select multiple..." />
+
+                    <Select TValue="string"
+                            Label="With Error"
+                            Value="@((string?)null)"
+                            Options="@_selectOptions"
+                            ErrorMessage="This field is required"
+                            Required="true" />
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Input</h3>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Input Label="Default Input" @bind-Value="_inputDefault" Placeholder="Enter text..." />
+                    <Input Label="With Leading Icon" @bind-Value="_inputSearch" LeadingIcon="search" Placeholder="Search..." />
+                    <Input Label="Password" @bind-Value="_inputPassword" Type="password" Placeholder="Enter password" />
+                    <Input Label="With Helper Text" @bind-Value="_inputHelper" HelperText="This is some helpful information" Placeholder="Enter text..." />
+                    <Input Label="Disabled" @bind-Value="_inputDisabled" Placeholder="Cannot edit" Disabled="true" />
+                </div>
+            </ChildContent>
+        </Card>
+    </section>
+
+    @* ================================================
+       DATA DISPLAY SECTION
+       ================================================ *@
+    <section class="space-y-6">
+        <h2 class="text-h2 text-nebula-text-primary border-b border-nebula-border pb-2">Data Display</h2>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Cards</h3>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <Card Variant="Card.CardVariant.Default">
+                        <ChildContent>
+                            <p class="text-sm text-nebula-text-secondary">Default Card</p>
+                        </ChildContent>
+                    </Card>
+                    <Card Variant="Card.CardVariant.Elevated">
+                        <ChildContent>
+                            <p class="text-sm text-nebula-text-secondary">Elevated Card</p>
+                        </ChildContent>
+                    </Card>
+                    <Card Variant="Card.CardVariant.Interactive">
+                        <ChildContent>
+                            <p class="text-sm text-nebula-text-secondary">Interactive Card</p>
+                        </ChildContent>
+                    </Card>
+                </div>
+
+                @* Glass card demo with gradient background *@
+                <div class="relative rounded-xl overflow-hidden p-8"
+                     style="background: linear-gradient(135deg, var(--nebula-accent) 0%, var(--nebula-secondary) 50%, var(--nebula-accent-dark) 100%);">
+                    <div class="absolute inset-0 opacity-30"
+                         style="background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 80 80%22><circle cx=%2240%22 cy=%2240%22 r=%2230%22 fill=%22white%22 opacity=%220.1%22/></svg>'); background-size: 80px 80px;"></div>
+                    <div class="relative grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <Card Variant="Card.CardVariant.Glass" Class="p-6">
+                            <ChildContent>
+                                <div class="flex items-center gap-3 mb-3">
+                                    <Icon Name="server" Size="IconSize.Large" Class="text-white" />
+                                    <h4 class="text-lg font-semibold text-white">Glass Card</h4>
+                                </div>
+                                <p class="text-sm text-white/80">
+                                    The frosted glass effect blurs the gradient behind it, creating depth and visual hierarchy.
+                                </p>
+                            </ChildContent>
+                        </Card>
+                        <Card Variant="Card.CardVariant.Glass" Class="p-6">
+                            <ChildContent>
+                                <div class="flex items-center gap-3 mb-3">
+                                    <Icon Name="cpu" Size="IconSize.Large" Class="text-white" />
+                                    <h4 class="text-lg font-semibold text-white">Backdrop Blur</h4>
+                                </div>
+                                <p class="text-sm text-white/80">
+                                    Hover over the card to see the accent glow effect that enhances the glass aesthetic.
+                                </p>
+                            </ChildContent>
+                        </Card>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Status Badges</h3>
+            </Header>
+            <ChildContent>
+                <div class="space-y-4">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <StatusBadge Status="StatusBadge.StatusType.Success" Text="Success" />
+                        <StatusBadge Status="StatusBadge.StatusType.Warning" Text="Warning" />
+                        <StatusBadge Status="StatusBadge.StatusType.Error" Text="Error" />
+                        <StatusBadge Status="StatusBadge.StatusType.Info" Text="Info" />
+                        <StatusBadge Status="StatusBadge.StatusType.Neutral" Text="Neutral" />
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <StatusBadge Status="StatusBadge.StatusType.Success" Text="Running" ShowDot="true" />
+                        <StatusBadge Status="StatusBadge.StatusType.Warning" Text="Starting" ShowDot="true" />
+                        <StatusBadge Status="StatusBadge.StatusType.Error" Text="Stopped" ShowDot="true" />
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <StatusBadge Status="StatusBadge.StatusType.Success" Text="Online" IconName="check-circle" />
+                        <StatusBadge Status="StatusBadge.StatusType.Error" Text="Offline" IconName="x-circle" />
+                        <StatusBadge Status="StatusBadge.StatusType.Info" Text="Active" IconName="activity" Pulse="true" />
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">NebulaTooltips</h3>
+            </Header>
+            <ChildContent>
+                <div class="flex flex-wrap items-center gap-8">
+                    <NebulaTooltip Text="This is a top tooltip" Position="NebulaTooltip.TooltipPosition.Top">
+                        <Button Variant="Button.ButtonVariant.Secondary" Text="Top" />
+                    </NebulaTooltip>
+                    <NebulaTooltip Text="This is a right tooltip" Position="NebulaTooltip.TooltipPosition.Right">
+                        <Button Variant="Button.ButtonVariant.Secondary" Text="Right" />
+                    </NebulaTooltip>
+                    <NebulaTooltip Text="This is a bottom tooltip" Position="NebulaTooltip.TooltipPosition.Bottom">
+                        <Button Variant="Button.ButtonVariant.Secondary" Text="Bottom" />
+                    </NebulaTooltip>
+                    <NebulaTooltip Text="This is a left tooltip" Position="NebulaTooltip.TooltipPosition.Left">
+                        <Button Variant="Button.ButtonVariant.Secondary" Text="Left" />
+                    </NebulaTooltip>
+                </div>
+            </ChildContent>
+        </Card>
+    </section>
+
+    @* ================================================
+       OVERLAYS SECTION
+       ================================================ *@
+    <section class="space-y-6">
+        <h2 class="text-h2 text-nebula-text-primary border-b border-nebula-border pb-2">Overlays</h2>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Modals</h3>
+            </Header>
+            <ChildContent>
+                <div class="flex flex-wrap items-center gap-4">
+                    <Button Text="Default Modal" OnClick="@(() => _showDefaultModal = true)" />
+                    <Button Text="Scale Animation" Variant="Button.ButtonVariant.Secondary" OnClick="@(() => _showScaleModal = true)" />
+                    <Button Text="Slide Animation" Variant="Button.ButtonVariant.Secondary" OnClick="@(() => _showSlideModal = true)" />
+                    <Button Text="Large Modal" Variant="Button.ButtonVariant.Ghost" OnClick="@(() => _showLargeModal = true)" />
+                </div>
+            </ChildContent>
+        </Card>
+    </section>
+
+    @* ================================================
+       ICONS SECTION
+       ================================================ *@
+    <section class="space-y-6">
+        <h2 class="text-h2 text-nebula-text-primary border-b border-nebula-border pb-2">Icons</h2>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Icon Samples</h3>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-6 md:grid-cols-10 gap-4">
+                    @foreach (var icon in _sampleIcons)
+                    {
+                        <NebulaTooltip Text="@icon">
+                            <div class="flex items-center justify-center p-3 rounded-lg bg-nebula-bg-tertiary hover:bg-nebula-bg-elevated transition-colors cursor-pointer">
+                                <Icon Name="@icon" Size="IconSize.Medium" Class="text-nebula-text-secondary" />
+                            </div>
+                        </NebulaTooltip>
+                    }
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card>
+            <Header>
+                <h3 class="text-h3 text-nebula-text-primary">Icon Sizes</h3>
+            </Header>
+            <ChildContent>
+                <div class="flex items-end gap-6">
+                    <div class="text-center">
+                        <Icon Name="server" Size="IconSize.XSmall" Class="text-nebula-text-secondary" />
+                        <p class="text-xs text-nebula-text-muted mt-2">XSmall</p>
+                    </div>
+                    <div class="text-center">
+                        <Icon Name="server" Size="IconSize.Small" Class="text-nebula-text-secondary" />
+                        <p class="text-xs text-nebula-text-muted mt-2">Small</p>
+                    </div>
+                    <div class="text-center">
+                        <Icon Name="server" Size="IconSize.Medium" Class="text-nebula-text-secondary" />
+                        <p class="text-xs text-nebula-text-muted mt-2">Medium</p>
+                    </div>
+                    <div class="text-center">
+                        <Icon Name="server" Size="IconSize.Large" Class="text-nebula-text-secondary" />
+                        <p class="text-xs text-nebula-text-muted mt-2">Large</p>
+                    </div>
+                    <div class="text-center">
+                        <Icon Name="server" Size="IconSize.XLarge" Class="text-nebula-text-secondary" />
+                        <p class="text-xs text-nebula-text-muted mt-2">XLarge</p>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+    </section>
+</div>
+
+@* Modals *@
+<Modal @bind-IsOpen="_showDefaultModal" Title="Default Modal">
+    <Body>
+        <p class="text-nebula-text-secondary">This is a default modal with fade-in animation.</p>
+        <p class="text-nebula-text-muted text-sm mt-2">Press Escape or click outside to close.</p>
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost" Text="Cancel" OnClick="@(() => _showDefaultModal = false)" />
+        <Button Text="Confirm" OnClick="@(() => _showDefaultModal = false)" />
+    </Footer>
+</Modal>
+
+<Modal @bind-IsOpen="_showScaleModal" Title="Scale Animation" Animation="Modal.ModalAnimation.Scale">
+    <Body>
+        <p class="text-nebula-text-secondary">This modal uses scale animation.</p>
+    </Body>
+    <Footer>
+        <Button Text="Close" OnClick="@(() => _showScaleModal = false)" />
+    </Footer>
+</Modal>
+
+<Modal @bind-IsOpen="_showSlideModal" Title="Slide Animation" Animation="Modal.ModalAnimation.Slide">
+    <Body>
+        <p class="text-nebula-text-secondary">This modal uses slide-in animation.</p>
+    </Body>
+    <Footer>
+        <Button Text="Close" OnClick="@(() => _showSlideModal = false)" />
+    </Footer>
+</Modal>
+
+<Modal @bind-IsOpen="_showLargeModal" Title="Large Modal" Size="Modal.ModalSize.Large">
+    <Body>
+        <p class="text-nebula-text-secondary">This is a large modal that can contain more content.</p>
+        <div class="mt-4 p-4 bg-nebula-bg-tertiary rounded-lg">
+            <p class="text-nebula-text-muted text-sm">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+        </div>
+    </Body>
+    <Footer>
+        <Button Variant="Button.ButtonVariant.Ghost" Text="Cancel" OnClick="@(() => _showLargeModal = false)" />
+        <Button Text="Save Changes" OnClick="@(() => _showLargeModal = false)" />
+    </Footer>
+</Modal>
+
+@code {
+    // Toggle state
+    private bool _toggleValue = true;
+    private bool _toggleSmall;
+    private bool _toggleMedium = true;
+    private bool _toggleLarge;
+
+    // Checkbox state
+    private bool _checkbox1 = true;
+    private bool _checkboxSm;
+    private bool _checkboxMd = true;
+    private bool _checkboxLg;
+
+    // Radio state
+    private string _radioValue = "option1";
+
+    // Input state
+    private string _inputDefault = "";
+    private string _inputSearch = "";
+    private string _inputPassword = "";
+    private string _inputHelper = "";
+    private string _inputDisabled = "Read only";
+
+    // Select state
+    private string? _selectedOption;
+    private string? _searchableOption;
+    private IEnumerable<string> _multiSelectValues = Enumerable.Empty<string>();
+
+    private readonly string[] _selectOptions = { "Option 1", "Option 2", "Option 3", "Option 4" };
+    private readonly string[] _manyOptions = Enumerable.Range(1, 20).Select(i => $"Option {i}").ToArray();
+
+    // Modal state
+    private bool _showDefaultModal;
+    private bool _showScaleModal;
+    private bool _showSlideModal;
+    private bool _showLargeModal;
+
+    // Sample icons
+    private readonly string[] _sampleIcons =
+    {
+        "home", "server", "cpu", "database", "terminal", "settings",
+        "play", "pause", "refresh-cw", "trash", "edit", "plus",
+        "search", "bell", "user", "users", "lock", "key",
+        "file", "folder", "download", "upload", "save", "copy",
+        "check-circle", "alert-circle", "x-circle", "info", "eye", "moon"
+    };
+}

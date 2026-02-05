@@ -1,0 +1,486 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Repositories
+
+<Modal IsOpen="@IsOpen"
+       Size="ModalSize.Large"
+       OnClose="HandleClose"
+       ShowCloseButton="true"
+       CloseOnBackdropClick="@(!_isImporting)"
+       CloseOnEscape="@(!_isImporting)">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Import Modpack</span>
+    </Header>
+    <Body>
+        @if (_isImporting)
+        {
+            <div class="flex flex-col items-center py-8">
+                <div class="mb-4">
+                    @if (_importError != null)
+                    {
+                        <Icon Name="alert-circle" Size="IconSize.XLarge" Class="text-nebula-error" />
+                    }
+                    else if (_importComplete)
+                    {
+                        <Icon Name="check-circle" Size="IconSize.XLarge" Class="text-nebula-success" />
+                    }
+                    else
+                    {
+                        <div class="animate-spin rounded-full h-12 w-12 border-4 border-nebula-accent border-t-transparent"></div>
+                    }
+                </div>
+
+                <h3 class="text-lg font-medium mb-2">
+                    @if (_importError != null)
+                    {
+                        <span class="text-nebula-error">Import Failed</span>
+                    }
+                    else if (_importComplete)
+                    {
+                        <span class="text-nebula-success">Import Complete</span>
+                    }
+                    else
+                    {
+                        <span class="text-nebula-text-primary">Importing mods...</span>
+                    }
+                </h3>
+
+                <p class="text-sm text-nebula-text-muted text-center max-w-md">
+                    @if (_importError != null)
+                    {
+                        @_importError
+                    }
+                    else if (_importComplete && _importResult != null)
+                    {
+                        <span>
+                            Installed @_importResult.InstalledCount mod@(_importResult.InstalledCount != 1 ? "s" : "")
+                            @if (_importResult.SkippedCount > 0)
+                            {
+                                <span>, skipped @_importResult.SkippedCount (already installed)</span>
+                            }
+                            @if (_importResult.FailedCount > 0)
+                            {
+                                <span>, @_importResult.FailedCount failed</span>
+                            }
+                        </span>
+                    }
+                    else
+                    {
+                        @(_importProgress?.Message ?? "Preparing...")
+                    }
+                </p>
+
+                @if (!_importComplete && _importError == null && _importProgress != null)
+                {
+                    <div class="w-full mt-4 bg-nebula-bg-tertiary rounded-full h-2">
+                        <div class="bg-nebula-accent h-2 rounded-full transition-all duration-300"
+                             style="width: @_importProgress.Percentage%"></div>
+                    </div>
+                    @if (_importProgress.TotalMods > 0)
+                    {
+                        <span class="text-xs text-nebula-text-muted mt-2">
+                            @_importProgress.CurrentMod / @_importProgress.TotalMods
+                        </span>
+                    }
+                }
+            </div>
+        }
+        else if (_showPreview)
+        {
+            @* Preview Section *@
+            <div class="flex flex-col gap-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-medium text-nebula-text-primary">
+                        @if (_previewCollection != null)
+                        {
+                            <span>Collection: @_previewCollection.Title</span>
+                        }
+                        else
+                        {
+                            <span>Modpack Preview</span>
+                        }
+                    </h3>
+                    <Button Variant="ButtonVariant.Ghost"
+                            Text="Back"
+                            IconName="arrow-left"
+                            Size="ButtonSize.Small"
+                            OnClick="@(() => { _showPreview = false; _previewMods = []; _previewCollection = null; })" />
+                </div>
+
+                @if (_previewError != null)
+                {
+                    <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-3 text-sm">
+                        @_previewError
+                    </div>
+                }
+                else if (_previewMods.Count > 0)
+                {
+                    <div class="text-sm text-nebula-text-muted">
+                        @_previewMods.Count mod@(_previewMods.Count != 1 ? "s" : "") will be installed
+                        @if (_previewMods.Count(m => m.AlreadyInstalled) > 0)
+                        {
+                            <span>(@_previewMods.Count(m => m.AlreadyInstalled) already installed)</span>
+                        }
+                    </div>
+
+                    <div class="max-h-64 overflow-y-auto border border-nebula-border rounded-nebula">
+                        @foreach (var mod in _previewMods)
+                        {
+                            <div class="flex items-center gap-3 p-3 border-b border-nebula-border-subtle last:border-b-0 @(mod.AlreadyInstalled ? "opacity-50" : "")">
+                                @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                {
+                                    <img src="@mod.IconUrl" alt="@mod.Name" class="w-8 h-8 rounded object-cover" />
+                                }
+                                else
+                                {
+                                    <div class="w-8 h-8 rounded bg-nebula-bg-tertiary flex items-center justify-center">
+                                        <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    </div>
+                                }
+                                <div class="flex-1 min-w-0">
+                                    <div class="font-medium text-nebula-text-primary text-sm truncate">
+                                        @mod.Name
+                                        @if (mod.AlreadyInstalled)
+                                        {
+                                            <span class="text-xs text-nebula-text-muted">(installed)</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(mod.Author))
+                                    {
+                                        <div class="text-xs text-nebula-text-muted">by @mod.Author</div>
+                                    }
+                                </div>
+                                <div class="text-xs text-nebula-text-muted">
+                                    @FormatFileSize(mod.FileSizeBytes)
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center py-8 text-nebula-text-muted">
+                        <Icon Name="package" Size="IconSize.Large" Class="mb-2 opacity-50" />
+                        <p>No mods found</p>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="flex flex-col gap-6">
+                @* Import Method Tabs *@
+                <div class="flex border-b border-nebula-border-subtle">
+                    <button type="button"
+                            class="px-4 py-2 text-sm font-medium border-b-2 transition-colors @(_importMethod == "json" ? "border-nebula-accent text-nebula-accent" : "border-transparent text-nebula-text-muted hover:text-nebula-text-secondary")"
+                            @onclick="@(() => _importMethod = "json")">
+                        Paste JSON
+                    </button>
+                    <button type="button"
+                            class="px-4 py-2 text-sm font-medium border-b-2 transition-colors @(_importMethod == "collection" ? "border-nebula-accent text-nebula-accent" : "border-transparent text-nebula-text-muted hover:text-nebula-text-secondary")"
+                            @onclick="@(() => _importMethod = "collection")">
+                        Workshop Collection
+                    </button>
+                </div>
+
+                @if (_importMethod == "json")
+                {
+                    <div class="flex flex-col gap-2">
+                        <label class="text-sm font-medium text-nebula-text-primary">Modpack JSON</label>
+                        <textarea class="input font-mono text-sm h-40 resize-none"
+                                  placeholder='["2824688072", "2909886416"]&#10;&#10;or&#10;&#10;{&#10;  "name": "My Modpack",&#10;  "mods": [&#10;    { "workshopId": "2824688072", "name": "Calamity Mod" }&#10;  ]&#10;}'
+                                  @bind="_jsonInput"></textarea>
+                        <p class="text-xs text-nebula-text-muted">
+                            Paste a JSON array of Workshop IDs or a modpack object with a "mods" array.
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="flex flex-col gap-2">
+                        <label class="text-sm font-medium text-nebula-text-primary">Collection URL or ID</label>
+                        <input type="text"
+                               class="input"
+                               placeholder="https://steamcommunity.com/sharedfiles/filedetails/?id=123456789"
+                               @bind="_collectionInput" />
+                        <p class="text-xs text-nebula-text-muted">
+                            Paste a Steam Workshop collection URL or just the collection ID.
+                        </p>
+                    </div>
+                }
+
+                @if (_parseError != null)
+                {
+                    <div class="bg-nebula-error/10 border border-nebula-error text-nebula-error rounded-nebula p-3 text-sm">
+                        @_parseError
+                    </div>
+                }
+            </div>
+        }
+    </Body>
+    <Footer>
+        @if (_importComplete)
+        {
+            <div class="flex justify-end">
+                <Button Variant="ButtonVariant.Primary" Text="Done" OnClick="HandleImportComplete" />
+            </div>
+        }
+        else if (_importError != null)
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="HandleClose" />
+            </div>
+        }
+        else if (_isImporting)
+        {
+            <div class="flex justify-end">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" Disabled="true" />
+            </div>
+        }
+        else if (_showPreview)
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="HandleClose" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="@($"Install {_previewMods.Count(m => !m.AlreadyInstalled)} Mod{(_previewMods.Count(m => !m.AlreadyInstalled) != 1 ? "s" : "")}")"
+                        IconName="download"
+                        Disabled="@(_previewMods.All(m => m.AlreadyInstalled))"
+                        OnClick="StartImport" />
+            </div>
+        }
+        else
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="HandleClose" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Preview"
+                        IconName="eye"
+                        Loading="_loadingPreview"
+                        Disabled="@((_importMethod == "json" && string.IsNullOrWhiteSpace(_jsonInput)) || (_importMethod == "collection" && string.IsNullOrWhiteSpace(_collectionInput)))"
+                        OnClick="LoadPreview" />
+            </div>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The server ID to import mods to.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Whether the modal is open.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the modal is closed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when mods have been imported.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnImported { get; set; }
+
+    [Inject]
+    private ITerrariaModService ModService { get; set; } = default!;
+
+    [Inject]
+    private IGameServerRepository ServerRepository { get; set; } = default!;
+
+    // Input state
+    private string _importMethod = "json";
+    private string _jsonInput = "";
+    private string _collectionInput = "";
+    private string? _parseError;
+
+    // Preview state
+    private bool _showPreview;
+    private bool _loadingPreview;
+    private string? _previewError;
+    private List<TerrariaModPreview> _previewMods = [];
+    private TerrariaCollectionPreview? _previewCollection;
+
+    // Import state
+    private bool _isImporting;
+    private bool _importComplete;
+    private string? _importError;
+    private TerrariaModInstallProgress? _importProgress;
+    private TerrarriaModBulkInstallResult? _importResult;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_isImporting && !_showPreview)
+        {
+            // Reset state when modal opens
+            _jsonInput = "";
+            _collectionInput = "";
+            _parseError = null;
+            _previewError = null;
+            _previewMods = [];
+            _previewCollection = null;
+            _importComplete = false;
+            _importError = null;
+            _importProgress = null;
+            _importResult = null;
+        }
+    }
+
+    private async Task LoadPreview()
+    {
+        _parseError = null;
+        _previewError = null;
+        _loadingPreview = true;
+        StateHasChanged();
+
+        try
+        {
+            if (_importMethod == "json")
+            {
+                if (string.IsNullOrWhiteSpace(_jsonInput))
+                {
+                    _parseError = "Please enter the modpack JSON";
+                    return;
+                }
+
+                _previewMods = (await ModService.PreviewModpackAsync(_jsonInput)).ToList();
+                if (_previewMods.Count == 0)
+                {
+                    _previewError = "No valid mod IDs found in the JSON";
+                    return;
+                }
+
+                // Check which mods are already installed
+                var server = await ServerRepository.GetByIdAsync(ServerId);
+                if (server != null)
+                {
+                    var installed = await ModService.GetInstalledModsAsync(server);
+                    var installedIds = installed.Where(m => m.WorkshopId != null).Select(m => m.WorkshopId!).ToHashSet();
+                    _previewMods = _previewMods.Select(m => m with { AlreadyInstalled = installedIds.Contains(m.WorkshopId) }).ToList();
+                }
+
+                _showPreview = true;
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(_collectionInput))
+                {
+                    _parseError = "Please enter a collection URL or ID";
+                    return;
+                }
+
+                _previewCollection = await ModService.PreviewCollectionAsync(_collectionInput);
+                if (_previewCollection == null)
+                {
+                    _previewError = "Collection not found or is not a valid collection";
+                    return;
+                }
+
+                _previewMods = _previewCollection.Mods.ToList();
+
+                // Check which mods are already installed
+                var server = await ServerRepository.GetByIdAsync(ServerId);
+                if (server != null)
+                {
+                    var installed = await ModService.GetInstalledModsAsync(server);
+                    var installedIds = installed.Where(m => m.WorkshopId != null).Select(m => m.WorkshopId!).ToHashSet();
+                    _previewMods = _previewMods.Select(m => m with { AlreadyInstalled = installedIds.Contains(m.WorkshopId) }).ToList();
+                }
+
+                _showPreview = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _parseError = $"Failed to load preview: {ex.Message}";
+        }
+        finally
+        {
+            _loadingPreview = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task StartImport()
+    {
+        _isImporting = true;
+        _importComplete = false;
+        _importError = null;
+        _importProgress = null;
+        _importResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server == null)
+            {
+                _importError = "Server not found";
+                return;
+            }
+
+            var progress = new Progress<TerrariaModInstallProgress>(p =>
+            {
+                _importProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            if (_importMethod == "json")
+            {
+                _importResult = await ModService.ImportModpackAsync(server, _jsonInput, progress);
+            }
+            else
+            {
+                _importResult = await ModService.ImportCollectionAsync(server, _collectionInput, progress);
+            }
+
+            if (_importResult.Success)
+            {
+                _importComplete = true;
+            }
+            else
+            {
+                _importError = _importResult.Error ?? "Import failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            _importError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleImportComplete()
+    {
+        await OnImported.InvokeAsync();
+        await HandleClose();
+    }
+
+    private async Task HandleClose()
+    {
+        if (_isImporting && !_importComplete && _importError == null) return;
+
+        _isImporting = false;
+        _importComplete = false;
+        _showPreview = false;
+        _previewMods = [];
+        _previewCollection = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}

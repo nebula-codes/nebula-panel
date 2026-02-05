@@ -1,0 +1,213 @@
+@page "/settings/database"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject ISettingsService SettingsService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Database Settings - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Database</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Database Settings</h1>
+    <p class="text-nebula-text-muted mb-6">View database information and create backups.</p>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <span class="spinner w-8 h-8"></span>
+            <span class="ml-3 text-nebula-text-muted">Loading database info...</span>
+        </div>
+    }
+    else if (_info is not null)
+    {
+        <div class="space-y-6">
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Database Information</h2>
+                </Header>
+                <ChildContent>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Provider</p>
+                            <p class="font-medium text-nebula-text-primary flex items-center gap-2 mt-1">
+                                <Icon Name="database" Size="IconSize.Small" Class="text-nebula-accent" />
+                                @_info.Provider
+                            </p>
+                        </div>
+
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Database Size</p>
+                            <p class="font-medium text-nebula-text-primary mt-1">@_info.SizeFormatted</p>
+                        </div>
+
+                        <div>
+                            <p class="text-sm text-nebula-text-muted">Tables</p>
+                            <p class="font-medium text-nebula-text-primary mt-1">@_info.TableCount</p>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(_info.FilePath))
+                        {
+                            <div class="md:col-span-2 lg:col-span-3">
+                                <p class="text-sm text-nebula-text-muted">File Path</p>
+                                <p class="font-mono text-sm text-nebula-text-secondary mt-1 break-all">@_info.FilePath</p>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(_info.ConnectionString))
+                        {
+                            <div class="md:col-span-2 lg:col-span-3">
+                                <p class="text-sm text-nebula-text-muted">Connection String</p>
+                                <p class="font-mono text-sm text-nebula-text-secondary mt-1 break-all">@_info.ConnectionString</p>
+                            </div>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Database Backup</h2>
+                        @if (_info.LastBackupAt.HasValue)
+                        {
+                            <span class="text-sm text-nebula-text-muted">
+                                Last backup: @_info.LastBackupAt.Value.ToString("MMM d, yyyy h:mm tt")
+                            </span>
+                        }
+                    </div>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-4">
+                        <p class="text-nebula-text-secondary">
+                            Create a backup of your database. For SQLite databases, this creates a copy of the database file.
+                        </p>
+
+                        @if (_info.Provider != "SQLite")
+                        {
+                            <div class="bg-nebula-warning/10 border border-nebula-warning text-nebula-warning rounded-nebula p-4">
+                                <div class="flex items-start gap-2">
+                                    <Icon Name="alert-triangle" Size="IconSize.Small" Class="mt-0.5" />
+                                    <div>
+                                        <p class="font-medium">Limited Support</p>
+                                        <p class="text-sm mt-1">Database backup is currently only fully supported for SQLite. For PostgreSQL, please use your database's native backup tools.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                <div class="flex items-start gap-3">
+                                    <Icon Name="info" Size="IconSize.Small" Class="text-nebula-accent mt-0.5" />
+                                    <div class="text-sm text-nebula-text-secondary">
+                                        <p>The backup will be downloaded as a <code class="bg-nebula-bg-tertiary px-1 rounded">.db</code> file.</p>
+                                        <p class="mt-1">It's recommended to create backups before major updates or changes.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="flex items-center gap-4 pt-2">
+                            <Button Variant="ButtonVariant.Primary"
+                                    Text="Create Backup"
+                                    IconName="download"
+                                    Loading="_creatingBackup"
+                                    Disabled="@(_info.Provider != "SQLite")"
+                                    OnClick="CreateBackup" />
+
+                            <Button Variant="ButtonVariant.Ghost"
+                                    Text="Refresh"
+                                    IconName="refresh-cw"
+                                    OnClick="LoadDatabaseInfo" />
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+        </div>
+    }
+</div>
+
+@code {
+    private DatabaseInfoDto? _info;
+    private bool _loading = true;
+    private bool _creatingBackup;
+    private string? _error;
+    private string? _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDatabaseInfo();
+    }
+
+    private async Task LoadDatabaseInfo()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            _info = await SettingsService.GetDatabaseInfoAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CreateBackup()
+    {
+        try
+        {
+            _creatingBackup = true;
+            _error = null;
+            _success = null;
+
+            var result = await SettingsService.CreateDatabaseBackupAsync();
+
+            if (result.IsSuccess && result.Value is not null)
+            {
+                var fileName = SettingsService.GetBackupFileName();
+                var stream = result.Value;
+
+                // Convert to byte array for download
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                var bytes = memoryStream.ToArray();
+
+                // Trigger download via JS interop
+                await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(bytes), "application/octet-stream");
+
+                _success = "Database backup created and download started.";
+
+                // Refresh to show updated last backup time
+                await LoadDatabaseInfo();
+            }
+            else
+            {
+                _error = result.Error ?? "Failed to create backup.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _creatingBackup = false;
+        }
+    }
+}

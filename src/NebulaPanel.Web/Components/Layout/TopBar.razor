@@ -1,0 +1,96 @@
+@using System.Security.Claims
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Web.Components.Shared.Hytale
+@inject IHytaleAuthService HytaleAuthService
+@inject AuthenticationStateProvider AuthStateProvider
+
+<header class="@TopBarClasses">
+    @* Left side: Mobile hamburger + Breadcrumbs *@
+    <div class="flex items-center gap-4">
+        @* Mobile hamburger menu *@
+        <button type="button"
+                class="lg:hidden btn-ghost btn-icon"
+                @onclick="OnMobileMenuToggle"
+                aria-label="Toggle menu">
+            <Icon Name="menu" Size="IconSize.Small" />
+        </button>
+
+        @* Breadcrumbs (hidden on mobile) *@
+        <div class="hidden sm:block">
+            <Breadcrumbs />
+        </div>
+    </div>
+
+    @* Right side: Search, Theme, Hytale Status, Notifications, User *@
+    <div class="flex items-center gap-2">
+        <GlobalSearch />
+        <ThemeSwitcher />
+        @if (_hytaleCredentials != null && _hytaleCredentials.IsValid)
+        {
+            <HytaleTokenIndicator Credentials="_hytaleCredentials"
+                                  Compact="true"
+                                  ShowDisconnect="false" />
+        }
+        <NotificationBell />
+        <UserDropdown />
+    </div>
+</header>
+
+@code {
+    [Parameter]
+    public bool SidebarCollapsed { get; set; }
+
+    [Parameter]
+    public EventCallback OnMobileMenuToggle { get; set; }
+
+    private HytaleUserCredentials? _hytaleCredentials;
+    private bool _credentialsLoaded;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_credentialsLoaded)
+        {
+            _credentialsLoaded = true;
+            await LoadHytaleCredentialsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadHytaleCredentialsAsync()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
+            {
+                _hytaleCredentials = await HytaleAuthService.GetCredentialsAsync(userId);
+            }
+        }
+        catch
+        {
+            // Silently fail - credentials are optional
+            _hytaleCredentials = null;
+        }
+    }
+
+    private string TopBarClasses
+    {
+        get
+        {
+            var classes = new List<string> { "topbar-shell" };
+
+            if (SidebarCollapsed)
+            {
+                classes.Add("topbar-sidebar-collapsed");
+            }
+            else
+            {
+                classes.Add("topbar-sidebar-expanded");
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+}

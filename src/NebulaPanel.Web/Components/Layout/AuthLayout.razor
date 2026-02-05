@@ -1,0 +1,41 @@
+@inherits LayoutComponentBase
+
+<ThemeProvider>
+    <div class="min-h-screen flex flex-col items-center justify-center p-4 bg-nebula-gradient">
+        @* Decorative elements *@
+        <div class="fixed inset-0 overflow-hidden pointer-events-none">
+            <div class="absolute -top-40 -right-40 w-80 h-80 bg-nebula-accent/10 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-600/10 rounded-full blur-3xl"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-nebula-accent/5 rounded-full blur-3xl"></div>
+        </div>
+
+        @* Content *@
+        <div class="relative z-10 w-full max-w-md">
+            @* Logo *@
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center gap-3 mb-4">
+                    <div class="w-12 h-12 rounded-nebula-lg bg-nebula-bg-secondary/80 backdrop-blur flex items-center justify-center shadow-nebula-glow border border-nebula-border">
+                        <Icon Name="zap" Size="IconSize.Large" Class="text-nebula-accent" />
+                    </div>
+                </div>
+                <h1 class="text-2xl font-bold text-gradient">Nebula Panel</h1>
+                <p class="text-sm text-nebula-text-muted mt-1">Game Server Management</p>
+            </div>
+
+            @* Auth card *@
+            <div class="card bg-nebula-bg-secondary/80 backdrop-blur border-nebula-border-subtle shadow-nebula-lg">
+                @Body
+            </div>
+
+            @* Footer *@
+            <p class="text-center text-xs text-nebula-text-muted mt-6">
+                Nebula Panel &copy; @DateTime.Now.Year
+            </p>
+        </div>
+
+        @* Theme switcher in corner *@
+        <div class="fixed top-4 right-4">
+            <ThemeSwitcher />
+        </div>
+    </div>
+</ThemeProvider>

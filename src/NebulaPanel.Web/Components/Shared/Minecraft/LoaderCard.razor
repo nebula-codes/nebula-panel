@@ -1,0 +1,55 @@
+@using NebulaPanel.Application.DTOs
+
+<div class="@CardClasses" @onclick="HandleSelect">
+    <div class="loader-icon">
+        <Icon Name="@Loader.Icon" Class="text-nebula-text-secondary" />
+    </div>
+
+    <div class="flex items-center gap-2 mb-1">
+        <h3 class="font-medium text-nebula-text-primary">@Loader.Name</h3>
+        @if (Loader.IsRecommended)
+        {
+            <span class="badge badge-success text-xs">Recommended</span>
+        }
+        @if (Loader.IsProxy)
+        {
+            <span class="badge badge-info text-xs">Proxy</span>
+        }
+    </div>
+
+    <p class="text-sm text-nebula-text-muted mb-3">@Loader.Description</p>
+
+    <div class="flex flex-wrap gap-1.5">
+        @foreach (var feature in Loader.Features)
+        {
+            <span class="feature-tag">@feature</span>
+        }
+    </div>
+
+    @if (Selected)
+    {
+        <div class="selected-indicator">
+            <Icon Name="check" Size="IconSize.Small" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public MinecraftLoaderInfo Loader { get; set; } = default!;
+
+    [Parameter]
+    public bool Selected { get; set; }
+
+    [Parameter]
+    public EventCallback OnSelect { get; set; }
+
+    private string CardClasses => Selected
+        ? "loader-card selected"
+        : "loader-card";
+
+    private async Task HandleSelect()
+    {
+        await OnSelect.InvokeAsync();
+    }
+}

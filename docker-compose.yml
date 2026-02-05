@@ -1,0 +1,34 @@
+services:
+  nebula-panel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nebula-panel
+    ports:
+      - "5000:5000"
+    volumes:
+      - nebula-data:/app/data
+      - nebula-servers:/app/servers
+      - nebula-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # For game server container management
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/nebula.db
+      - Jwt__Secret=${JWT_SECRET:-change-me-in-production-use-64-chars-minimum}
+      - CurseForge__ApiKey=${CURSEFORGE_API_KEY:-}
+      - Modrinth__ApiKey=${MODRINTH_API_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  nebula-data:
+    name: nebula-panel-data
+  nebula-servers:
+    name: nebula-panel-servers
+  nebula-logs:
+    name: nebula-panel-logs

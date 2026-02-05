@@ -1,0 +1,385 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Repositories
+@inject IJSRuntime JS
+
+<div class="terraria-installed-mods-panel">
+    @* Header with controls *@
+    <div class="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div class="flex items-center gap-3">
+            <h3 class="text-lg font-semibold text-nebula-text-primary">Installed Mods</h3>
+            <span class="text-sm text-nebula-text-muted">(@_mods.Count mod@(_mods.Count != 1 ? "s" : ""))</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+            @* Search *@
+            <div class="relative">
+                <Icon Name="search" Size="Icon.IconSize.Small" Class="absolute left-2 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                <input type="text"
+                       class="input input-sm pl-8 w-48"
+                       placeholder="Search installed..."
+                       @bind="_searchQuery"
+                       @bind:event="oninput" />
+            </div>
+
+            @* View toggle *@
+            <ViewToggle @bind-Value="_viewMode" StorageKey="terraria-installed-mods" />
+
+            @* Add Mods *@
+            <Button Text="Add Mods"
+                    IconName="plus"
+                    Variant="Button.ButtonVariant.Primary"
+                    Size="Button.ButtonSize.Small"
+                    OnClick="OpenModBrowser" />
+        </div>
+    </div>
+
+    @* Content *@
+    <div class="panel-content">
+        @if (_loading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <span class="spinner w-6 h-6"></span>
+                <span class="ml-2 text-nebula-text-muted">Loading mods...</span>
+            </div>
+        }
+        else if (FilteredMods.Count == 0)
+        {
+            @if (!string.IsNullOrEmpty(_searchQuery))
+            {
+                <EmptyState IconName="search"
+                            Heading="No matches found"
+                            Description="@($"No mods match \"{_searchQuery}\"")" />
+            }
+            else
+            {
+                <EmptyState IconName="package"
+                            Heading="No mods installed"
+                            Description="Install mods from the Steam Workshop to customize your server.">
+                    <Actions>
+                        <Button Text="Browse Mods"
+                                IconName="plus"
+                                Variant="Button.ButtonVariant.Primary"
+                                OnClick="OpenModBrowser" />
+                    </Actions>
+                </EmptyState>
+            }
+        }
+        else if (_viewMode == ViewMode.Grid)
+        {
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                @foreach (var mod in FilteredMods)
+                {
+                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4 hover:border-nebula-border-hover transition-colors">
+                        <div class="flex items-start gap-3">
+                            <div class="w-12 h-12 flex-shrink-0 rounded-lg bg-nebula-bg-tertiary flex items-center justify-center">
+                                @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                {
+                                    <img src="@mod.IconUrl" alt="@mod.Name" class="w-full h-full object-cover rounded-lg" />
+                                }
+                                else
+                                {
+                                    <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                }
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h4 class="font-medium text-nebula-text-primary truncate" title="@mod.Name">@mod.Name</h4>
+                                @if (!string.IsNullOrEmpty(mod.Author))
+                                {
+                                    <p class="text-xs text-nebula-text-muted truncate">by @mod.Author</p>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between mt-3 pt-3 border-t border-nebula-border-subtle">
+                            <div class="flex items-center gap-1">
+                                <Toggle Value="@mod.IsEnabled"
+                                        ValueChanged="@(v => HandleToggleEnabled(mod, v))"
+                                        Size="Toggle.ToggleSize.Small"
+                                        Disabled="@_busyMods.Contains(mod.Id)" />
+                                <span class="text-xs text-nebula-text-muted">@(mod.IsEnabled ? "Enabled" : "Disabled")</span>
+                            </div>
+                            <Button IconName="trash-2"
+                                    IconOnly="true"
+                                    Variant="Button.ButtonVariant.Ghost"
+                                    Size="Button.ButtonSize.Small"
+                                    Class="text-nebula-text-muted hover:text-nebula-error"
+                                    Disabled="@_busyMods.Contains(mod.Id)"
+                                    OnClick="@(() => HandleUninstall(mod))" />
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-nebula-border text-left text-nebula-text-muted">
+                            <th class="pb-3 font-medium">Mod</th>
+                            <th class="pb-3 font-medium">Author</th>
+                            <th class="pb-3 font-medium text-right">Size</th>
+                            <th class="pb-3 font-medium text-center">Enabled</th>
+                            <th class="pb-3 font-medium text-right w-24">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-nebula-border-subtle">
+                        @foreach (var mod in FilteredMods)
+                        {
+                            <tr class="hover:bg-nebula-bg-secondary transition-colors">
+                                <td class="py-3">
+                                    <div class="flex items-center gap-3">
+                                        @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                        {
+                                            <img src="@mod.IconUrl" alt="@mod.Name" class="w-8 h-8 rounded object-cover" />
+                                        }
+                                        else
+                                        {
+                                            <div class="w-8 h-8 rounded bg-nebula-bg-tertiary flex items-center justify-center">
+                                                <Icon Name="package" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                            </div>
+                                        }
+                                        <div>
+                                            <div class="font-medium text-nebula-text-primary">@mod.Name</div>
+                                            @if (!string.IsNullOrEmpty(mod.InternalName) && mod.InternalName != mod.Name)
+                                            {
+                                                <div class="text-xs text-nebula-text-muted font-mono">@mod.InternalName</div>
+                                            }
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="py-3 text-nebula-text-secondary">@(mod.Author ?? "Unknown")</td>
+                                <td class="py-3 text-right text-nebula-text-muted">@FormatFileSize(mod.FileSizeBytes)</td>
+                                <td class="py-3 text-center">
+                                    <Toggle Value="@mod.IsEnabled"
+                                            ValueChanged="@(v => HandleToggleEnabled(mod, v))"
+                                            Size="Toggle.ToggleSize.Small"
+                                            Disabled="@_busyMods.Contains(mod.Id)" />
+                                </td>
+                                <td class="py-3 text-right">
+                                    <Button IconName="trash-2"
+                                            IconOnly="true"
+                                            Variant="Button.ButtonVariant.Ghost"
+                                            Size="Button.ButtonSize.Small"
+                                            Class="text-nebula-text-muted hover:text-nebula-error"
+                                            Disabled="@_busyMods.Contains(mod.Id)"
+                                            OnClick="@(() => HandleUninstall(mod))" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@* Confirm Delete Modal *@
+<Modal IsOpen="@(_modToDelete != null)"
+       Size="Modal.ModalSize.Small"
+       OnClose="CancelDelete">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Confirm Delete</span>
+    </Header>
+    <Body>
+        <div class="flex flex-col gap-4">
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_modToDelete?.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted">
+                This will permanently remove the mod file from your server.
+            </p>
+        </div>
+    </Body>
+    <Footer>
+        <div class="flex justify-end gap-3">
+            <Button Text="Cancel"
+                    Variant="Button.ButtonVariant.Secondary"
+                    OnClick="CancelDelete" />
+            <Button Text="Delete"
+                    Variant="Button.ButtonVariant.Danger"
+                    IconName="trash-2"
+                    Loading="_deleting"
+                    OnClick="ConfirmDelete" />
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The server ID to load mods for.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Callback when user wants to browse mods.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnBrowseClick { get; set; }
+
+    [Inject]
+    private ITerrariaModService ModService { get; set; } = default!;
+
+    [Inject]
+    private IGameServerRepository ServerRepository { get; set; } = default!;
+
+    [Inject]
+    private IToastService ToastService { get; set; } = default!;
+
+    // State
+    private List<TerrariaInstalledMod> _mods = [];
+    private bool _loading = true;
+    private string _searchQuery = string.Empty;
+    private ViewMode _viewMode = ViewMode.Grid;
+    private HashSet<Guid> _busyMods = [];
+    private TerrariaInstalledMod? _modToDelete;
+    private bool _deleting;
+
+    // Computed
+    private IReadOnlyList<TerrariaInstalledMod> FilteredMods =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _mods
+            : _mods.Where(m =>
+                m.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                (m.InternalName?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (m.Author?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false))
+                .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadModsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ServerId != Guid.Empty)
+        {
+            await LoadModsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reloads the installed mods list.
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        await LoadModsAsync();
+    }
+
+    private async Task LoadModsAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                _mods = (await ModService.GetInstalledModsAsync(server)).ToList();
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSearch()
+    {
+        _searchQuery = string.Empty;
+    }
+
+    private async Task HandleToggleEnabled(TerrariaInstalledMod mod, bool enabled)
+    {
+        if (_busyMods.Contains(mod.Id)) return;
+
+        _busyMods.Add(mod.Id);
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                var success = await ModService.SetModEnabledAsync(server, mod.Id, enabled);
+                if (success)
+                {
+                    await LoadModsAsync();
+                    ToastService.ShowSuccess($"Mod {(enabled ? "enabled" : "disabled")}");
+                }
+                else
+                {
+                    ToastService.ShowError($"Failed to {(enabled ? "enable" : "disable")} mod");
+                }
+            }
+        }
+        finally
+        {
+            _busyMods.Remove(mod.Id);
+            StateHasChanged();
+        }
+    }
+
+    private void HandleUninstall(TerrariaInstalledMod mod)
+    {
+        if (_busyMods.Contains(mod.Id)) return;
+        _modToDelete = mod;
+    }
+
+    private void CancelDelete()
+    {
+        _modToDelete = null;
+        _deleting = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_modToDelete == null) return;
+
+        var mod = _modToDelete;
+        _deleting = true;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                var success = await ModService.UninstallModAsync(server, mod.Id);
+                if (success)
+                {
+                    ToastService.ShowSuccess($"Uninstalled {mod.Name}");
+                    await LoadModsAsync();
+                }
+                else
+                {
+                    ToastService.ShowError("Failed to uninstall mod");
+                }
+            }
+        }
+        finally
+        {
+            _modToDelete = null;
+            _deleting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenModBrowser()
+    {
+        await OnBrowseClick.InvokeAsync();
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+}

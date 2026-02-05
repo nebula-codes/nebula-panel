@@ -1,0 +1,1978 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Nebula themes loaded separately via App.razor */
+
+/* Custom component classes using @apply */
+@layer components {
+    /* Button base styles */
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none;
+        border-radius: var(--nebula-radius);
+    }
+
+    .btn-primary {
+        @apply btn text-white;
+        background-color: var(--nebula-accent);
+        box-shadow: var(--nebula-shadow);
+    }
+    .btn-primary:hover {
+        background-color: var(--nebula-accent-hover);
+        box-shadow: var(--nebula-glow);
+    }
+
+    .btn-secondary {
+        @apply btn border;
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+        border-color: var(--nebula-border);
+    }
+    .btn-secondary:hover {
+        background-color: var(--nebula-bg-elevated);
+        border-color: var(--nebula-border-accent);
+    }
+
+    .btn-ghost {
+        @apply btn bg-transparent;
+        color: var(--nebula-text-secondary);
+    }
+    .btn-ghost:hover {
+        color: var(--nebula-text-primary);
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .btn-danger {
+        @apply btn text-white;
+        background-color: var(--nebula-error);
+    }
+    .btn-danger:hover {
+        background-color: var(--nebula-error-dark);
+    }
+
+    .btn-icon {
+        @apply btn p-2 aspect-square;
+    }
+
+    .btn-sm {
+        @apply text-xs px-3 py-1.5;
+    }
+
+    .btn-lg {
+        @apply text-base px-6 py-3;
+    }
+
+    /* Input styles */
+    .input {
+        @apply w-full px-3 py-2 text-sm border transition-all duration-200 focus:outline-none;
+        background-color: var(--nebula-input-bg);
+        color: var(--nebula-text-primary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+    }
+    .input::placeholder {
+        color: var(--nebula-text-muted);
+    }
+    .input:focus {
+        border-color: var(--nebula-accent);
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .input-error {
+        border-color: var(--nebula-error) !important;
+    }
+    .input-error:focus {
+        box-shadow: 0 0 0 2px var(--nebula-error-subtle);
+    }
+
+    /* Native select styles */
+    .select {
+        @apply w-full px-3 py-2 text-sm border transition-all duration-200 focus:outline-none cursor-pointer;
+        background-color: var(--nebula-input-bg);
+        color: var(--nebula-text-primary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+        background-position: right 0.5rem center;
+        background-repeat: no-repeat;
+        background-size: 1.5em 1.5em;
+        padding-right: 2.5rem;
+    }
+    .select:focus {
+        border-color: var(--nebula-accent);
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+    .select:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+    .select option {
+        background-color: var(--nebula-bg-secondary);
+        color: var(--nebula-text-primary);
+    }
+    .select-error {
+        border-color: var(--nebula-error) !important;
+    }
+    .select-error:focus {
+        box-shadow: 0 0 0 2px var(--nebula-error-subtle);
+    }
+
+    /* Native textarea styles */
+    .textarea {
+        @apply w-full px-3 py-2 text-sm border transition-all duration-200 focus:outline-none resize-y;
+        background-color: var(--nebula-input-bg);
+        color: var(--nebula-text-primary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        min-height: 100px;
+    }
+    .textarea::placeholder {
+        color: var(--nebula-text-muted);
+    }
+    .textarea:focus {
+        border-color: var(--nebula-accent);
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+    .textarea:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+    .textarea-error {
+        border-color: var(--nebula-error) !important;
+    }
+    .textarea-error:focus {
+        box-shadow: 0 0 0 2px var(--nebula-error-subtle);
+    }
+
+    /* Card styles */
+    .card {
+        @apply border;
+        background-color: var(--nebula-card-bg);
+        border-radius: var(--nebula-radius-lg);
+        border-color: var(--nebula-border);
+        box-shadow: var(--nebula-shadow);
+    }
+
+    .card-elevated {
+        @apply card transition-shadow duration-200;
+    }
+    .card-elevated:hover {
+        box-shadow: var(--nebula-shadow-lg);
+    }
+
+    .card-interactive {
+        @apply card cursor-pointer transition-all duration-200;
+    }
+    .card-interactive:hover {
+        border-color: var(--nebula-border-accent);
+        box-shadow: var(--nebula-glow);
+    }
+
+    /* Badge styles */
+    .badge {
+        @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
+    }
+
+    .badge-success {
+        @apply badge;
+        background-color: var(--nebula-success-subtle);
+        color: var(--nebula-success);
+    }
+
+    .badge-warning {
+        @apply badge;
+        background-color: var(--nebula-warning-subtle);
+        color: var(--nebula-warning);
+    }
+
+    .badge-error {
+        @apply badge;
+        background-color: var(--nebula-error-subtle);
+        color: var(--nebula-error);
+    }
+
+    .badge-info {
+        @apply badge;
+        background-color: var(--nebula-info-subtle);
+        color: var(--nebula-info);
+    }
+
+    .badge-neutral {
+        @apply badge;
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-secondary);
+    }
+
+    /* Label styles */
+    .label {
+        @apply block text-sm font-medium mb-1;
+        color: var(--nebula-text-secondary);
+    }
+
+    /* Link styles */
+    .link {
+        @apply underline-offset-2 transition-colors duration-150;
+        color: var(--nebula-accent);
+    }
+    .link:hover {
+        color: var(--nebula-accent-hover);
+        text-decoration: underline;
+    }
+
+    /* Sidebar styles */
+    .sidebar {
+        @apply fixed left-0 top-0 h-full w-64 border-r flex flex-col;
+        background-color: var(--nebula-sidebar-bg);
+        border-color: var(--nebula-border);
+    }
+
+    .sidebar-nav-item {
+        @apply flex items-center gap-3 px-4 py-2.5 text-sm mx-2 transition-colors duration-150;
+        color: var(--nebula-text-secondary);
+        border-radius: var(--nebula-radius);
+    }
+    .sidebar-nav-item:hover {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    .sidebar-nav-item-active {
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+    }
+    .sidebar-nav-item-active:hover {
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+    }
+
+    /* Top bar styles */
+    .topbar {
+        @apply fixed top-0 left-64 right-0 h-14 border-b flex items-center justify-between px-6 z-10;
+        background-color: var(--nebula-bg-secondary);
+        border-color: var(--nebula-border);
+    }
+
+    /* Form group styles */
+    .form-group {
+        @apply space-y-1.5;
+    }
+
+    /* Alert styles */
+    .alert {
+        @apply p-4 border;
+        border-radius: var(--nebula-radius);
+    }
+
+    .alert-error {
+        @apply alert;
+        background-color: var(--nebula-error-subtle);
+        border-color: var(--nebula-error-subtle);
+        color: var(--nebula-error);
+    }
+
+    .alert-warning {
+        @apply alert;
+        background-color: var(--nebula-warning-subtle);
+        border-color: var(--nebula-warning-subtle);
+        color: var(--nebula-warning);
+    }
+
+    .alert-success {
+        @apply alert;
+        background-color: var(--nebula-success-subtle);
+        border-color: var(--nebula-success-subtle);
+        color: var(--nebula-success);
+    }
+
+    .alert-info {
+        @apply alert;
+        background-color: var(--nebula-info-subtle);
+        border-color: var(--nebula-info-subtle);
+        color: var(--nebula-info);
+    }
+
+    /* Modal backdrop */
+    .modal-backdrop {
+        @apply fixed inset-0 z-50 flex items-center justify-center;
+        background-color: var(--nebula-overlay-bg);
+        backdrop-filter: blur(4px);
+    }
+
+    .modal-content {
+        @apply max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden border;
+        background-color: var(--nebula-bg-secondary);
+        border-radius: var(--nebula-radius-lg);
+        border-color: var(--nebula-border);
+        box-shadow: var(--nebula-shadow-lg);
+        animation: fade-in 0.2s ease-out;
+    }
+
+    /* Console styles */
+    .console {
+        @apply font-mono text-sm border overflow-hidden;
+        background-color: var(--nebula-console-bg);
+        border-radius: var(--nebula-radius);
+        border-color: var(--nebula-border);
+    }
+
+    .console-output {
+        @apply p-4 h-96 overflow-y-auto;
+        color: var(--nebula-text-secondary);
+    }
+
+    /* Status indicator dot */
+    .status-dot {
+        @apply w-2 h-2 rounded-full;
+    }
+
+    .status-dot-success {
+        @apply status-dot;
+        background-color: var(--nebula-success);
+    }
+
+    .status-dot-warning {
+        @apply status-dot animate-pulse;
+        background-color: var(--nebula-warning);
+    }
+
+    .status-dot-error {
+        @apply status-dot;
+        background-color: var(--nebula-error);
+    }
+
+    .status-dot-neutral {
+        @apply status-dot;
+        background-color: var(--nebula-text-muted);
+    }
+
+    /* DataGrid styles */
+    .datagrid {
+        @apply border overflow-hidden;
+        background-color: var(--nebula-card-bg);
+        border-radius: var(--nebula-radius-lg);
+        border-color: var(--nebula-border);
+    }
+
+    .datagrid-header {
+        @apply flex items-center justify-between gap-4 p-4 border-b;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .datagrid-search {
+        @apply flex items-center gap-2 flex-1 max-w-sm px-3 py-2 border transition-all duration-200;
+        background-color: var(--nebula-input-bg);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+    }
+    .datagrid-search:focus-within {
+        border-color: var(--nebula-accent);
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .datagrid-search-input {
+        @apply flex-1 text-sm bg-transparent outline-none;
+        color: var(--nebula-text-primary);
+    }
+    .datagrid-search-input::placeholder {
+        color: var(--nebula-text-muted);
+    }
+
+    .datagrid-search-clear {
+        @apply p-0.5 transition-colors duration-150;
+        color: var(--nebula-text-muted);
+    }
+    .datagrid-search-clear:hover {
+        color: var(--nebula-text-primary);
+    }
+
+    .datagrid-container {
+        @apply overflow-x-auto;
+    }
+
+    .datagrid-loading {
+        @apply flex flex-col items-center justify-center py-12;
+    }
+
+    .datagrid-empty {
+        @apply flex flex-col items-center justify-center py-12 text-center;
+    }
+
+    .datagrid-table {
+        @apply w-full text-sm;
+    }
+
+    .datagrid-table th {
+        @apply text-left px-4 py-3 font-medium text-xs uppercase tracking-wide border-b;
+        color: var(--nebula-text-muted);
+        background-color: var(--nebula-bg-tertiary);
+        border-color: var(--nebula-border-subtle);
+    }
+    .datagrid-table th.sortable {
+        @apply cursor-pointer select-none transition-colors duration-150;
+    }
+    .datagrid-table th.sortable:hover {
+        color: var(--nebula-text-primary);
+    }
+    .datagrid-table th.sorted {
+        color: var(--nebula-accent);
+    }
+
+    .datagrid-th-content {
+        @apply flex items-center gap-2;
+    }
+
+    .datagrid-table td {
+        @apply px-4 py-3 border-b;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .datagrid-table tbody tr {
+        @apply transition-colors duration-150;
+    }
+    .datagrid-table tbody tr:hover {
+        background-color: var(--nebula-bg-tertiary);
+    }
+    .datagrid-table tbody tr.clickable {
+        @apply cursor-pointer;
+    }
+    .datagrid-table tbody tr:last-child td {
+        @apply border-b-0;
+    }
+
+    .datagrid-footer {
+        @apply flex items-center justify-between px-4 py-3 border-t;
+        background-color: var(--nebula-bg-tertiary);
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .datagrid-pagination-info {
+        @apply text-sm;
+        color: var(--nebula-text-muted);
+    }
+
+    .datagrid-pagination {
+        @apply flex items-center gap-1;
+    }
+
+    .datagrid-page-btn {
+        @apply px-3 py-1.5 text-sm font-medium transition-all duration-150;
+        color: var(--nebula-text-secondary);
+        border-radius: var(--nebula-radius-sm);
+    }
+    .datagrid-page-btn:hover:not(:disabled) {
+        background-color: var(--nebula-bg-elevated);
+        color: var(--nebula-text-primary);
+    }
+    .datagrid-page-btn:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+    .datagrid-page-btn.active {
+        background-color: var(--nebula-accent);
+        color: white;
+    }
+
+    /* ================================================
+       ENHANCED DATAGRID STYLES
+       ================================================ */
+
+    /* Sticky header support */
+    .datagrid-sticky .datagrid-container {
+        @apply overflow-auto;
+        max-height: 70vh;
+    }
+
+    .datagrid-sticky thead {
+        @apply sticky top-0 z-10;
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    /* Alternating row colors */
+    .datagrid-striped tbody tr:nth-child(even) {
+        background-color: rgba(var(--nebula-bg-tertiary-rgb, 30, 30, 35), 0.3);
+    }
+
+    /* Size variants */
+    .datagrid-compact .datagrid-table th,
+    .datagrid-compact .datagrid-table td {
+        @apply px-3 py-2 text-xs;
+    }
+
+    .datagrid-comfortable .datagrid-table th,
+    .datagrid-comfortable .datagrid-table td {
+        @apply px-5 py-4;
+    }
+
+    /* Selection checkbox column */
+    .datagrid-checkbox-cell {
+        @apply w-12 px-3 text-center;
+    }
+
+    /* Selected row */
+    .datagrid-row-selected {
+        background-color: var(--nebula-accent-subtle) !important;
+    }
+
+    /* Focused row (keyboard navigation) */
+    .datagrid-row-focused {
+        @apply ring-2 ring-inset;
+        --tw-ring-color: var(--nebula-accent);
+    }
+
+    /* Column filter indicator */
+    .datagrid-th-filtered {
+        @apply relative;
+    }
+
+    .datagrid-th-filtered::after {
+        content: '';
+        @apply absolute top-2 right-2 w-1.5 h-1.5 rounded-full;
+        background-color: var(--nebula-accent);
+    }
+
+    /* Filter button in header */
+    .datagrid-filter-btn {
+        @apply p-1 ml-1 opacity-0 transition-all duration-150 rounded;
+        color: var(--nebula-text-muted);
+    }
+
+    .datagrid-th-content:hover .datagrid-filter-btn,
+    .datagrid-filter-btn.active {
+        @apply opacity-100;
+    }
+
+    .datagrid-filter-btn:hover {
+        background-color: var(--nebula-bg-elevated);
+        color: var(--nebula-text-primary);
+    }
+
+    .datagrid-filter-btn.active {
+        color: var(--nebula-accent);
+    }
+
+    /* Clear filters button */
+    .datagrid-clear-filters {
+        @apply flex items-center gap-1.5 px-2 py-1 text-xs font-medium transition-colors duration-150 rounded;
+        color: var(--nebula-text-muted);
+    }
+
+    .datagrid-clear-filters:hover {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    /* Column picker button */
+    .datagrid-column-picker-btn {
+        @apply p-2 transition-colors duration-150 rounded;
+        color: var(--nebula-text-muted);
+    }
+
+    .datagrid-column-picker-btn:hover {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    /* Column picker popover */
+    .column-picker {
+        @apply absolute right-0 top-full mt-2 z-50 border min-w-[200px];
+        background-color: var(--nebula-bg-secondary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        box-shadow: var(--nebula-shadow-lg);
+        animation: fade-in 0.15s ease-out;
+    }
+
+    .column-picker-header {
+        @apply flex items-center justify-between px-3 py-2 border-b;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .column-picker-close {
+        @apply p-1 transition-colors duration-150 rounded;
+        color: var(--nebula-text-muted);
+    }
+
+    .column-picker-close:hover {
+        color: var(--nebula-text-primary);
+    }
+
+    .column-picker-items {
+        @apply p-2 space-y-1;
+    }
+
+    .column-picker-item {
+        @apply flex items-center gap-2 px-2 py-1.5 cursor-pointer rounded transition-colors duration-150;
+    }
+
+    .column-picker-item:hover {
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    /* Filter popover */
+    .filter-popover {
+        @apply absolute left-0 top-full mt-1 z-50 border min-w-[220px];
+        background-color: var(--nebula-bg-secondary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        box-shadow: var(--nebula-shadow-lg);
+        animation: fade-in 0.15s ease-out;
+    }
+
+    .filter-popover-header {
+        @apply flex items-center justify-between px-3 py-2 border-b;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .filter-popover-close {
+        @apply p-1 transition-colors duration-150 rounded;
+        color: var(--nebula-text-muted);
+    }
+
+    .filter-popover-close:hover {
+        color: var(--nebula-text-primary);
+    }
+
+    .filter-popover-body {
+        @apply p-3;
+    }
+
+    .filter-popover-footer {
+        @apply flex items-center justify-end gap-2 px-3 py-2 border-t;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .filter-input {
+        @apply w-full;
+    }
+
+    .filter-options {
+        @apply space-y-1;
+    }
+
+    .filter-option {
+        @apply flex items-center gap-2 w-full px-2 py-1.5 text-sm text-left transition-colors duration-150 rounded;
+        color: var(--nebula-text-secondary);
+    }
+
+    .filter-option:hover {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    .filter-option.active {
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+    }
+
+    .filter-option-multi {
+        @apply flex items-center gap-2 px-2 py-1.5 text-sm cursor-pointer transition-colors duration-150 rounded;
+        color: var(--nebula-text-secondary);
+    }
+
+    .filter-option-multi:hover {
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    /* Bulk action bar */
+    .datagrid-bulk-bar {
+        @apply flex items-center gap-4 px-4 py-3 border-b;
+        background-color: var(--nebula-accent-subtle);
+        border-color: var(--nebula-accent);
+    }
+
+    .datagrid-bulk-actions {
+        @apply flex items-center gap-2 ml-4;
+    }
+
+    .datagrid-bulk-clear {
+        @apply ml-auto p-1 transition-colors duration-150 rounded;
+        color: var(--nebula-accent);
+    }
+
+    .datagrid-bulk-clear:hover {
+        background-color: var(--nebula-accent-muted);
+    }
+
+    /* Page size selector */
+    .datagrid-page-size-select {
+        @apply ml-3 px-2 py-1 text-xs border rounded transition-colors duration-150;
+        background-color: var(--nebula-input-bg);
+        border-color: var(--nebula-border);
+        color: var(--nebula-text-secondary);
+    }
+
+    .datagrid-page-size-select:focus {
+        border-color: var(--nebula-accent);
+        outline: none;
+    }
+
+    /* ================================================
+       VIEW TOGGLE COMPONENT
+       ================================================ */
+
+    .view-toggle {
+        @apply inline-flex p-1 rounded-lg border;
+        background-color: var(--nebula-bg-tertiary);
+        border-color: var(--nebula-border);
+    }
+
+    .view-toggle-btn {
+        @apply px-3 py-1.5 text-sm font-medium transition-all duration-200 rounded;
+        color: var(--nebula-text-muted);
+    }
+
+    .view-toggle-btn:hover:not(.view-toggle-btn-active) {
+        color: var(--nebula-text-primary);
+    }
+
+    .view-toggle-btn-active {
+        background-color: var(--nebula-bg-secondary);
+        color: var(--nebula-text-primary);
+        box-shadow: var(--nebula-shadow);
+    }
+
+    /* ================================================
+       FILTER PILLS COMPONENT
+       ================================================ */
+
+    .filter-pills {
+        @apply flex flex-wrap items-center gap-2;
+    }
+
+    .filter-pill {
+        @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all duration-200 cursor-pointer rounded-lg;
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-secondary);
+        border: 1px solid transparent;
+    }
+
+    .filter-pill:hover:not(.filter-pill-active) {
+        background-color: var(--nebula-bg-elevated);
+        color: var(--nebula-text-primary);
+    }
+
+    .filter-pill-active {
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+        border-color: var(--nebula-accent);
+    }
+
+    .filter-pill-count {
+        @apply ml-1 px-1.5 py-0.5 text-xs rounded-full;
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .filter-pill-active .filter-pill-count {
+        background-color: var(--nebula-accent);
+        color: white;
+    }
+
+    /* ================================================
+       SERVER LIST PAGE GRID
+       ================================================ */
+
+    .server-grid {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+
+    @media (min-width: 640px) {
+        .server-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 1024px) {
+        .server-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+    }
+
+    @media (min-width: 1280px) {
+        .server-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+
+    /* Dropdown styles */
+    .dropdown-menu {
+        @apply absolute z-50 py-1 border shadow-lg;
+        background-color: var(--nebula-bg-secondary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        animation: fade-in 0.15s ease-out;
+    }
+
+    .dropdown-bottom-left {
+        @apply top-full left-0 mt-1;
+    }
+
+    .dropdown-bottom-right {
+        @apply top-full right-0 mt-1;
+    }
+
+    .dropdown-top-left {
+        @apply bottom-full left-0 mb-1;
+    }
+
+    .dropdown-top-right {
+        @apply bottom-full right-0 mb-1;
+    }
+
+    .dropdown-item {
+        @apply flex items-center gap-2 w-full px-3 py-2 text-sm text-left transition-colors duration-150;
+        color: var(--nebula-text-secondary);
+    }
+    .dropdown-item:hover:not(:disabled) {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    .dropdown-item-danger {
+        color: var(--nebula-error);
+    }
+    .dropdown-item-danger:hover:not(:disabled) {
+        background-color: var(--nebula-error-subtle);
+        color: var(--nebula-error);
+    }
+
+    .dropdown-divider {
+        @apply my-1 border-t;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    /* Tab navigation */
+    .tab-nav {
+        @apply flex items-center gap-8 border-b;
+        border-color: var(--nebula-border);
+    }
+
+    .tab-nav-item {
+        @apply inline-flex flex-row items-center gap-2 py-3 text-sm font-medium transition-colors duration-150 -mb-px border-b-2 border-transparent;
+        color: var(--nebula-text-muted);
+    }
+    .tab-nav-item:hover {
+        color: var(--nebula-text-primary);
+    }
+
+    .tab-nav-item-active {
+        color: var(--nebula-accent);
+        border-color: var(--nebula-accent);
+    }
+    .tab-nav-item-active:hover {
+        color: var(--nebula-accent);
+    }
+
+    /* Checkbox styles */
+    .checkbox {
+        @apply w-4 h-4 border rounded cursor-pointer transition-all duration-150;
+        background-color: var(--nebula-input-bg);
+        border-color: var(--nebula-border);
+    }
+    .checkbox:checked {
+        background-color: var(--nebula-accent);
+        border-color: var(--nebula-accent);
+    }
+    .checkbox:focus {
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    /* ================================================
+       BUTTON ENHANCEMENTS
+       ================================================ */
+
+    /* Button active/pressed state - subtle scale */
+    .btn:active:not(:disabled) {
+        transform: scale(0.98);
+    }
+
+    /* Enhanced glow on hover for primary button */
+    .btn-primary:hover:not(:disabled) {
+        box-shadow: var(--nebula-glow-intense);
+    }
+
+    /* Loading spinner */
+    .spinner {
+        @apply w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin;
+        opacity: 0.8;
+    }
+
+    .btn-sm .spinner {
+        @apply w-3 h-3;
+    }
+
+    .btn-lg .spinner {
+        @apply w-5 h-5;
+    }
+
+    /* ================================================
+       CARD GLASS VARIANT
+       ================================================ */
+
+    .card-glass {
+        @apply border transition-all duration-200;
+        background: var(--nebula-glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-color: var(--nebula-glass-border);
+        border-radius: var(--nebula-radius-lg);
+        box-shadow: var(--nebula-shadow);
+    }
+
+    .card-glass:hover {
+        border-color: var(--nebula-border-accent);
+        box-shadow: var(--nebula-glow);
+    }
+
+    /* ================================================
+       BADGE ENHANCEMENTS
+       ================================================ */
+
+    .badge-pulse {
+        animation: badge-pulse 2s ease-in-out infinite;
+    }
+
+    .badge-with-icon {
+        @apply gap-1.5;
+    }
+
+    /* ================================================
+       TOGGLE (SWITCH) COMPONENT
+       ================================================ */
+
+    .toggle {
+        @apply relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-all duration-200 ease-in-out focus:outline-none;
+        background-color: var(--nebula-bg-surface);
+    }
+
+    .toggle:focus-visible {
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .toggle:hover:not(:disabled) {
+        background-color: var(--nebula-bg-elevated);
+    }
+
+    .toggle[aria-checked="true"] {
+        background-color: var(--nebula-accent);
+    }
+
+    .toggle[aria-checked="true"]:hover:not(:disabled) {
+        background-color: var(--nebula-accent-hover);
+    }
+
+    .toggle:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+
+    .toggle-knob {
+        @apply pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-in-out;
+        transform: translateX(0);
+    }
+
+    .toggle[aria-checked="true"] .toggle-knob {
+        transform: translateX(1.25rem);
+    }
+
+    /* Toggle sizes */
+    .toggle-sm {
+        @apply h-5 w-9;
+    }
+
+    .toggle-sm .toggle-knob {
+        @apply h-4 w-4;
+    }
+
+    .toggle-sm[aria-checked="true"] .toggle-knob {
+        transform: translateX(1rem);
+    }
+
+    .toggle-lg {
+        @apply h-7 w-14;
+    }
+
+    .toggle-lg .toggle-knob {
+        @apply h-6 w-6;
+    }
+
+    .toggle-lg[aria-checked="true"] .toggle-knob {
+        transform: translateX(1.75rem);
+    }
+
+    /* ================================================
+       CUSTOM CHECKBOX COMPONENT
+       ================================================ */
+
+    .checkbox-custom {
+        @apply relative w-5 h-5 border-2 rounded cursor-pointer transition-all duration-150 flex items-center justify-center focus:outline-none;
+        background-color: var(--nebula-input-bg);
+        border-color: var(--nebula-border);
+    }
+
+    .checkbox-custom:hover:not(:disabled) {
+        border-color: var(--nebula-accent);
+        background-color: var(--nebula-input-bg-hover);
+    }
+
+    .checkbox-custom:focus-visible {
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .checkbox-custom[aria-checked="true"] {
+        background-color: var(--nebula-accent);
+        border-color: var(--nebula-accent);
+    }
+
+    .checkbox-custom:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+
+    /* Animated checkmark */
+    .checkbox-check {
+        @apply w-3 h-3 opacity-0 transition-all duration-150;
+        color: white;
+        transform: scale(0);
+    }
+
+    .checkbox-custom[aria-checked="true"] .checkbox-check {
+        @apply opacity-100;
+        transform: scale(1);
+    }
+
+    /* Checkbox sizes */
+    .checkbox-custom-sm {
+        @apply w-4 h-4;
+    }
+
+    .checkbox-custom-sm .checkbox-check {
+        @apply w-2.5 h-2.5;
+    }
+
+    .checkbox-custom-lg {
+        @apply w-6 h-6;
+    }
+
+    .checkbox-custom-lg .checkbox-check {
+        @apply w-4 h-4;
+    }
+
+    /* ================================================
+       CUSTOM RADIO COMPONENT
+       ================================================ */
+
+    .radio-custom {
+        @apply relative w-5 h-5 border-2 rounded-full cursor-pointer transition-all duration-150 flex items-center justify-center focus:outline-none;
+        background-color: var(--nebula-input-bg);
+        border-color: var(--nebula-border);
+    }
+
+    .radio-custom:hover:not(:disabled) {
+        border-color: var(--nebula-accent);
+        background-color: var(--nebula-input-bg-hover);
+    }
+
+    .radio-custom:focus-visible {
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .radio-custom[aria-checked="true"] {
+        border-color: var(--nebula-accent);
+    }
+
+    .radio-custom:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+
+    /* Animated radio dot */
+    .radio-dot {
+        @apply w-2.5 h-2.5 rounded-full transition-all duration-150;
+        background-color: var(--nebula-accent);
+        transform: scale(0);
+    }
+
+    .radio-custom[aria-checked="true"] .radio-dot {
+        transform: scale(1);
+    }
+
+    /* Radio sizes */
+    .radio-custom-sm {
+        @apply w-4 h-4;
+    }
+
+    .radio-custom-sm .radio-dot {
+        @apply w-2 h-2;
+    }
+
+    .radio-custom-lg {
+        @apply w-6 h-6;
+    }
+
+    .radio-custom-lg .radio-dot {
+        @apply w-3 h-3;
+    }
+
+    /* ================================================
+       TOOLTIP COMPONENT
+       ================================================ */
+
+    .tooltip-container {
+        @apply relative inline-flex;
+    }
+
+    .tooltip {
+        @apply absolute z-50 px-2.5 py-1.5 text-xs font-medium rounded whitespace-nowrap pointer-events-none;
+        background-color: var(--nebula-bg-elevated);
+        color: var(--nebula-text-primary);
+        border: 1px solid var(--nebula-border);
+        box-shadow: var(--nebula-shadow);
+        opacity: 0;
+        transition: opacity 150ms ease-in-out;
+    }
+
+    .tooltip-visible {
+        opacity: 1;
+    }
+
+    /* Tooltip arrow */
+    .tooltip-arrow {
+        @apply absolute w-2 h-2;
+        background-color: var(--nebula-bg-elevated);
+        border: 1px solid var(--nebula-border);
+        transform: rotate(45deg);
+    }
+
+    /* Tooltip positions */
+    .tooltip-top {
+        @apply bottom-full left-1/2 -translate-x-1/2 mb-2;
+    }
+
+    .tooltip-top .tooltip-arrow {
+        @apply -bottom-1 left-1/2 -translate-x-1/2;
+        border-top: none;
+        border-left: none;
+    }
+
+    .tooltip-bottom {
+        @apply top-full left-1/2 -translate-x-1/2 mt-2;
+    }
+
+    .tooltip-bottom .tooltip-arrow {
+        @apply -top-1 left-1/2 -translate-x-1/2;
+        border-bottom: none;
+        border-right: none;
+    }
+
+    .tooltip-left {
+        @apply right-full top-1/2 -translate-y-1/2 mr-2;
+    }
+
+    .tooltip-left .tooltip-arrow {
+        @apply -right-1 top-1/2 -translate-y-1/2;
+        border-left: none;
+        border-bottom: none;
+    }
+
+    .tooltip-right {
+        @apply left-full top-1/2 -translate-y-1/2 ml-2;
+    }
+
+    .tooltip-right .tooltip-arrow {
+        @apply -left-1 top-1/2 -translate-y-1/2;
+        border-right: none;
+        border-top: none;
+    }
+
+    /* ================================================
+       SELECT (CUSTOM DROPDOWN) COMPONENT
+       ================================================ */
+
+    .select-trigger {
+        @apply flex items-center justify-between w-full px-3 py-2 text-sm border transition-all duration-200 cursor-pointer focus:outline-none;
+        background-color: var(--nebula-input-bg);
+        color: var(--nebula-text-primary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+    }
+
+    .select-trigger:hover:not(:disabled) {
+        background-color: var(--nebula-input-bg-hover);
+        border-color: var(--nebula-border-strong);
+    }
+
+    .select-trigger:focus-visible {
+        border-color: var(--nebula-accent);
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .select-trigger:disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+
+    .select-trigger-open {
+        border-color: var(--nebula-accent);
+        box-shadow: 0 0 0 2px var(--nebula-accent-muted);
+    }
+
+    .select-trigger-placeholder {
+        color: var(--nebula-text-muted);
+    }
+
+    .select-trigger-error {
+        border-color: var(--nebula-error) !important;
+    }
+
+    .select-chevron {
+        @apply w-4 h-4 transition-transform duration-200 flex-shrink-0;
+        color: var(--nebula-text-muted);
+    }
+
+    .select-trigger-open .select-chevron {
+        transform: rotate(180deg);
+    }
+
+    .select-menu {
+        @apply absolute z-50 w-full py-1 mt-1 border overflow-hidden;
+        background-color: var(--nebula-bg-secondary);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        box-shadow: var(--nebula-shadow-lg);
+        max-height: 240px;
+        overflow-y: auto;
+        animation: select-open 0.15s ease-out;
+    }
+
+    .select-search {
+        @apply px-3 py-2 border-b;
+        border-color: var(--nebula-border-subtle);
+    }
+
+    .select-search-input {
+        @apply w-full text-sm bg-transparent outline-none;
+        color: var(--nebula-text-primary);
+    }
+
+    .select-search-input::placeholder {
+        color: var(--nebula-text-muted);
+    }
+
+    .select-option {
+        @apply flex items-center gap-2 w-full px-3 py-2 text-sm text-left transition-colors duration-100 cursor-pointer;
+        color: var(--nebula-text-secondary);
+    }
+
+    .select-option:hover {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    .select-option-selected {
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+    }
+
+    .select-option-selected:hover {
+        background-color: var(--nebula-accent-subtle);
+    }
+
+    .select-option-disabled {
+        @apply opacity-50 cursor-not-allowed;
+    }
+
+    .select-empty {
+        @apply px-3 py-4 text-sm text-center;
+        color: var(--nebula-text-muted);
+    }
+
+    /* Multi-select specific */
+    .select-multi-value {
+        @apply inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded mr-1 mb-1;
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+    }
+
+    .select-multi-remove {
+        @apply p-0.5 rounded transition-colors duration-150;
+    }
+
+    .select-multi-remove:hover {
+        background-color: var(--nebula-accent-muted);
+    }
+
+    /* ================================================
+       MODAL ANIMATION VARIANTS
+       ================================================ */
+
+    /* Scale animation variant */
+    .modal-content-scale {
+        animation: modal-scale-in 0.2s ease-out;
+    }
+
+    /* Slide-in animation variant */
+    .modal-content-slide {
+        animation: modal-slide-in 0.25s ease-out;
+    }
+
+    /* ================================================
+       SIDEBAR SHELL - COLLAPSIBLE
+       ================================================ */
+
+    .sidebar-shell {
+        @apply fixed left-0 top-0 h-full border-r flex flex-col;
+        z-index: 40;
+        background-color: var(--nebula-sidebar-bg);
+        border-color: var(--nebula-border);
+        transition: width 0.3s ease;
+    }
+
+    .sidebar-expanded {
+        width: 256px;
+    }
+
+    .sidebar-collapsed {
+        width: 64px;
+    }
+
+    /* Sidebar header */
+    .sidebar-header {
+        @apply h-14 flex items-center gap-3 px-4 border-b overflow-hidden flex-shrink-0;
+        border-color: var(--nebula-border);
+    }
+
+    /* Sidebar nav container */
+    .sidebar-nav {
+        @apply flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden;
+    }
+
+    /* Sidebar section label */
+    .sidebar-section-label {
+        @apply px-4 pt-6 pb-2 text-xs font-medium uppercase tracking-wider overflow-hidden whitespace-nowrap;
+        color: var(--nebula-text-muted);
+    }
+
+    /* Make sidebar-nav-item position relative for the active indicator */
+    .sidebar-nav-item {
+        @apply relative flex items-center gap-3 px-4 py-2.5 text-sm mx-2 transition-colors duration-150;
+        color: var(--nebula-text-secondary);
+        border-radius: var(--nebula-radius);
+    }
+
+    /* Active indicator - left border */
+    .sidebar-nav-item-active::before {
+        content: '';
+        @apply absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-r;
+        background-color: var(--nebula-accent);
+    }
+
+    /* Sidebar footer */
+    .sidebar-footer {
+        @apply flex-shrink-0 border-t;
+        border-color: var(--nebula-border);
+    }
+
+    /* Sidebar user section */
+    .sidebar-user-section {
+        @apply p-4;
+    }
+
+    /* Sidebar collapse toggle */
+    .sidebar-collapse-btn {
+        @apply w-full flex items-center justify-center py-3 transition-colors duration-150;
+        color: var(--nebula-text-muted);
+    }
+
+    .sidebar-collapse-btn:hover {
+        color: var(--nebula-text-primary);
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    /* ================================================
+       TOP BAR - GLASS EFFECT
+       ================================================ */
+
+    .topbar-shell {
+        @apply fixed top-0 h-14 border-b flex items-center justify-between px-6;
+        left: 256px;
+        right: 0;
+        z-index: 20;
+        background: var(--nebula-glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-color: var(--nebula-border-subtle);
+        transition: left 0.3s ease;
+    }
+
+    .topbar-sidebar-expanded {
+        left: 256px;
+    }
+
+    .topbar-sidebar-collapsed {
+        left: 64px;
+    }
+
+    /* ================================================
+       BREADCRUMBS
+       ================================================ */
+
+    .breadcrumb-nav {
+        @apply flex items-center;
+    }
+
+    .breadcrumb-link {
+        @apply text-sm transition-colors duration-150;
+        color: var(--nebula-text-muted);
+    }
+
+    .breadcrumb-link:hover {
+        color: var(--nebula-text-primary);
+    }
+
+    .breadcrumb-current {
+        @apply text-sm font-medium;
+        color: var(--nebula-text-primary);
+    }
+
+    .breadcrumb-separator {
+        @apply mx-2;
+        color: var(--nebula-text-muted);
+    }
+
+    /* ================================================
+       GLOBAL SEARCH
+       ================================================ */
+
+    .global-search-trigger {
+        @apply flex items-center gap-2 px-3 py-1.5 border transition-colors duration-150;
+        background-color: var(--nebula-input-bg);
+        border-color: var(--nebula-border);
+        border-radius: var(--nebula-radius);
+        color: var(--nebula-text-muted);
+    }
+
+    .global-search-trigger:hover {
+        border-color: var(--nebula-border-strong);
+        background-color: var(--nebula-input-bg-hover);
+    }
+
+    .search-kbd {
+        @apply px-1.5 py-0.5 text-xs rounded border;
+        background-color: var(--nebula-bg-tertiary);
+        border-color: var(--nebula-border-subtle);
+        color: var(--nebula-text-muted);
+    }
+
+    /* ================================================
+       NOTIFICATION BADGE
+       ================================================ */
+
+    .notification-badge {
+        @apply absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-xs font-medium rounded-full;
+        background-color: var(--nebula-error);
+        color: white;
+    }
+
+    /* ================================================
+       NOTIFICATION DROPDOWN
+       ================================================ */
+
+    .notification-dropdown {
+        @apply absolute right-0 top-full mt-2 w-80 max-w-[calc(100vw-2rem)] z-50 overflow-hidden;
+        background-color: var(--nebula-bg-elevated);
+        border: 1px solid var(--nebula-border);
+        border-radius: var(--nebula-radius-lg);
+        box-shadow: var(--nebula-shadow-lg);
+    }
+
+    .notification-dropdown-header {
+        @apply flex items-center justify-between px-4 py-3 border-b;
+        border-color: var(--nebula-border);
+    }
+
+    .notification-dropdown-header h3 {
+        @apply text-sm font-semibold;
+        color: var(--nebula-text-primary);
+    }
+
+    .notification-dropdown-content {
+        @apply max-h-96 overflow-y-auto;
+    }
+
+    .notification-dropdown-footer {
+        @apply flex items-center justify-center px-4 py-2 border-t;
+        border-color: var(--nebula-border);
+    }
+
+    .notification-empty {
+        @apply flex flex-col items-center justify-center gap-2 py-8;
+        color: var(--nebula-text-muted);
+    }
+
+    .notification-item {
+        @apply flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors duration-150 relative;
+        border-bottom: 1px solid var(--nebula-border-subtle);
+    }
+
+    .notification-item:last-child {
+        border-bottom: none;
+    }
+
+    .notification-item:hover {
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .notification-item.unread {
+        background-color: var(--nebula-accent-subtle);
+    }
+
+    .notification-item.unread:hover {
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .notification-item:focus {
+        outline: 2px solid var(--nebula-accent);
+        outline-offset: -2px;
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .notification-item.focused {
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .notification-icon {
+        @apply flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center;
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .notification-icon.icon-success {
+        background-color: var(--nebula-success-subtle);
+        color: var(--nebula-success);
+    }
+
+    .notification-icon.icon-warning {
+        background-color: var(--nebula-warning-subtle);
+        color: var(--nebula-warning);
+    }
+
+    .notification-icon.icon-error {
+        background-color: var(--nebula-error-subtle);
+        color: var(--nebula-error);
+    }
+
+    .notification-icon.icon-info {
+        background-color: var(--nebula-accent-subtle);
+        color: var(--nebula-accent);
+    }
+
+    .notification-icon.icon-default {
+        color: var(--nebula-text-secondary);
+    }
+
+    .notification-content {
+        @apply flex-1 min-w-0;
+    }
+
+    .notification-title {
+        @apply text-sm font-medium truncate;
+        color: var(--nebula-text-primary);
+    }
+
+    .notification-message {
+        @apply text-xs mt-0.5 line-clamp-2;
+        color: var(--nebula-text-secondary);
+    }
+
+    .notification-time {
+        @apply text-xs mt-1;
+        color: var(--nebula-text-muted);
+    }
+
+    .notification-unread-dot {
+        @apply absolute right-3 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full;
+        background-color: var(--nebula-accent);
+    }
+
+    /* ================================================
+       USER DROPDOWN
+       ================================================ */
+
+    .user-dropdown-trigger {
+        @apply flex items-center gap-2 px-2 py-1.5 transition-colors duration-150 rounded;
+        color: var(--nebula-text-secondary);
+    }
+
+    .user-dropdown-trigger:hover {
+        background-color: var(--nebula-bg-tertiary);
+        color: var(--nebula-text-primary);
+    }
+
+    .user-avatar {
+        @apply w-8 h-8 rounded-full flex items-center justify-center;
+        background-color: var(--nebula-accent-subtle);
+    }
+
+    /* ================================================
+       PAGE HEADER
+       ================================================ */
+
+    .page-header {
+        @apply flex items-center justify-between mb-6;
+    }
+
+    /* ================================================
+       MOBILE OVERLAY AND SIDEBAR
+       ================================================ */
+
+    .mobile-overlay {
+        @apply fixed inset-0 z-30;
+        background-color: var(--nebula-overlay-bg);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+    }
+
+    .sidebar-mobile-hidden {
+        transform: translateX(-100%);
+    }
+
+    .sidebar-mobile-visible {
+        transform: translateX(0);
+    }
+
+    /* ================================================
+       MAIN CONTENT TRANSITIONS
+       ================================================ */
+
+    .main-content {
+        @apply flex-1 transition-[margin-left] duration-300 ease-out;
+    }
+
+    .main-content-sidebar-expanded {
+        margin-left: 256px;
+    }
+
+    .main-content-sidebar-collapsed {
+        margin-left: 64px;
+    }
+
+    /* ================================================
+       RESPONSIVE OVERRIDES
+       ================================================ */
+
+    /* Mobile: topbar full width */
+    @media (max-width: 1023px) {
+        .topbar-shell {
+            left: 0 !important;
+        }
+
+        .main-content {
+            margin-left: 0 !important;
+        }
+
+        .sidebar-shell {
+            transform: translateX(-100%);
+        }
+
+        .sidebar-shell.sidebar-mobile-visible {
+            transform: translateX(0);
+        }
+    }
+
+    /* Mobile: improved touch targets (44x44px minimum) */
+    @media (max-width: 767px) {
+        .btn-icon,
+        .btn-sm.btn-icon {
+            min-width: 44px;
+            min-height: 44px;
+            padding: 0.5rem;
+        }
+
+        .btn-sm {
+            min-height: 44px;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+
+        .datagrid-page-size-select,
+        .filter-pill {
+            min-height: 44px;
+        }
+    }
+
+    /* ================================================
+       SKELETON LOADING COMPONENT
+       ================================================ */
+
+    .skeleton {
+        @apply relative overflow-hidden;
+        background-color: var(--nebula-bg-tertiary);
+        border-radius: var(--nebula-radius);
+    }
+
+    .skeleton::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        transform: translateX(-100%);
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.04),
+            transparent
+        );
+        animation: shimmer 2s infinite;
+    }
+
+    .skeleton-text {
+        @apply skeleton h-4 rounded;
+    }
+
+    .skeleton-text-sm {
+        @apply skeleton h-3 rounded;
+    }
+
+    .skeleton-text-lg {
+        @apply skeleton h-6 rounded;
+    }
+
+    .skeleton-circle {
+        @apply skeleton rounded-full;
+    }
+
+    .skeleton-card {
+        @apply skeleton p-4 border;
+        border-color: var(--nebula-border);
+    }
+
+    /* ================================================
+       STAGGERED ANIMATION UTILITIES
+       ================================================ */
+
+    .stagger-1 { animation-delay: 50ms; }
+    .stagger-2 { animation-delay: 100ms; }
+    .stagger-3 { animation-delay: 150ms; }
+    .stagger-4 { animation-delay: 200ms; }
+    .stagger-5 { animation-delay: 250ms; }
+    .stagger-6 { animation-delay: 300ms; }
+    .stagger-7 { animation-delay: 350ms; }
+    .stagger-8 { animation-delay: 400ms; }
+
+    .animate-fade-in-up {
+        animation: fade-in-up 0.4s ease-out both;
+    }
+
+    /* ================================================
+       SERVER CARD ENHANCED
+       ================================================ */
+
+    .server-card {
+        @apply relative card transition-all duration-200;
+    }
+
+    .server-card:hover {
+        border-color: var(--nebula-border-accent);
+        box-shadow: var(--nebula-glow);
+    }
+
+    .server-card-actions {
+        @apply absolute inset-x-0 bottom-0 p-4 opacity-0 transition-opacity duration-200;
+        background: linear-gradient(to top, var(--nebula-bg-primary) 60%, transparent);
+    }
+
+    .server-card:hover .server-card-actions {
+        @apply opacity-100;
+    }
+
+    /* Status pulse animation for running servers */
+    .status-pulse-success {
+        animation: status-pulse-success 2s ease-in-out infinite;
+    }
+
+    .status-pulse-warning {
+        animation: status-pulse-warning 1.5s ease-in-out infinite;
+    }
+
+    /* ================================================
+       DASHBOARD GRID LAYOUT
+       ================================================ */
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    @media (min-width: 1024px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr 320px;
+        }
+    }
+
+    @media (min-width: 1280px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr 360px;
+        }
+    }
+
+    /* ================================================
+       EMPTY STATE COMPONENT
+       ================================================ */
+
+    .empty-state {
+        @apply flex flex-col items-center justify-center py-12 px-6 text-center;
+    }
+
+    .empty-state-icon {
+        @apply w-16 h-16 rounded-full flex items-center justify-center mb-4;
+        background-color: var(--nebula-bg-tertiary);
+    }
+
+    .empty-state-starfield {
+        @apply relative overflow-hidden;
+        background: radial-gradient(ellipse at center, var(--nebula-bg-secondary) 0%, var(--nebula-bg-primary) 100%);
+    }
+
+    .empty-state-starfield::before {
+        content: '';
+        @apply absolute inset-0;
+        background-image:
+            radial-gradient(1px 1px at 20px 30px, var(--nebula-text-muted), transparent),
+            radial-gradient(1px 1px at 40px 70px, var(--nebula-text-muted), transparent),
+            radial-gradient(1px 1px at 50px 160px, var(--nebula-text-muted), transparent),
+            radial-gradient(1px 1px at 90px 40px, var(--nebula-text-muted), transparent),
+            radial-gradient(1px 1px at 130px 80px, var(--nebula-text-muted), transparent),
+            radial-gradient(1px 1px at 160px 120px, var(--nebula-text-muted), transparent);
+        background-size: 200px 200px;
+        opacity: 0.3;
+        animation: twinkle 4s ease-in-out infinite;
+    }
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes badge-pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+@keyframes modal-scale-in {
+    from {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes modal-slide-in {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes select-open {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes shimmer {
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes status-pulse-success {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    }
+}
+
+@keyframes status-pulse-warning {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+    }
+}
+
+@keyframes twinkle {
+    0%, 100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@layer utilities {
+    /* Glow effects - using CSS variables from themes.css */
+    .glow-accent {
+        box-shadow: var(--nebula-glow);
+    }
+
+    /* Text gradient for special headings */
+    .text-gradient {
+        background: linear-gradient(to right, var(--nebula-accent), var(--nebula-accent-light));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    /* Secondary text gradient */
+    .text-gradient-secondary {
+        background: linear-gradient(to right, var(--nebula-secondary), var(--nebula-secondary-light));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    /* Scrollbar hiding */
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+}

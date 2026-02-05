@@ -1,0 +1,114 @@
+@* Unified error alert component with icon, message, and optional dismiss *@
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="@GetAlertClass()" role="alert">
+        <div class="flex items-start gap-3">
+            <Icon Name="@GetIcon()" Size="IconSize.Small" Class="@($"{GetIconClass()} mt-0.5 flex-shrink-0")" />
+            <div class="flex-1 min-w-0">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <p class="font-medium">@Title</p>
+                    <p class="text-sm mt-1 opacity-90">@Message</p>
+                }
+                else
+                {
+                    <span>@Message</span>
+                }
+            </div>
+            @if (Dismissible)
+            {
+                <button type="button"
+                        class="flex-shrink-0 p-1 rounded hover:bg-black/10 transition-colors"
+                        @onclick="HandleDismiss"
+                        aria-label="Dismiss">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>
+    /// The error message to display.
+    /// </summary>
+    [Parameter]
+    public string? Message { get; set; }
+
+    /// <summary>
+    /// Optional title for the alert.
+    /// </summary>
+    [Parameter]
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// The severity level of the alert.
+    /// </summary>
+    [Parameter]
+    public ErrorSeverity Severity { get; set; } = ErrorSeverity.Error;
+
+    /// <summary>
+    /// Whether the alert can be dismissed.
+    /// </summary>
+    [Parameter]
+    public bool Dismissible { get; set; }
+
+    /// <summary>
+    /// Callback when the alert is dismissed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnDismiss { get; set; }
+
+    /// <summary>
+    /// Additional CSS classes to apply.
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    public enum ErrorSeverity
+    {
+        Error,
+        Warning,
+        Info,
+        Success
+    }
+
+    private string GetAlertClass()
+    {
+        var baseClass = "rounded-nebula p-4 border";
+        var severityClass = Severity switch
+        {
+            ErrorSeverity.Error => "bg-nebula-error/10 border-nebula-error text-nebula-error",
+            ErrorSeverity.Warning => "bg-nebula-warning/10 border-nebula-warning text-nebula-warning",
+            ErrorSeverity.Info => "bg-nebula-info/10 border-nebula-info text-nebula-info",
+            ErrorSeverity.Success => "bg-nebula-success/10 border-nebula-success text-nebula-success",
+            _ => "bg-nebula-error/10 border-nebula-error text-nebula-error"
+        };
+
+        return $"{baseClass} {severityClass} {Class}".Trim();
+    }
+
+    private string GetIcon() => Severity switch
+    {
+        ErrorSeverity.Error => "alert-circle",
+        ErrorSeverity.Warning => "alert-triangle",
+        ErrorSeverity.Info => "info",
+        ErrorSeverity.Success => "check-circle",
+        _ => "alert-circle"
+    };
+
+    private string GetIconClass() => Severity switch
+    {
+        ErrorSeverity.Error => "text-nebula-error",
+        ErrorSeverity.Warning => "text-nebula-warning",
+        ErrorSeverity.Info => "text-nebula-info",
+        ErrorSeverity.Success => "text-nebula-success",
+        _ => "text-nebula-error"
+    };
+
+    private async Task HandleDismiss()
+    {
+        await OnDismiss.InvokeAsync();
+    }
+}

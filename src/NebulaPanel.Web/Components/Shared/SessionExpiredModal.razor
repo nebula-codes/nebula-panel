@@ -1,0 +1,84 @@
+@using NebulaPanel.Web.Services
+@inject IAuthClientService AuthService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@if (_isVisible)
+{
+    <div class="fixed inset-0 z-50 flex items-center justify-center">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+
+        <!-- Modal -->
+        <div class="relative bg-nebula-card border border-nebula-border rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div class="flex flex-col items-center text-center">
+                <!-- Icon -->
+                <div class="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mb-4">
+                    <Icon Name="alert-triangle" Size="IconSize.Large" Class="text-amber-500" />
+                </div>
+
+                <!-- Title -->
+                <h2 class="text-xl font-semibold text-nebula-text-primary mb-2">
+                    Session Expired
+                </h2>
+
+                <!-- Message -->
+                <p class="text-nebula-text-secondary mb-6">
+                    Your session has expired. Please sign in again to continue.
+                </p>
+
+                <!-- Actions -->
+                <button @onclick="HandleSignIn"
+                        class="btn-primary w-full justify-center">
+                    <Icon Name="log-in" Size="IconSize.Small" />
+                    <span>Sign In</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isVisible;
+
+    protected override void OnInitialized()
+    {
+        if (AuthService is AuthClientService authClientService)
+        {
+            authClientService.OnSessionExpired += HandleSessionExpired;
+        }
+    }
+
+    private void HandleSessionExpired(object? sender, EventArgs e)
+    {
+        InvokeAsync(() =>
+        {
+            _isVisible = true;
+            StateHasChanged();
+        });
+    }
+
+    private async Task HandleSignIn()
+    {
+        _isVisible = false;
+
+        // Clear the local token
+        if (AuthService is AuthClientService authClientService)
+        {
+            await authClientService.LogoutAsync();
+        }
+
+        // Navigate to login with return URL
+        var currentUri = Navigation.Uri;
+        var returnUrl = Uri.EscapeDataString(new Uri(currentUri).PathAndQuery);
+        Navigation.NavigateTo($"/login?returnUrl={returnUrl}", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        if (AuthService is AuthClientService authClientService)
+        {
+            authClientService.OnSessionExpired -= HandleSessionExpired;
+        }
+    }
+}

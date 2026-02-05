@@ -1,0 +1,177 @@
+@page "/register"
+@layout AuthLayout
+@using NebulaPanel.Web.Services
+@inject IAuthClientService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Create Account - Nebula Panel</PageTitle>
+
+<div class="p-6">
+    <div class="text-center mb-6">
+        <h2 class="text-xl font-semibold text-nebula-text-primary">Create Account</h2>
+        <p class="text-sm text-nebula-text-muted mt-1">Get started with Nebula Panel</p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert-error mb-4 flex items-center gap-3">
+            <Icon Name="alert-circle" Size="IconSize.Small" />
+            <span class="text-sm">@_errorMessage</span>
+        </div>
+    }
+
+    <EditForm Model="_model" OnValidSubmit="HandleRegister" FormName="register">
+        <DataAnnotationsValidator />
+
+        <div class="space-y-4">
+            <div class="form-group">
+                <label for="username" class="label">Username</label>
+                <div class="relative">
+                    <InputText id="username"
+                               @bind-Value="_model.Username"
+                               class="input pl-10"
+                               placeholder="Choose a username"
+                               disabled="@_isLoading" />
+                    <Icon Name="user" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                </div>
+                <ValidationMessage For="() => _model.Username" class="validation-message" />
+            </div>
+
+            <div class="form-group">
+                <label for="email" class="label">Email</label>
+                <div class="relative">
+                    <InputText id="email"
+                               @bind-Value="_model.Email"
+                               type="email"
+                               class="input pl-10"
+                               placeholder="Enter your email"
+                               disabled="@_isLoading" />
+                    <Icon Name="globe" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                </div>
+                <ValidationMessage For="() => _model.Email" class="validation-message" />
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="label">Password</label>
+                <div class="relative">
+                    <InputText id="password"
+                               @bind-Value="_model.Password"
+                               type="@(_showPassword ? "text" : "password")"
+                               class="input pl-10 pr-10"
+                               placeholder="Choose a password"
+                               disabled="@_isLoading" />
+                    <Icon Name="lock" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                    <button type="button"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-nebula-text-muted hover:text-nebula-text-secondary transition-colors"
+                            @onclick="TogglePassword"
+                            tabindex="-1">
+                        <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="IconSize.Small" />
+                    </button>
+                </div>
+                <ValidationMessage For="() => _model.Password" class="validation-message" />
+            </div>
+
+            <div class="form-group">
+                <label for="confirmPassword" class="label">Confirm Password</label>
+                <div class="relative">
+                    <InputText id="confirmPassword"
+                               @bind-Value="_model.ConfirmPassword"
+                               type="@(_showPassword ? "text" : "password")"
+                               class="input pl-10"
+                               placeholder="Confirm your password"
+                               disabled="@_isLoading" />
+                    <Icon Name="lock" Size="IconSize.Small" Class="absolute left-3 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                </div>
+                <ValidationMessage For="() => _model.ConfirmPassword" class="validation-message" />
+            </div>
+
+            <button type="submit"
+                    class="btn-primary w-full justify-center"
+                    disabled="@_isLoading">
+                @if (_isLoading)
+                {
+                    <span class="spinner"></span>
+                    <span>Creating account...</span>
+                }
+                else
+                {
+                    <Icon Name="user-plus" Size="IconSize.Small" />
+                    <span>Create Account</span>
+                }
+            </button>
+        </div>
+    </EditForm>
+
+    <div class="mt-6 text-center">
+        <p class="text-sm text-nebula-text-muted">
+            Already have an account?
+            <a href="/login" class="link">Sign in</a>
+        </p>
+    </div>
+</div>
+
+@code {
+    private RegisterModel _model = new();
+    private string? _errorMessage;
+    private bool _isLoading;
+    private bool _showPassword;
+
+    private void TogglePassword()
+    {
+        _showPassword = !_showPassword;
+    }
+
+    private async Task HandleRegister()
+    {
+        _errorMessage = null;
+
+        if (_model.Password != _model.ConfirmPassword)
+        {
+            _errorMessage = "Passwords do not match.";
+            return;
+        }
+
+        _isLoading = true;
+
+        try
+        {
+            var result = await AuthService.RegisterAsync(_model.Username, _model.Email, _model.Password);
+
+            if (result.Success)
+            {
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                _errorMessage = result.Error ?? "Registration failed. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private class RegisterModel
+    {
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Username is required")]
+        [System.ComponentModel.DataAnnotations.StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters")]
+        public string Username { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Email is required")]
+        [System.ComponentModel.DataAnnotations.EmailAddress(ErrorMessage = "Invalid email address")]
+        public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Password is required")]
+        [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters")]
+        public string Password { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required(ErrorMessage = "Please confirm your password")]
+        [System.ComponentModel.DataAnnotations.Compare(nameof(Password), ErrorMessage = "Passwords do not match")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

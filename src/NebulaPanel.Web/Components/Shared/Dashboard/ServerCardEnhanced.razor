@@ -1,0 +1,310 @@
+@* Enhanced server card for dashboard with hover actions and quick stats *@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+@inject NavigationManager NavigationManager
+
+<div class="server-card group cursor-pointer @(Server.IsPinned ? "ring-1 ring-nebula-accent/30" : "")" @onclick="HandleCardClick">
+    <div class="p-4">
+        @* Header: Icon, Name, Status *@
+        <div class="flex items-start gap-3">
+            @if (!string.IsNullOrEmpty(Server.EffectiveIcon))
+            {
+                <img src="@Server.EffectiveIcon" alt="@Server.GameName" class="w-10 h-10 object-contain rounded-lg flex-shrink-0" />
+            }
+            else
+            {
+                <div class="w-10 h-10 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Icon Name="server" Size="Icon.IconSize.Medium" Class="text-nebula-text-muted" />
+                </div>
+            }
+
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <h3 class="font-medium text-nebula-text-primary truncate">@Server.Name</h3>
+                        @if (Server.HytaleUpdateAvailable)
+                        {
+                            <StatusBadge Status="StatusType.Info" Text="UPDATE" Size="BadgeSize.Small" ShowDot="true" />
+                        }
+                    </div>
+                    <div class="flex items-center gap-1.5 flex-shrink-0">
+                        <button type="button"
+                                class="@(Server.IsPinned ? "text-nebula-accent" : "text-nebula-text-muted opacity-0 group-hover:opacity-100") hover:text-nebula-accent transition-all"
+                                title="@(Server.IsPinned ? "Unpin server" : "Pin server")"
+                                @onclick="HandleTogglePin"
+                                @onclick:stopPropagation="true">
+                            <Icon Name="@(Server.IsPinned ? "star" : "star")" Size="Icon.IconSize.Small" Class="@(Server.IsPinned ? "fill-current" : "")" />
+                        </button>
+                        <span class="@GetStatusDotClass()"></span>
+                        <span class="text-xs @GetStatusTextClass()">@GetStatusText()</span>
+                    </div>
+                </div>
+                <p class="text-sm text-nebula-text-muted truncate">@Server.GameName</p>
+            </div>
+        </div>
+
+        @* Tags *@
+        @if (Server.Tags.Count > 0)
+        {
+            <div class="mt-2 flex flex-wrap gap-1">
+                @foreach (var tag in Server.Tags.Take(3))
+                {
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-nebula-accent/10 text-nebula-accent border border-nebula-accent/20">
+                        @tag
+                    </span>
+                }
+                @if (Server.Tags.Count > 3)
+                {
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] text-nebula-text-muted">
+                        +@(Server.Tags.Count - 3)
+                    </span>
+                }
+            </div>
+        }
+
+        @* Quick Stats Row *@
+        <div class="mt-3 flex items-center gap-4 text-xs text-nebula-text-muted">
+            @if (CpuPercent.HasValue)
+            {
+                <div class="flex items-center gap-1">
+                    <Icon Name="cpu" Size="Icon.IconSize.XSmall" />
+                    <span class="@(CpuPercent > 80 ? "text-nebula-warning" : "")">@CpuPercent%</span>
+                </div>
+            }
+
+            @if (MemoryMb.HasValue)
+            {
+                <div class="flex items-center gap-1">
+                    <Icon Name="memory" Size="Icon.IconSize.XSmall" />
+                    <span class="@(MemoryPercent > 80 ? "text-nebula-warning" : "")">@FormatMemory(MemoryMb.Value)</span>
+                </div>
+            }
+
+            @if (PlayerCount.HasValue && MaxPlayers.HasValue)
+            {
+                <div class="flex items-center gap-1">
+                    <Icon Name="users" Size="Icon.IconSize.XSmall" />
+                    <span>@PlayerCount/@MaxPlayers</span>
+                </div>
+            }
+
+            @if (!CpuPercent.HasValue && !MemoryMb.HasValue && !PlayerCount.HasValue)
+            {
+                <div class="flex items-center gap-1">
+                    <Icon Name="@(Server.DeploymentType == ServerDeploymentType.Docker ? "box" : "terminal")" Size="Icon.IconSize.XSmall" />
+                    <span>@Server.DeploymentType</span>
+                </div>
+                <div class="flex items-center gap-1">
+                    <code class="bg-nebula-bg-tertiary px-1.5 py-0.5 rounded">:@Server.PrimaryPort</code>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Hover Actions Overlay *@
+    <div class="server-card-actions rounded-b-nebula-lg" @onclick:stopPropagation="true">
+        <div class="flex items-center justify-end gap-2">
+            @if (Server.Status == ServerStatus.Running)
+            {
+                <Button Variant="Button.ButtonVariant.Secondary"
+                        Size="Button.ButtonSize.Small"
+                        IconName="square"
+                        Text="Stop"
+                        Loading="_stopping"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleStop" />
+            }
+            else if (Server.Status == ServerStatus.Stopped || Server.Status == ServerStatus.Unknown || Server.Status == ServerStatus.Crashed)
+            {
+                <Button Variant="Button.ButtonVariant.Primary"
+                        Size="Button.ButtonSize.Small"
+                        IconName="play"
+                        Text="Start"
+                        Loading="_starting"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleStart" />
+            }
+            else if (Server.Status == ServerStatus.Starting || Server.Status == ServerStatus.Stopping)
+            {
+                <Button Variant="Button.ButtonVariant.Danger"
+                        Size="Button.ButtonSize.Small"
+                        IconName="x"
+                        Text="Kill"
+                        Loading="_killing"
+                        Disabled="_actionInProgress"
+                        OnClick="HandleKill" />
+            }
+
+            @if (!string.IsNullOrEmpty(ConsoleUrl))
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Small"
+                        IconName="terminal"
+                        IconOnly="true"
+                        OnClick="@(() => NavigationManager.NavigateTo(ConsoleUrl))" />
+            }
+
+            @if (!string.IsNullOrEmpty(SettingsUrl))
+            {
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Small"
+                        IconName="settings"
+                        IconOnly="true"
+                        OnClick="@(() => NavigationManager.NavigateTo(SettingsUrl))" />
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameServerListItemDto Server { get; set; } = default!;
+
+    [Parameter]
+    public double? CpuPercent { get; set; }
+
+    [Parameter]
+    public long? MemoryMb { get; set; }
+
+    [Parameter]
+    public long? MaxMemoryMb { get; set; }
+
+    [Parameter]
+    public int? PlayerCount { get; set; }
+
+    [Parameter]
+    public int? MaxPlayers { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnStartClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnStopClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnKillClick { get; set; }
+
+    [Parameter]
+    public EventCallback<GameServerListItemDto> OnPinToggle { get; set; }
+
+    [Parameter]
+    public string? ConsoleUrl { get; set; }
+
+    [Parameter]
+    public string? SettingsUrl { get; set; }
+
+    private bool _starting;
+    private bool _stopping;
+    private bool _killing;
+    private bool _actionInProgress => _starting || _stopping || _killing;
+
+    private double? MemoryPercent => (MemoryMb.HasValue && MaxMemoryMb.HasValue && MaxMemoryMb.Value > 0)
+        ? Math.Round((double)MemoryMb.Value / MaxMemoryMb.Value * 100, 0)
+        : null;
+
+    private void HandleCardClick()
+    {
+        if (OnClick.HasDelegate)
+        {
+            OnClick.InvokeAsync(Server);
+        }
+    }
+
+    private async Task HandleStart()
+    {
+        _starting = true;
+        StateHasChanged();
+        try
+        {
+            await OnStartClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _starting = false;
+        }
+    }
+
+    private async Task HandleStop()
+    {
+        _stopping = true;
+        StateHasChanged();
+        try
+        {
+            await OnStopClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _stopping = false;
+        }
+    }
+
+    private async Task HandleKill()
+    {
+        _killing = true;
+        StateHasChanged();
+        try
+        {
+            await OnKillClick.InvokeAsync(Server);
+        }
+        finally
+        {
+            _killing = false;
+        }
+    }
+
+    private async Task HandleTogglePin()
+    {
+        if (OnPinToggle.HasDelegate)
+        {
+            await OnPinToggle.InvokeAsync(Server);
+        }
+    }
+
+    private string GetStatusDotClass()
+    {
+        var baseClass = "w-2 h-2 rounded-full";
+        return Server.Status switch
+        {
+            ServerStatus.Running => $"{baseClass} bg-nebula-success status-pulse-success",
+            ServerStatus.Starting or ServerStatus.Stopping => $"{baseClass} bg-nebula-warning status-pulse-warning",
+            ServerStatus.Stopped => $"{baseClass} bg-nebula-text-muted",
+            ServerStatus.Crashed => $"{baseClass} bg-nebula-error",
+            ServerStatus.Updating or ServerStatus.Installing => $"{baseClass} bg-nebula-info animate-pulse",
+            _ => $"{baseClass} bg-nebula-text-muted"
+        };
+    }
+
+    private string GetStatusTextClass() => Server.Status switch
+    {
+        ServerStatus.Running => "text-nebula-success",
+        ServerStatus.Starting or ServerStatus.Stopping => "text-nebula-warning",
+        ServerStatus.Stopped => "text-nebula-text-muted",
+        ServerStatus.Crashed => "text-nebula-error",
+        ServerStatus.Updating or ServerStatus.Installing => "text-nebula-info",
+        _ => "text-nebula-text-muted"
+    };
+
+    private string GetStatusText() => Server.Status switch
+    {
+        ServerStatus.Running => "Running",
+        ServerStatus.Starting => "Starting",
+        ServerStatus.Stopping => "Stopping",
+        ServerStatus.Stopped => "Stopped",
+        ServerStatus.Crashed => "Crashed",
+        ServerStatus.Updating => "Updating",
+        ServerStatus.Installing => "Installing",
+        _ => "Unknown"
+    };
+
+    private static string FormatMemory(long mb)
+    {
+        if (mb >= 1024)
+        {
+            return $"{mb / 1024.0:0.#} GB";
+        }
+        return $"{mb} MB";
+    }
+}

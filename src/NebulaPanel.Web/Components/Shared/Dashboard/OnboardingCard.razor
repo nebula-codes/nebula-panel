@@ -1,0 +1,144 @@
+@inject NavigationManager Navigation
+@inject IGameService GameService
+@inject IGameServerService ServerService
+@using NebulaPanel.Application.Services
+
+<Card Variant="Card.CardVariant.Elevated">
+    <div class="p-6">
+        <div class="flex items-start gap-4 mb-6">
+            <div class="p-3 rounded-nebula-lg bg-nebula-accent/20">
+                <Icon Name="rocket" Size="IconSize.Large" Class="text-nebula-accent" />
+            </div>
+            <div>
+                <h2 class="text-xl font-bold text-nebula-text-primary">Welcome to Nebula Panel</h2>
+                <p class="text-sm text-nebula-text-muted mt-1">
+                    Let's get your first game server running. Follow these steps to get started.
+                </p>
+            </div>
+            <button type="button"
+                    class="ml-auto p-1 rounded hover:bg-nebula-bg-tertiary transition-colors text-nebula-text-muted"
+                    @onclick="Dismiss"
+                    title="Dismiss">
+                <Icon Name="x" Size="IconSize.Small" />
+            </button>
+        </div>
+
+        <div class="space-y-3">
+            @* Step 1: Games *@
+            <div class="@GetStepClass(_hasGames)">
+                <div class="@GetStepIconClass(_hasGames)">
+                    @if (_hasGames)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" Class="text-white" />
+                    }
+                    else
+                    {
+                        <span class="text-sm font-bold">1</span>
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium text-nebula-text-primary">
+                        @(_hasGames ? "Games configured" : "Add a game")
+                    </div>
+                    <div class="text-xs text-nebula-text-muted">
+                        @(_hasGames ? "You have games ready to use" : "Install official games or add custom ones")
+                    </div>
+                </div>
+                @if (!_hasGames)
+                {
+                    <Button Variant="Button.ButtonVariant.Secondary"
+                            Size="Button.ButtonSize.Small"
+                            Text="Browse Games"
+                            OnClick="@(() => Navigation.NavigateTo("/games"))" />
+                }
+            </div>
+
+            @* Step 2: Server *@
+            <div class="@GetStepClass(_hasServers)">
+                <div class="@GetStepIconClass(_hasServers)">
+                    @if (_hasServers)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" Class="text-white" />
+                    }
+                    else
+                    {
+                        <span class="text-sm font-bold">2</span>
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium text-nebula-text-primary">
+                        @(_hasServers ? "Server created" : "Create your first server")
+                    </div>
+                    <div class="text-xs text-nebula-text-muted">
+                        @(_hasServers ? "You're ready to start hosting" : "Set up a game server instance")
+                    </div>
+                </div>
+                @if (!_hasServers && _hasGames)
+                {
+                    <Button Variant="Button.ButtonVariant.Primary"
+                            Size="Button.ButtonSize.Small"
+                            Text="Create Server"
+                            OnClick="@(() => Navigation.NavigateTo("/servers/create"))" />
+                }
+            </div>
+
+            @* Step 3: Configure *@
+            <div class="@GetStepClass(false)">
+                <div class="@GetStepIconClass(false)">
+                    <span class="text-sm font-bold">3</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium text-nebula-text-primary">Configure & launch</div>
+                    <div class="text-xs text-nebula-text-muted">Customize settings and start your server</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</Card>
+
+@code {
+    [Parameter]
+    public EventCallback OnDismiss { get; set; }
+
+    private bool _hasGames;
+    private bool _hasServers;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var gamesTask = GameService.GetAllGamesAsync();
+            var serversTask = ServerService.GetAllServersAsync();
+
+            await Task.WhenAll(gamesTask, serversTask);
+
+            _hasGames = (await gamesTask).Any();
+            _hasServers = (await serversTask).Any();
+        }
+        catch
+        {
+            // Silent failure
+        }
+    }
+
+    private async Task Dismiss()
+    {
+        await OnDismiss.InvokeAsync();
+    }
+
+    private static string GetStepClass(bool completed)
+    {
+        var baseClass = "flex items-center gap-4 p-3 rounded-nebula";
+        return completed
+            ? $"{baseClass} bg-nebula-success/5 border border-nebula-success/20"
+            : $"{baseClass} bg-nebula-bg-secondary border border-nebula-border";
+    }
+
+    private static string GetStepIconClass(bool completed)
+    {
+        var baseClass = "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0";
+        return completed
+            ? $"{baseClass} bg-nebula-success"
+            : $"{baseClass} bg-nebula-bg-tertiary text-nebula-text-muted";
+    }
+}

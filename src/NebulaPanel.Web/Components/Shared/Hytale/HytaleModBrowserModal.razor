@@ -1,0 +1,52 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+
+<Modal IsOpen="@IsOpen"
+       Size="ModalSize.Full"
+       OnClose="HandleClose"
+       ShowCloseButton="true"
+       CloseOnBackdropClick="false"
+       CloseOnEscape="true">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Browse Mods</span>
+    </Header>
+    <Body>
+        <HytaleModBrowser ServerId="ServerId" OnModInstalled="HandleInstalled" />
+    </Body>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The server ID to install mods to.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Whether the modal is open.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the modal is closed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when a mod has been installed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnModInstalled { get; set; }
+
+    private async Task HandleInstalled()
+    {
+        await OnModInstalled.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        await OnClose.InvokeAsync();
+    }
+}

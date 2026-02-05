@@ -1,0 +1,223 @@
+@page "/users/create"
+@attribute [Authorize(Policy = "CreateUsers")]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using System.ComponentModel.DataAnnotations
+@inject IUserManagementService UserService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Create User - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-3xl mx-auto">
+    <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <a href="/users" class="hover:text-nebula-text-primary transition-colors">Users</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Create User</span>
+    </nav>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-6">Create User</h1>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    <EditForm Model="_model" OnValidSubmit="HandleSubmit">
+        <DataAnnotationsValidator />
+
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Account Information</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label for="username" class="label">Username <span class="text-nebula-error">*</span></label>
+                        <InputText id="username" @bind-Value="_model.Username" class="input" placeholder="Enter username" />
+                        <ValidationMessage For="@(() => _model.Username)" class="text-nebula-error text-xs mt-1" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email" class="label">Email <span class="text-nebula-error">*</span></label>
+                        <InputText id="email" @bind-Value="_model.Email" class="input" placeholder="Enter email address" type="email" />
+                        <ValidationMessage For="@(() => _model.Email)" class="text-nebula-error text-xs mt-1" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password" class="label">Password <span class="text-nebula-error">*</span></label>
+                        <InputText id="password" @bind-Value="_model.Password" class="input" placeholder="Enter password" type="password" />
+                        <ValidationMessage For="@(() => _model.Password)" class="text-nebula-error text-xs mt-1" />
+                    </div>
+
+                    <div class="form-group">
+                        <label for="confirmPassword" class="label">Confirm Password <span class="text-nebula-error">*</span></label>
+                        <InputText id="confirmPassword" @bind-Value="_model.ConfirmPassword" class="input" placeholder="Confirm password" type="password" />
+                        <ValidationMessage For="@(() => _model.ConfirmPassword)" class="text-nebula-error text-xs mt-1" />
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Role Assignment</h2>
+            </Header>
+            <ChildContent>
+                @if (_loadingRoles)
+                {
+                    <div class="flex items-center justify-center py-4">
+                        <span class="spinner w-6 h-6"></span>
+                    </div>
+                }
+                else if (_roles.Count == 0)
+                {
+                    <p class="text-nebula-text-muted">No roles available.</p>
+                }
+                else
+                {
+                    <div class="space-y-3">
+                        @foreach (var role in _roles)
+                        {
+                            <label class="flex items-start gap-3 p-3 rounded-nebula border border-nebula-border hover:border-nebula-border-subtle transition-colors cursor-pointer">
+                                <InputCheckbox @bind-Value="@role.IsSelected" class="checkbox mt-0.5" />
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium text-nebula-text-primary">@role.Role.Name</span>
+                                        @if (role.Role.IsSystemRole)
+                                        {
+                                            <span class="px-1.5 py-0.5 text-xs rounded bg-nebula-bg-tertiary text-nebula-text-muted">System</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(role.Role.Description))
+                                    {
+                                        <p class="text-sm text-nebula-text-muted mt-0.5">@role.Role.Description</p>
+                                    }
+                                </div>
+                            </label>
+                        }
+                    </div>
+                }
+            </ChildContent>
+        </Card>
+
+        <div class="flex items-center justify-end gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+            <Button Type="submit" Variant="ButtonVariant.Primary" Text="Create User" Loading="_submitting" />
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    private CreateUserModel _model = new();
+    private List<RoleSelectionItem> _roles = [];
+    private bool _loadingRoles = true;
+    private bool _submitting;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRolesAsync();
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        try
+        {
+            _loadingRoles = true;
+            var roles = await UserService.GetAllRolesAsync();
+            _roles = roles.Select(r => new RoleSelectionItem { Role = r, IsSelected = false }).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingRoles = false;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (_model.Password != _model.ConfirmPassword)
+        {
+            _error = "Passwords do not match";
+            return;
+        }
+
+        try
+        {
+            _submitting = true;
+            _error = null;
+
+            var selectedRoleIds = _roles.Where(r => r.IsSelected).Select(r => r.Role.Id).ToList();
+            var request = new CreateUserRequest(
+                _model.Username,
+                _model.Email,
+                _model.Password,
+                selectedRoleIds
+            );
+
+            var result = await UserService.CreateUserAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo("/users");
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/users");
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private class CreateUserModel
+    {
+        [Required(ErrorMessage = "Username is required")]
+        [StringLength(50, MinimumLength = 3, ErrorMessage = "Username must be between 3 and 50 characters")]
+        public string Username { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email address")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Password is required")]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Password must be at least 6 characters")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Please confirm your password")]
+        [Compare(nameof(Password), ErrorMessage = "Passwords do not match")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+
+    private class RoleSelectionItem
+    {
+        public RoleDto Role { get; set; } = null!;
+        public bool IsSelected { get; set; }
+    }
+}

@@ -1,0 +1,77 @@
+services:
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    restart: unless-stopped
+    networks:
+      - nebula-network
+
+  nebula-panel:
+    image: ghcr.io/nebula-codes/nebula-panel:latest
+    container_name: nebula-panel
+    volumes:
+      - nebula-data:/app/data
+      - nebula-servers:/app/servers
+      - nebula-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock  # For game server container management
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/nebula.db
+      - Jwt__Secret=${JWT_SECRET}
+      - CurseForge__ApiKey=${CURSEFORGE_API_KEY:-}
+      - Modrinth__ApiKey=${MODRINTH_API_KEY:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nebula.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.nebula.entrypoints=websecure"
+      - "traefik.http.routers.nebula.tls.certresolver=letsencrypt"
+      - "traefik.http.services.nebula.loadbalancer.server.port=5000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    networks:
+      - nebula-network
+
+networks:
+  nebula-network:
+    name: nebula-network
+
+volumes:
+  nebula-data:
+    name: nebula-panel-data
+  nebula-servers:
+    name: nebula-panel-servers
+  nebula-logs:
+    name: nebula-panel-logs
+  traefik-certs:
+    name: traefik-certs

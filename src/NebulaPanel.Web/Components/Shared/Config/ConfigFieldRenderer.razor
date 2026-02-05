@@ -1,0 +1,132 @@
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.ValueObjects
+
+@* Renders the appropriate config field component based on field type *@
+
+@switch (Field.Type)
+{
+    case ConfigFieldType.String:
+    case ConfigFieldType.Path:
+    case ConfigFieldType.IpAddress:
+        <ConfigTextField Field="@Field" Value="@GetStringValue()" ValueChanged="@OnStringChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Text:
+        <ConfigTextArea Field="@Field" Value="@GetStringValue()" ValueChanged="@OnStringChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Password:
+        <ConfigPasswordField Field="@Field" Value="@GetStringValue()" ValueChanged="@OnStringChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Int:
+    case ConfigFieldType.Port:
+        <ConfigNumberField Field="@Field" Value="@GetDoubleValue()" ValueChanged="@OnDoubleChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Float:
+        <ConfigNumberField Field="@Field" Value="@GetDoubleValue()" ValueChanged="@OnDoubleChanged" IsFloat="true" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Bool:
+    case ConfigFieldType.Toggle:
+        <ConfigBoolField Field="@Field" Value="@GetBoolValue()" ValueChanged="@OnBoolChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Select:
+        <ConfigSelectField Field="@Field" Value="@GetStringValue()" ValueChanged="@OnStringChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    case ConfigFieldType.Slider:
+        <ConfigSliderField Field="@Field" Value="@GetDoubleValue()" ValueChanged="@OnDoubleChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+
+    default:
+        <ConfigTextField Field="@Field" Value="@GetStringValue()" ValueChanged="@OnStringChanged" Disabled="@Disabled" Errors="@Errors" IsModified="@IsModified" OnResetToDefault="@OnResetToDefault" />
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ConfigField Field { get; set; } = null!;
+
+    [Parameter]
+    public object? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<object?> ValueChanged { get; set; }
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public List<string>? Errors { get; set; }
+
+    [Parameter]
+    public bool IsModified { get; set; }
+
+    [Parameter]
+    public EventCallback OnResetToDefault { get; set; }
+
+    private string GetStringValue()
+    {
+        return Value?.ToString() ?? string.Empty;
+    }
+
+    private int GetIntValue()
+    {
+        return Value switch
+        {
+            int i => i,
+            long l => (int)l,
+            double d => (int)d,
+            string s when int.TryParse(s, out var result) => result,
+            _ => Field.DefaultValue is int defaultInt ? defaultInt : 0
+        };
+    }
+
+    private double GetDoubleValue()
+    {
+        return Value switch
+        {
+            double d => d,
+            float f => f,
+            int i => i,
+            long l => l,
+            decimal dec => (double)dec,
+            string s when double.TryParse(s, out var result) => result,
+            _ => Field.DefaultValue is double defaultDouble ? defaultDouble : 0
+        };
+    }
+
+    private bool GetBoolValue()
+    {
+        return Value switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase),
+            int i => i != 0,
+            _ => Field.DefaultValue is bool defaultBool && defaultBool
+        };
+    }
+
+    private async Task OnStringChanged(string value)
+    {
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    private async Task OnIntChanged(int value)
+    {
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    private async Task OnDoubleChanged(double value)
+    {
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    private async Task OnBoolChanged(bool value)
+    {
+        await ValueChanged.InvokeAsync(value);
+    }
+}

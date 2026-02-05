@@ -1,0 +1,345 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+
+<div class="installed-mods-datagrid">
+    @if (Loading)
+    {
+        <div class="loading-skeleton">
+            @for (var i = 0; i < 5; i++)
+            {
+                <div class="skeleton-row">
+                    <div class="skeleton-cell skeleton-icon"></div>
+                    <div class="skeleton-cell skeleton-name"></div>
+                    <div class="skeleton-cell skeleton-version"></div>
+                    <div class="skeleton-cell skeleton-author"></div>
+                    <div class="skeleton-cell skeleton-provider"></div>
+                    <div class="skeleton-cell skeleton-size"></div>
+                    <div class="skeleton-cell skeleton-date"></div>
+                    <div class="skeleton-cell skeleton-toggle"></div>
+                    <div class="skeleton-cell skeleton-actions"></div>
+                </div>
+            }
+        </div>
+    }
+    else if (!Mods.Any())
+    {
+        <EmptyState IconName="package"
+                    Heading="No mods installed"
+                    Description="Browse and install mods to enhance your server.">
+            <Actions>
+                <Button Text="Browse Mods"
+                        Variant="Button.ButtonVariant.Primary"
+                        IconName="search"
+                        OnClick="HandleBrowseMods" />
+            </Actions>
+        </EmptyState>
+    }
+    else
+    {
+        <div class="datagrid-container">
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th class="col-icon"></th>
+                        <th class="col-name sortable @GetSortClass("name")" @onclick="@(() => Sort("name"))">
+                            Name
+                            <Icon Name="@GetSortIcon("name")" Size="Icon.IconSize.XSmall" Class="sort-icon" />
+                        </th>
+                        <th class="col-version">Version</th>
+                        <th class="col-author sortable @GetSortClass("author")" @onclick="@(() => Sort("author"))">
+                            Author
+                            <Icon Name="@GetSortIcon("author")" Size="Icon.IconSize.XSmall" Class="sort-icon" />
+                        </th>
+                        <th class="col-provider">Source</th>
+                        <th class="col-size sortable @GetSortClass("size")" @onclick="@(() => Sort("size"))">
+                            Size
+                            <Icon Name="@GetSortIcon("size")" Size="Icon.IconSize.XSmall" Class="sort-icon" />
+                        </th>
+                        <th class="col-installed sortable @GetSortClass("installed")" @onclick="@(() => Sort("installed"))">
+                            Installed
+                            <Icon Name="@GetSortIcon("installed")" Size="Icon.IconSize.XSmall" Class="sort-icon" />
+                        </th>
+                        <th class="col-status">Status</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var mod in SortedMods)
+                    {
+                        <tr class="@GetRowClasses(mod)" @onclick="() => HandleViewDetails(mod)">
+                            @* Icon *@
+                            <td class="col-icon">
+                                @if (!string.IsNullOrEmpty(mod.IconUrl))
+                                {
+                                    <img src="@mod.IconUrl" alt="@mod.Name" class="mod-icon" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <div class="mod-icon-placeholder">
+                                        <Icon Name="package" Size="Icon.IconSize.Medium" />
+                                    </div>
+                                }
+                            </td>
+
+                            @* Name with update chip *@
+                            <td class="col-name">
+                                <div class="name-cell">
+                                    <span class="mod-name" title="@mod.Name">@mod.Name</span>
+                                    @if (mod.UpdateAvailable)
+                                    {
+                                        <span class="update-chip" title="@($"Update available: {mod.LatestVersion}")">
+                                            <Icon Name="upload" Size="Icon.IconSize.XSmall" Class="chip-icon" />
+                                            <span class="chip-text">@mod.LatestVersion</span>
+                                        </span>
+                                    }
+                                </div>
+                            </td>
+
+                            @* Version *@
+                            <td class="col-version">
+                                <span class="version-badge">v@(mod.InstalledVersion)</span>
+                            </td>
+
+                            @* Author *@
+                            <td class="col-author">
+                                <span class="author-name">@(mod.Author ?? "Unknown")</span>
+                            </td>
+
+                            @* Provider *@
+                            <td class="col-provider">
+                                <span class="provider-badge provider-@mod.Provider.ToString().ToLowerInvariant()">
+                                    @GetProviderDisplayName(mod.Provider)
+                                </span>
+                            </td>
+
+                            @* Size *@
+                            <td class="col-size">
+                                <span class="file-size">@FormatFileSize(mod.FileSizeBytes)</span>
+                            </td>
+
+                            @* Installed Date *@
+                            <td class="col-installed">
+                                <span class="date" title="@mod.InstalledAt.ToString("F")">
+                                    @FormatRelativeDate(mod.InstalledAt)
+                                </span>
+                            </td>
+
+                            @* Status Toggle *@
+                            <td class="col-status">
+                                <Toggle Value="@mod.IsEnabled"
+                                        ValueChanged="@(enabled => HandleToggleEnabled(mod, enabled))"
+                                        Size="Toggle.ToggleSize.Small"
+                                        Disabled="@_busyMods.Contains(mod.Id)" />
+                            </td>
+
+                            @* Actions *@
+                            <td class="col-actions" @onclick:stopPropagation="true">
+                                <div class="action-buttons">
+                                    @if (mod.UpdateAvailable)
+                                    {
+                                        <Button IconName="refresh-cw"
+                                                IconOnly="true"
+                                                Variant="Button.ButtonVariant.Ghost"
+                                                Size="Button.ButtonSize.Small"
+                                                Class="btn-update"
+                                                Loading="@_busyMods.Contains(mod.Id)"
+                                                OnClick="@(() => HandleUpdate(mod))"
+                                                title="@($"Update to {mod.LatestVersion}")" />
+                                    }
+                                    <Button IconName="eye"
+                                            IconOnly="true"
+                                            Variant="Button.ButtonVariant.Ghost"
+                                            Size="Button.ButtonSize.Small"
+                                            OnClick="@(() => HandleViewDetails(mod))"
+                                            title="View details" />
+                                    <Button IconName="trash-2"
+                                            IconOnly="true"
+                                            Variant="Button.ButtonVariant.Ghost"
+                                            Size="Button.ButtonSize.Small"
+                                            Class="btn-danger-icon"
+                                            Disabled="@_busyMods.Contains(mod.Id)"
+                                            OnClick="@(() => HandleUninstall(mod))"
+                                            title="Delete mod" />
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The list of installed mods to display.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyList<HytaleInstalledModInfo> Mods { get; set; } = [];
+
+    /// <summary>
+    /// Whether the data is currently loading.
+    /// </summary>
+    [Parameter]
+    public bool Loading { get; set; }
+
+    /// <summary>
+    /// Set of mod IDs currently being operated on (update, toggle, etc.).
+    /// </summary>
+    [Parameter]
+    public HashSet<Guid> BusyMods { get; set; } = [];
+
+    /// <summary>
+    /// Callback when user toggles a mod's enabled state.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(HytaleInstalledModInfo Mod, bool Enabled)> OnToggleEnabled { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks update on a mod.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnUpdate { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks uninstall on a mod.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnUninstall { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks to view mod details.
+    /// </summary>
+    [Parameter]
+    public EventCallback<HytaleInstalledModInfo> OnViewDetails { get; set; }
+
+    /// <summary>
+    /// Callback when user clicks browse mods button.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnBrowseMods { get; set; }
+
+    // Internal state for sorting
+    private string _sortColumn = "name";
+    private bool _sortAscending = true;
+    private HashSet<Guid> _busyMods => BusyMods;
+
+    private IEnumerable<HytaleInstalledModInfo> SortedMods => SortMods(Mods);
+
+    private async Task HandleToggleEnabled(HytaleInstalledModInfo mod, bool enabled)
+    {
+        await OnToggleEnabled.InvokeAsync((mod, enabled));
+    }
+
+    private async Task HandleUpdate(HytaleInstalledModInfo mod)
+    {
+        await OnUpdate.InvokeAsync(mod);
+    }
+
+    private async Task HandleUninstall(HytaleInstalledModInfo mod)
+    {
+        await OnUninstall.InvokeAsync(mod);
+    }
+
+    private async Task HandleViewDetails(HytaleInstalledModInfo mod)
+    {
+        await OnViewDetails.InvokeAsync(mod);
+    }
+
+    private async Task HandleBrowseMods()
+    {
+        await OnBrowseMods.InvokeAsync();
+    }
+
+    private void Sort(string column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortAscending = !_sortAscending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortAscending = true;
+        }
+    }
+
+    private IEnumerable<HytaleInstalledModInfo> SortMods(IEnumerable<HytaleInstalledModInfo> mods)
+    {
+        return _sortColumn switch
+        {
+            "name" => _sortAscending
+                ? mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+                : mods.OrderByDescending(m => m.Name, StringComparer.OrdinalIgnoreCase),
+            "author" => _sortAscending
+                ? mods.OrderBy(m => m.Author ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                : mods.OrderByDescending(m => m.Author ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "size" => _sortAscending
+                ? mods.OrderBy(m => m.FileSizeBytes)
+                : mods.OrderByDescending(m => m.FileSizeBytes),
+            "installed" => _sortAscending
+                ? mods.OrderBy(m => m.InstalledAt)
+                : mods.OrderByDescending(m => m.InstalledAt),
+            _ => mods
+        };
+    }
+
+    private string GetSortClass(string column)
+    {
+        if (_sortColumn != column) return string.Empty;
+        return _sortAscending ? "sort-asc" : "sort-desc";
+    }
+
+    private string GetSortIcon(string column)
+    {
+        if (_sortColumn != column) return "chevron-down";
+        return _sortAscending ? "chevron-up" : "chevron-down";
+    }
+
+    private string GetRowClasses(HytaleInstalledModInfo mod)
+    {
+        var classes = new List<string> { "cursor-pointer", "hover:bg-nebula-bg-tertiary" };
+
+        if (!mod.IsEnabled)
+            classes.Add("row-disabled");
+
+        if (mod.UpdateAvailable)
+            classes.Add("row-has-update");
+
+        if (_busyMods.Contains(mod.Id))
+            classes.Add("row-busy");
+
+        return string.Join(" ", classes);
+    }
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        return $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB";
+    }
+
+    private static string FormatRelativeDate(DateTime date)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - date.ToUniversalTime();
+
+        if (diff.TotalSeconds < 60) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+        if (diff.TotalDays < 365) return $"{(int)(diff.TotalDays / 30)}mo ago";
+        return $"{(int)(diff.TotalDays / 365)}y ago";
+    }
+}

@@ -1,0 +1,111 @@
+@inherits ComponentBase
+
+<div class="@ContainerClasses">
+    <button type="button"
+            class="@ComputedClasses"
+            role="checkbox"
+            aria-checked="@Value.ToString().ToLower()"
+            disabled="@Disabled"
+            id="@Id"
+            @onclick="HandleClick"
+            @onkeydown="HandleKeyDown"
+            @attributes="AdditionalAttributes">
+        <Icon Name="check" Class="checkbox-check" Size="IconSize.XSmall" />
+    </button>
+
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@Id"
+               class="text-sm cursor-pointer select-none ml-2 @LabelClasses"
+               @onclick="HandleClick"
+               @onclick:preventDefault="true">
+            @Label
+        </label>
+    }
+
+    @if (ChildContent != null)
+    {
+        <div class="ml-2" @onclick="HandleClick" @onclick:preventDefault="true">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public bool Value { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> ValueChanged { get; set; }
+
+    [Parameter]
+    public string? Label { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public CheckboxSize Size { get; set; } = CheckboxSize.Medium;
+
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    [Parameter]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string ContainerClasses => "inline-flex items-center";
+
+    private string LabelClasses => Disabled
+        ? "text-nebula-text-disabled cursor-not-allowed"
+        : "text-nebula-text-secondary";
+
+    private string ComputedClasses
+    {
+        get
+        {
+            var classes = new List<string> { "checkbox-custom", GetSizeClass() };
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes);
+        }
+    }
+
+    private string GetSizeClass() => Size switch
+    {
+        CheckboxSize.Small => "checkbox-custom-sm",
+        CheckboxSize.Medium => "",
+        CheckboxSize.Large => "checkbox-custom-lg",
+        _ => ""
+    };
+
+    private async Task HandleClick()
+    {
+        if (!Disabled)
+        {
+            await ValueChanged.InvokeAsync(!Value);
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!Disabled && (e.Key == " " || e.Key == "Enter"))
+        {
+            await ValueChanged.InvokeAsync(!Value);
+        }
+    }
+
+    public enum CheckboxSize
+    {
+        Small,
+        Medium,
+        Large
+    }
+}

@@ -1,0 +1,404 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Repositories
+@using NebulaPanel.Web.Components.Shared.DataGrid
+@inject IJSRuntime JS
+
+<div class="installed-mods-panel">
+    @* Header with controls *@
+    <div class="panel-header">
+        <div class="header-left">
+            <h3 class="text-lg font-semibold text-nebula-text-primary">Installed Mods</h3>
+            <span class="mod-count">@_mods.Count mod@(_mods.Count != 1 ? "s" : "")</span>
+            @if (_updateCount > 0)
+            {
+                <span class="updates-badge" title="@_updateCount update@(_updateCount != 1 ? "s" : "") available">
+                    @_updateCount update@(_updateCount != 1 ? "s" : "")
+                </span>
+            }
+        </div>
+
+        <div class="header-right">
+            @* Search *@
+            <div class="search-box">
+                <Icon Name="search" Size="Icon.IconSize.Small" Class="search-icon" />
+                <input type="text"
+                       class="search-input"
+                       placeholder="Search installed mods..."
+                       @bind="_searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(_searchQuery))
+                {
+                    <button type="button" class="clear-search" @onclick="ClearSearch">
+                        <Icon Name="x" Size="Icon.IconSize.XSmall" />
+                    </button>
+                }
+            </div>
+
+            @* View toggle *@
+            <ViewToggle @bind-Value="_viewMode"
+                        StorageKey="hytale-installed-mods" />
+
+            @* Actions *@
+            <Button Text="Check Updates"
+                    IconName="refresh-cw"
+                    Variant="Button.ButtonVariant.Secondary"
+                    Size="Button.ButtonSize.Small"
+                    Loading="_checkingUpdates"
+                    OnClick="CheckAllUpdates" />
+            <Button Text="Add Mods"
+                    IconName="plus"
+                    Variant="Button.ButtonVariant.Primary"
+                    Size="Button.ButtonSize.Small"
+                    OnClick="OpenModBrowser" />
+        </div>
+    </div>
+
+    @* Content area *@
+    <div class="panel-content">
+        @if (_viewMode == ViewMode.Grid)
+        {
+            <InstalledModsGridView
+                Mods="@FilteredMods"
+                Loading="@_loading"
+                BusyMods="@_busyMods"
+                OnToggleEnabled="HandleToggleEnabled"
+                OnUpdate="HandleUpdate"
+                OnUninstall="HandleUninstall"
+                OnViewDetails="HandleViewDetails"
+                OnBrowseMods="OpenModBrowser" />
+        }
+        else
+        {
+            <InstalledModsDataGrid
+                Mods="@FilteredMods"
+                Loading="@_loading"
+                BusyMods="@_busyMods"
+                OnToggleEnabled="HandleToggleEnabled"
+                OnUpdate="HandleUpdate"
+                OnUninstall="HandleUninstall"
+                OnViewDetails="HandleViewDetails"
+                OnBrowseMods="OpenModBrowser" />
+        }
+    </div>
+
+    @* Bulk update bar (shown when updates available) *@
+    @if (_updateCount > 0 && !_loading)
+    {
+        <div class="bulk-update-bar">
+            <span class="update-info">
+                <Icon Name="upload" Size="Icon.IconSize.Small" Class="update-icon" />
+                @_updateCount mod@(_updateCount != 1 ? "s have" : " has") updates available
+            </span>
+            <Button Text="Update All"
+                    Variant="Button.ButtonVariant.Secondary"
+                    Size="Button.ButtonSize.Small"
+                    Class="btn-update-all"
+                    Loading="_updatingAll"
+                    OnClick="UpdateAllMods" />
+        </div>
+    }
+</div>
+
+@* Mod Details Modal *@
+@if (_selectedMod != null)
+{
+    <HytaleModDetailsModal
+        Mod="@_selectedMod"
+        IsOpen="@(_selectedMod != null)"
+        OnClose="CloseModDetails"
+        OnUpdate="HandleUpdate"
+        OnUninstall="HandleUninstall" />
+}
+
+@* Mod Browser Modal *@
+<HytaleModBrowserModal
+    ServerId="@ServerId"
+    IsOpen="@_showModBrowser"
+    OnClose="CloseModBrowser"
+    OnModInstalled="HandleModInstalled" />
+
+@* Confirm Delete Modal *@
+<Modal IsOpen="@(_modToDelete != null)"
+       Size="Modal.ModalSize.Small"
+       OnClose="CancelDelete">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Confirm Delete</span>
+    </Header>
+    <Body>
+        <div class="flex flex-col gap-4">
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_modToDelete?.Name</strong>?
+            </p>
+            <p class="text-sm text-nebula-text-muted">
+                This will permanently remove the mod file from your server.
+            </p>
+        </div>
+    </Body>
+    <Footer>
+        <div class="flex justify-end gap-3">
+            <Button Text="Cancel"
+                    Variant="Button.ButtonVariant.Secondary"
+                    OnClick="CancelDelete" />
+            <Button Text="Delete"
+                    Variant="Button.ButtonVariant.Danger"
+                    IconName="trash-2"
+                    Loading="_deleting"
+                    OnClick="ConfirmDelete" />
+        </div>
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The server ID to load mods for.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    [Inject]
+    private IHytaleModService ModService { get; set; } = default!;
+
+    [Inject]
+    private IGameServerRepository ServerRepository { get; set; } = default!;
+
+    // State
+    private List<HytaleInstalledModInfo> _mods = [];
+    private bool _loading = true;
+    private bool _checkingUpdates;
+    private bool _updatingAll;
+    private string _searchQuery = string.Empty;
+    private ViewMode _viewMode = ViewMode.Grid;
+    private HytaleInstalledModInfo? _selectedMod;
+    private bool _showModBrowser;
+    private HashSet<Guid> _busyMods = [];
+    private HytaleInstalledModInfo? _modToDelete;
+    private bool _deleting;
+
+    // Computed
+    private int _updateCount => _mods.Count(m => m.UpdateAvailable);
+
+    private IReadOnlyList<HytaleInstalledModInfo> FilteredMods =>
+        string.IsNullOrWhiteSpace(_searchQuery)
+            ? _mods
+            : _mods.Where(m =>
+                m.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                (m.Author?.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase) ?? false))
+                .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadModsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ServerId != Guid.Empty)
+        {
+            await LoadModsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Reloads the installed mods list.
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        await LoadModsAsync();
+    }
+
+    private async Task LoadModsAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                _mods = (await ModService.GetInstalledModsAsync(server)).ToList();
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ClearSearch()
+    {
+        _searchQuery = string.Empty;
+    }
+
+    private async Task CheckAllUpdates()
+    {
+        _checkingUpdates = true;
+        StateHasChanged();
+
+        try
+        {
+            await LoadModsAsync();
+        }
+        finally
+        {
+            _checkingUpdates = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task UpdateAllMods()
+    {
+        var modsToUpdate = _mods.Where(m => m.UpdateAvailable && m.LatestVersionId != null).ToList();
+        if (modsToUpdate.Count == 0) return;
+
+        _updatingAll = true;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server == null) return;
+
+            foreach (var mod in modsToUpdate)
+            {
+                _busyMods.Add(mod.Id);
+                StateHasChanged();
+
+                try
+                {
+                    await ModService.UpdateModAsync(server, mod.Id, mod.LatestVersionId!);
+                }
+                finally
+                {
+                    _busyMods.Remove(mod.Id);
+                }
+            }
+
+            await LoadModsAsync();
+        }
+        finally
+        {
+            _updatingAll = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleToggleEnabled((HytaleInstalledModInfo Mod, bool Enabled) args)
+    {
+        if (_busyMods.Contains(args.Mod.Id)) return;
+
+        _busyMods.Add(args.Mod.Id);
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                await ModService.SetModEnabledAsync(server, args.Mod.Id, args.Enabled);
+                await LoadModsAsync();
+            }
+        }
+        finally
+        {
+            _busyMods.Remove(args.Mod.Id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleUpdate(HytaleInstalledModInfo mod)
+    {
+        if (mod.LatestVersionId == null || _busyMods.Contains(mod.Id)) return;
+
+        _busyMods.Add(mod.Id);
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                await ModService.UpdateModAsync(server, mod.Id, mod.LatestVersionId);
+                await LoadModsAsync();
+            }
+        }
+        finally
+        {
+            _busyMods.Remove(mod.Id);
+            StateHasChanged();
+        }
+    }
+
+    private void HandleUninstall(HytaleInstalledModInfo mod)
+    {
+        if (_busyMods.Contains(mod.Id)) return;
+        _modToDelete = mod;
+    }
+
+    private void CancelDelete()
+    {
+        _modToDelete = null;
+        _deleting = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_modToDelete == null) return;
+
+        var mod = _modToDelete;
+        _deleting = true;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server != null)
+            {
+                var success = await ModService.UninstallModAsync(server, mod.Id);
+                if (success)
+                {
+                    // Close details modal if this mod was selected
+                    if (_selectedMod?.Id == mod.Id)
+                    {
+                        _selectedMod = null;
+                    }
+                    await LoadModsAsync();
+                }
+            }
+        }
+        finally
+        {
+            _modToDelete = null;
+            _deleting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void HandleViewDetails(HytaleInstalledModInfo mod)
+    {
+        _selectedMod = mod;
+    }
+
+    private void CloseModDetails()
+    {
+        _selectedMod = null;
+    }
+
+    private void OpenModBrowser()
+    {
+        _showModBrowser = true;
+    }
+
+    private void CloseModBrowser()
+    {
+        _showModBrowser = false;
+    }
+
+    private async Task HandleModInstalled()
+    {
+        await LoadModsAsync();
+    }
+}

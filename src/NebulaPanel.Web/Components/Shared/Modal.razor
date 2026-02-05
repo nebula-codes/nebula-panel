@@ -1,0 +1,181 @@
+@if (IsOpen)
+{
+    <div class="modal-backdrop"
+         @onclick="HandleBackdropClick"
+         @onclick:stopPropagation="true"
+         @onkeydown="HandleKeyDown"
+         tabindex="-1">
+        <div class="@ModalContentClasses"
+             @onclick:stopPropagation="true"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@(string.IsNullOrEmpty(Title) ? null : _titleId)">
+            @* Header *@
+            @if (Header != null || !string.IsNullOrEmpty(Title))
+            {
+                <div class="px-6 py-4 border-b border-nebula-border flex items-center justify-between">
+                    @if (Header != null)
+                    {
+                        @Header
+                    }
+                    else
+                    {
+                        <h2 id="@_titleId" class="text-lg font-semibold text-nebula-text-primary">@Title</h2>
+                    }
+
+                    @if (ShowCloseButton)
+                    {
+                        <button @onclick="Close"
+                                class="btn-ghost btn-icon -mr-2"
+                                aria-label="Close modal">
+                            <Icon Name="x" Size="IconSize.Small" />
+                        </button>
+                    }
+                </div>
+            }
+
+            @* Body *@
+            <div class="@BodyClasses">
+                @if (Body != null)
+                {
+                    @Body
+                }
+                else
+                {
+                    @ChildContent
+                }
+            </div>
+
+            @* Footer *@
+            @if (Footer != null)
+            {
+                <div class="px-6 py-4 border-t border-nebula-border flex items-center justify-end gap-3">
+                    @Footer
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public RenderFragment? Header { get; set; }
+
+    [Parameter]
+    public RenderFragment? Body { get; set; }
+
+    [Parameter]
+    public RenderFragment? Footer { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public ModalSize Size { get; set; } = ModalSize.Medium;
+
+    [Parameter]
+    public bool ShowCloseButton { get; set; } = true;
+
+    [Parameter]
+    public bool CloseOnBackdropClick { get; set; } = true;
+
+    [Parameter]
+    public bool CloseOnEscape { get; set; } = true;
+
+    [Parameter]
+    public ModalAnimation Animation { get; set; } = ModalAnimation.Default;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string _titleId = Guid.NewGuid().ToString("N")[..8];
+
+    private string ModalContentClasses
+    {
+        get
+        {
+            var classes = new List<string>
+            {
+                "modal-content",
+                GetSizeClass(),
+                GetAnimationClass()
+            };
+
+            if (!string.IsNullOrEmpty(Class))
+                classes.Add(Class);
+
+            return string.Join(" ", classes.Where(c => !string.IsNullOrEmpty(c)));
+        }
+    }
+
+    private string GetAnimationClass() => Animation switch
+    {
+        ModalAnimation.Scale => "modal-content-scale",
+        ModalAnimation.Slide => "modal-content-slide",
+        _ => ""
+    };
+
+    private string BodyClasses => Footer != null || Header != null || !string.IsNullOrEmpty(Title)
+        ? "px-6 py-4 overflow-y-auto"
+        : "p-6 overflow-y-auto";
+
+    private string GetSizeClass() => Size switch
+    {
+        ModalSize.Small => "max-w-sm",
+        ModalSize.Medium => "max-w-lg",
+        ModalSize.Large => "max-w-2xl",
+        ModalSize.XLarge => "max-w-4xl",
+        ModalSize.Full => "max-w-[95vw] w-full",
+        _ => "max-w-lg"
+    };
+
+    private async Task HandleBackdropClick()
+    {
+        if (CloseOnBackdropClick)
+        {
+            await Close();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && CloseOnEscape)
+        {
+            await Close();
+        }
+    }
+
+    public async Task Close()
+    {
+        await IsOpenChanged.InvokeAsync(false);
+        await OnClose.InvokeAsync();
+    }
+
+    public enum ModalSize
+    {
+        Small,
+        Medium,
+        Large,
+        XLarge,
+        Full
+    }
+
+    public enum ModalAnimation
+    {
+        Default,
+        Scale,
+        Slide
+    }
+}

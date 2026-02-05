@@ -1,0 +1,101 @@
+@using NebulaPanel.Web.Components.Shared.DataGrid
+@inject IJSRuntime JS
+
+<div class="view-toggle @Class">
+    <button type="button"
+            class="view-toggle-btn @(Value == ViewMode.Table ? "view-toggle-btn-active" : "")"
+            @onclick="() => SetValue(ViewMode.Table)"
+            title="Table view">
+        <Icon Name="list" Size="IconSize.Small" />
+    </button>
+    <button type="button"
+            class="view-toggle-btn @(Value == ViewMode.Grid ? "view-toggle-btn-active" : "")"
+            @onclick="() => SetValue(ViewMode.Grid)"
+            title="Grid view">
+        <Icon Name="grid-3x3" Size="IconSize.Small" />
+    </button>
+</div>
+
+@code {
+    /// <summary>
+    /// Current view mode.
+    /// </summary>
+    [Parameter]
+    public ViewMode Value { get; set; } = ViewMode.Table;
+
+    /// <summary>
+    /// Callback when view mode changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ViewMode> ValueChanged { get; set; }
+
+    /// <summary>
+    /// localStorage key for persisting preference.
+    /// </summary>
+    [Parameter]
+    public string? StorageKey { get; set; }
+
+    /// <summary>
+    /// Additional CSS classes.
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrEmpty(StorageKey))
+        {
+            await LoadPreferenceAsync();
+            _initialized = true;
+        }
+    }
+
+    private async Task SetValue(ViewMode mode)
+    {
+        if (Value != mode)
+        {
+            Value = mode;
+            await ValueChanged.InvokeAsync(mode);
+            await SavePreferenceAsync();
+        }
+    }
+
+    private async Task LoadPreferenceAsync()
+    {
+        if (string.IsNullOrEmpty(StorageKey)) return;
+
+        try
+        {
+            var key = $"nebula-view-{StorageKey}";
+            var stored = await JS.InvokeAsync<string?>("localStorage.getItem", key);
+
+            if (!string.IsNullOrEmpty(stored) && Enum.TryParse<ViewMode>(stored, out var mode))
+            {
+                Value = mode;
+                await ValueChanged.InvokeAsync(mode);
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // Ignore localStorage errors
+        }
+    }
+
+    private async Task SavePreferenceAsync()
+    {
+        if (string.IsNullOrEmpty(StorageKey)) return;
+
+        try
+        {
+            var key = $"nebula-view-{StorageKey}";
+            await JS.InvokeVoidAsync("localStorage.setItem", key, Value.ToString());
+        }
+        catch
+        {
+            // Ignore localStorage errors
+        }
+    }
+}

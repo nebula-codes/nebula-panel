@@ -1,0 +1,209 @@
+.mod-details-content {
+    min-height: 300px;
+}
+
+.mod-detail-icon {
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+    border-radius: var(--nebula-radius-lg);
+    overflow: hidden;
+    background-color: var(--nebula-bg-tertiary);
+}
+
+.version-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    background-color: var(--nebula-bg-tertiary);
+    border-radius: var(--nebula-radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--nebula-text-secondary);
+}
+
+.update-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    background: linear-gradient(135deg, var(--nebula-accent) 0%, var(--nebula-info) 100%);
+    border-radius: var(--nebula-radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: white;
+}
+
+.provider-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--nebula-radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.provider-modtale {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: var(--nebula-accent);
+}
+
+.provider-curseforge {
+    background-color: rgba(246, 119, 55, 0.15);
+    color: #f67737;
+}
+
+.provider-modrinth {
+    background-color: rgba(30, 201, 122, 0.15);
+    color: #1ec97a;
+}
+
+.provider-local {
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-secondary);
+}
+
+/* Tabs */
+.tab-button {
+    padding: 0.75rem 0;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--nebula-text-muted);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+    color: var(--nebula-text-secondary);
+}
+
+.tab-button.active {
+    color: var(--nebula-accent);
+    border-bottom-color: var(--nebula-accent);
+}
+
+.tab-content {
+    min-height: 150px;
+}
+
+/* Screenshots */
+.screenshot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.75rem;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.screenshot-item {
+    aspect-ratio: 16 / 9;
+    border-radius: var(--nebula-radius);
+    overflow: hidden;
+    border: 1px solid var(--nebula-border-subtle);
+    transition: all 0.2s ease;
+}
+
+.screenshot-item:hover {
+    border-color: var(--nebula-accent);
+    transform: scale(1.02);
+}
+
+.screenshot-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Info grid */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 0.75rem;
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    background-color: var(--nebula-bg-secondary);
+    border-radius: var(--nebula-radius);
+}
+
+.info-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--nebula-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.info-value {
+    color: var(--nebula-text-primary);
+    word-break: break-all;
+}
+
+/* Prose styles for description */
+.prose {
+    line-height: 1.6;
+}
+
+.prose p {
+    margin-bottom: 1em;
+}
+
+.prose a {
+    color: var(--nebula-accent);
+    text-decoration: underline;
+}
+
+.prose a:hover {
+    color: var(--nebula-accent-light);
+}
+
+.prose ul, .prose ol {
+    margin-left: 1.5em;
+    margin-bottom: 1em;
+}
+
+.prose li {
+    margin-bottom: 0.25em;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+    font-weight: 600;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    color: var(--nebula-text-primary);
+}
+
+.prose code {
+    background-color: var(--nebula-bg-tertiary);
+    padding: 0.125rem 0.25rem;
+    border-radius: var(--nebula-radius-sm);
+    font-size: 0.875em;
+}
+
+.prose pre {
+    background-color: var(--nebula-bg-tertiary);
+    padding: 1rem;
+    border-radius: var(--nebula-radius);
+    overflow-x: auto;
+    margin-bottom: 1em;
+}
+
+.prose img {
+    max-width: 100%;
+    border-radius: var(--nebula-radius);
+}
+
+::deep .btn-danger {
+    color: var(--nebula-error);
+}
+
+::deep .btn-danger:hover {
+    background-color: var(--nebula-error-subtle);
+}

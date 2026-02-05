@@ -1,0 +1,558 @@
+@page "/servers/{ServerId:guid}/backups"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@inject IBackupService BackupService
+@inject IGameServerService ServerService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Backups - @(_serverName ?? "Server") - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    @* Header *@
+    <div class="flex items-center gap-4 mb-6">
+        <Button Variant="ButtonVariant.Ghost"
+                IconName="arrow-left"
+                IconOnly="true"
+                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}"))" />
+        <div class="flex-1">
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Backups</h1>
+            <p class="text-nebula-text-muted mt-1">Manage backups for <span class="text-nebula-text-secondary">@(_serverName ?? "...")</span></p>
+        </div>
+        <Button Variant="ButtonVariant.Primary"
+                Text="Create Backup"
+                IconName="plus"
+                OnClick="@(() => OpenCreateModal())" />
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @* Summary Cards *@
+    @if (_summary is not null)
+    {
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-nebula-bg-secondary rounded-nebula p-4 border border-nebula-border">
+                <div class="text-nebula-text-muted text-sm">Total Backups</div>
+                <div class="text-2xl font-semibold text-nebula-text-primary mt-1">@_summary.TotalCount</div>
+            </div>
+            <div class="bg-nebula-bg-secondary rounded-nebula p-4 border border-nebula-border">
+                <div class="text-nebula-text-muted text-sm">Total Size</div>
+                <div class="text-2xl font-semibold text-nebula-text-primary mt-1">@FormatFileSize(_summary.TotalSizeBytes)</div>
+            </div>
+            <div class="bg-nebula-bg-secondary rounded-nebula p-4 border border-nebula-border">
+                <div class="text-nebula-text-muted text-sm">Manual / Scheduled</div>
+                <div class="text-2xl font-semibold text-nebula-text-primary mt-1">@_summary.ManualCount / @_summary.ScheduledCount</div>
+            </div>
+            <div class="bg-nebula-bg-secondary rounded-nebula p-4 border border-nebula-border">
+                <div class="text-nebula-text-muted text-sm">Last Backup</div>
+                <div class="text-lg font-semibold text-nebula-text-primary mt-1">
+                    @if (_summary.LastBackupAt.HasValue)
+                    {
+                        @FormatRelativeTime(_summary.LastBackupAt.Value)
+                    }
+                    else
+                    {
+                        <span class="text-nebula-text-muted">Never</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Backup List *@
+    <DataGrid TItem="BackupListItemDto"
+              Items="_backups"
+              Loading="_loading"
+              EmptyMessage="No backups yet. Create your first backup to protect your server data."
+              Pageable="true"
+              PageSize="10">
+        <Columns>
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Backup"
+                           Field="@(b => b.Name)"
+                           Sortable="true">
+                <Template Context="backup">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center @GetScopeColor(backup.Scope)">
+                            <Icon Name="@GetScopeIcon(backup.Scope)" Size="IconSize.Small" />
+                        </div>
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@backup.Name</div>
+                            <div class="text-sm text-nebula-text-muted">@backup.Scope backup</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Size"
+                           Width="100px">
+                <Template Context="backup">
+                    <span class="text-sm text-nebula-text-secondary">@FormatFileSize(backup.FileSizeBytes)</span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Created"
+                           Field="@(b => b.CreatedAt)"
+                           Sortable="true"
+                           Width="160px">
+                <Template Context="backup">
+                    <span class="text-sm text-nebula-text-muted" title="@backup.CreatedAt.ToLocalTime().ToString("f")">
+                        @FormatRelativeTime(backup.CreatedAt)
+                    </span>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Type"
+                           Width="100px">
+                <Template Context="backup">
+                    <StatusBadge Status="@GetTypeBadgeStatus(backup.Type)"
+                                 Text="@backup.Type.ToString()"
+                                 Size="StatusBadge.BadgeSize.Small" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title="Status"
+                           Width="100px">
+                <Template Context="backup">
+                    <StatusBadge Status="@GetStatusBadgeStatus(backup.Status)"
+                                 Text="@backup.Status.ToString()"
+                                 ShowDot="true"
+                                 Size="StatusBadge.BadgeSize.Small" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="BackupListItemDto"
+                           Title=""
+                           Width="140px">
+                <Template Context="backup">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="download"
+                                IconOnly="true"
+                                OnClick="@(() => DownloadBackup(backup))"
+                                Disabled="@(backup.Status != BackupStatus.Completed)"
+                                title="Download" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="rotate-ccw"
+                                IconOnly="true"
+                                OnClick="@(() => ConfirmRestore(backup))"
+                                Disabled="@(backup.Status != BackupStatus.Completed)"
+                                title="Restore" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="trash-2"
+                                IconOnly="true"
+                                OnClick="@(() => ConfirmDelete(backup))"
+                                title="Delete" />
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+    </DataGrid>
+</div>
+
+@* Create Backup Modal *@
+@if (_showCreateModal)
+{
+    <Modal IsOpen="true" OnClose="CloseCreateModal" Size="ModalSize.Medium">
+        <Header>
+            <div class="flex items-center gap-2">
+                <Icon Name="plus" Size="IconSize.Medium" />
+                <span>Create Backup</span>
+            </div>
+        </Header>
+        <Body>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Backup Name (optional)</label>
+                    <input type="text"
+                           @bind="_createName"
+                           placeholder="Leave empty for auto-generated name"
+                           class="w-full px-3 py-2 rounded-nebula border border-nebula-border bg-nebula-bg-tertiary text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-2">Backup Type</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button"
+                                @onclick="@(() => _createScope = BackupScope.Full)"
+                                class="p-4 rounded-nebula border-2 text-left transition-all @(_createScope == BackupScope.Full ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-tertiary hover:border-nebula-border-subtle")">
+                            <div class="flex items-center gap-2 mb-1">
+                                <Icon Name="hard-drive" Size="IconSize.Small" />
+                                <span class="font-medium text-nebula-text-primary">Full Backup</span>
+                            </div>
+                            <p class="text-sm text-nebula-text-muted">Backup the entire server directory</p>
+                        </button>
+                        <button type="button"
+                                @onclick="@(() => _createScope = BackupScope.Selective)"
+                                class="p-4 rounded-nebula border-2 text-left transition-all @(_createScope == BackupScope.Selective ? "border-nebula-accent bg-nebula-accent/10" : "border-nebula-border bg-nebula-bg-tertiary hover:border-nebula-border-subtle")">
+                            <div class="flex items-center gap-2 mb-1">
+                                <Icon Name="folder" Size="IconSize.Small" />
+                                <span class="font-medium text-nebula-text-primary">Selective Backup</span>
+                            </div>
+                            <p class="text-sm text-nebula-text-muted">Backup only world/save files</p>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Notes (optional)</label>
+                    <textarea @bind="_createNotes"
+                              rows="2"
+                              placeholder="Add any notes about this backup..."
+                              class="w-full px-3 py-2 rounded-nebula border border-nebula-border bg-nebula-bg-tertiary text-nebula-text-primary focus:outline-none focus:ring-2 focus:ring-nebula-accent"></textarea>
+                </div>
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex justify-end gap-2">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Cancel"
+                        OnClick="CloseCreateModal" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Create Backup"
+                        IconName="save"
+                        Loading="_creating"
+                        OnClick="ExecuteCreate" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Restore Confirmation Modal *@
+@if (_showRestoreConfirm && _backupToRestore is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelRestore" Size="ModalSize.Small">
+        <Header>
+            <div class="flex items-center gap-2">
+                <Icon Name="rotate-ccw" Size="IconSize.Medium" />
+                <span>Restore Backup</span>
+            </div>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary mb-4">
+                Are you sure you want to restore the backup "<strong>@_backupToRestore.Name</strong>"?
+            </p>
+            <p class="text-nebula-text-muted text-sm">
+                This will overwrite the current server files. A pre-restore backup will be created automatically.
+            </p>
+        </Body>
+        <Footer>
+            <div class="flex justify-end gap-2">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Cancel"
+                        OnClick="CancelRestore" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Restore"
+                        IconName="rotate-ccw"
+                        Loading="_restoring"
+                        OnClick="ExecuteRestore" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Delete Confirmation Modal *@
+@if (_showDeleteConfirm && _backupToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="ModalSize.Small">
+        <Header>
+            <div class="flex items-center gap-2 text-nebula-error">
+                <Icon Name="trash-2" Size="IconSize.Medium" />
+                <span>Delete Backup</span>
+            </div>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary mb-4">
+                Are you sure you want to delete the backup "<strong>@_backupToDelete.Name</strong>"?
+            </p>
+            <p class="text-nebula-text-muted text-sm">
+                This action cannot be undone. The backup file will be permanently deleted.
+            </p>
+        </Body>
+        <Footer>
+            <div class="flex justify-end gap-2">
+                <Button Variant="ButtonVariant.Secondary"
+                        Text="Cancel"
+                        OnClick="CancelDelete" />
+                <Button Variant="ButtonVariant.Danger"
+                        Text="Delete"
+                        IconName="trash-2"
+                        Loading="_deleting"
+                        OnClick="ExecuteDelete" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _serverName;
+    private List<BackupListItemDto> _backups = [];
+    private BackupSummaryDto? _summary;
+
+    // Create modal state
+    private bool _showCreateModal;
+    private bool _creating;
+    private string? _createName;
+    private string? _createNotes;
+    private BackupScope _createScope = BackupScope.Full;
+
+    // Restore modal state
+    private bool _showRestoreConfirm;
+    private bool _restoring;
+    private BackupListItemDto? _backupToRestore;
+
+    // Delete modal state
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private BackupListItemDto? _backupToDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var serverResult = await ServerService.GetServerByIdAsync(ServerId);
+            if (serverResult.IsFailure)
+            {
+                _error = serverResult.Error;
+                return;
+            }
+            _serverName = serverResult.Value!.Name;
+
+            var backupsTask = BackupService.GetBackupsByServerIdAsync(ServerId);
+            var summaryTask = BackupService.GetServerBackupSummaryAsync(ServerId);
+
+            await Task.WhenAll(backupsTask, summaryTask);
+
+            _backups = (await backupsTask).ToList();
+            _summary = await summaryTask;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load backups: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenCreateModal()
+    {
+        _createName = null;
+        _createNotes = null;
+        _createScope = BackupScope.Full;
+        _showCreateModal = true;
+    }
+
+    private void CloseCreateModal()
+    {
+        _showCreateModal = false;
+    }
+
+    private async Task ExecuteCreate()
+    {
+        try
+        {
+            _creating = true;
+
+            var request = new CreateBackupRequest(
+                ServerId,
+                _createScope,
+                string.IsNullOrWhiteSpace(_createName) ? null : _createName,
+                string.IsNullOrWhiteSpace(_createNotes) ? null : _createNotes
+            );
+
+            var result = await BackupService.CreateBackupAsync(request);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                _showCreateModal = false;
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to create backup: {ex.Message}";
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private void DownloadBackup(BackupListItemDto backup)
+    {
+        Navigation.NavigateTo($"/api/servers/{ServerId}/backups/{backup.Id}/download", forceLoad: true);
+    }
+
+    private void ConfirmRestore(BackupListItemDto backup)
+    {
+        _backupToRestore = backup;
+        _showRestoreConfirm = true;
+    }
+
+    private void CancelRestore()
+    {
+        _showRestoreConfirm = false;
+        _backupToRestore = null;
+    }
+
+    private async Task ExecuteRestore()
+    {
+        if (_backupToRestore is null) return;
+
+        try
+        {
+            _restoring = true;
+            var result = await BackupService.RestoreBackupAsync(_backupToRestore.Id);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to restore backup: {ex.Message}";
+        }
+        finally
+        {
+            _restoring = false;
+            _showRestoreConfirm = false;
+            _backupToRestore = null;
+        }
+    }
+
+    private void ConfirmDelete(BackupListItemDto backup)
+    {
+        _backupToDelete = backup;
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteConfirm = false;
+        _backupToDelete = null;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        if (_backupToDelete is null) return;
+
+        try
+        {
+            _deleting = true;
+            var result = await BackupService.DeleteBackupAsync(_backupToDelete.Id);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+            }
+            else
+            {
+                await LoadDataAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to delete backup: {ex.Message}";
+        }
+        finally
+        {
+            _deleting = false;
+            _showDeleteConfirm = false;
+            _backupToDelete = null;
+        }
+    }
+
+    private static string GetScopeIcon(BackupScope scope) => scope switch
+    {
+        BackupScope.Full => "hard-drive",
+        BackupScope.Selective => "folder",
+        _ => "file"
+    };
+
+    private static string GetScopeColor(BackupScope scope) => scope switch
+    {
+        BackupScope.Full => "bg-nebula-accent/20 text-nebula-accent",
+        BackupScope.Selective => "bg-nebula-info/20 text-nebula-info",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static StatusBadge.StatusType GetTypeBadgeStatus(BackupType type) => type switch
+    {
+        BackupType.Manual => StatusBadge.StatusType.Info,
+        BackupType.Scheduled => StatusBadge.StatusType.Success,
+        BackupType.PreUpdate => StatusBadge.StatusType.Warning,
+        BackupType.PreRestore => StatusBadge.StatusType.Warning,
+        _ => StatusBadge.StatusType.Neutral
+    };
+
+    private static StatusBadge.StatusType GetStatusBadgeStatus(BackupStatus status) => status switch
+    {
+        BackupStatus.Completed => StatusBadge.StatusType.Success,
+        BackupStatus.InProgress => StatusBadge.StatusType.Warning,
+        BackupStatus.Failed => StatusBadge.StatusType.Error,
+        BackupStatus.Pending => StatusBadge.StatusType.Info,
+        _ => StatusBadge.StatusType.Neutral
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        int order = 0;
+        double size = bytes;
+
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - dateTime;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        if (diff.TotalDays < 30) return $"{(int)(diff.TotalDays / 7)}w ago";
+
+        return dateTime.ToLocalTime().ToString("MMM d, yyyy");
+    }
+}

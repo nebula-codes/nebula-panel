@@ -1,0 +1,45 @@
+@if (IsCollapsed)
+{
+    <NebulaTooltip Text="@Label" Position="NebulaTooltip.TooltipPosition.Right" DelayMs="100">
+        <NavLink href="@Href"
+                 class="@NavItemClasses"
+                 Match="@Match"
+                 ActiveClass="sidebar-nav-item-active">
+            <Icon Name="@Icon" Size="IconSize.Small" Class="flex-shrink-0" />
+            <span class="@LabelClasses">@Label</span>
+        </NavLink>
+    </NebulaTooltip>
+}
+else
+{
+    <NavLink href="@Href"
+             class="@NavItemClasses"
+             Match="@Match"
+             ActiveClass="sidebar-nav-item-active">
+        <Icon Name="@Icon" Size="IconSize.Small" Class="flex-shrink-0" />
+        <span class="@LabelClasses">@Label</span>
+    </NavLink>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string Href { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter]
+    public NavLinkMatch Match { get; set; } = NavLinkMatch.Prefix;
+
+    [CascadingParameter(Name = "SidebarCollapsed")]
+    public bool IsCollapsed { get; set; }
+
+    private string NavItemClasses => "sidebar-nav-item";
+
+    private string LabelClasses => IsCollapsed
+        ? "opacity-0 w-0 overflow-hidden whitespace-nowrap transition-all duration-300"
+        : "opacity-100 transition-all duration-300";
+}

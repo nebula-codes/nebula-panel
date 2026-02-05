@@ -1,0 +1,35 @@
+@* CardBody component for use inside Card *@
+<div class="@ComputedClasses">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public bool NoPadding { get; set; }
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string ComputedClasses
+    {
+        get
+        {
+            var classes = new List<string> { "card-body" };
+
+            if (!NoPadding)
+            {
+                classes.Add("p-6");
+            }
+
+            if (!string.IsNullOrEmpty(Class))
+            {
+                classes.Add(Class);
+            }
+
+            return string.Join(" ", classes);
+        }
+    }
+}

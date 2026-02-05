@@ -1,0 +1,11 @@
+global using Xunit;
+global using FluentAssertions;
+global using Moq;
+global using System.Net;
+global using System.Net.Http.Json;
+global using Microsoft.AspNetCore.Mvc.Testing;
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.Extensions.DependencyInjection;
+global using NebulaPanel.Domain.Entities;
+global using NebulaPanel.Domain.Enums;
+global using NebulaPanel.Domain.ValueObjects;

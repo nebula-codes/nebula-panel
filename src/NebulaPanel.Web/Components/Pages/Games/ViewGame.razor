@@ -1,0 +1,271 @@
+@page "/games/{Id:guid}"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject IGameService GameService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>@(_game?.Name ?? "Game") - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-16">
+            <div class="spinner"></div>
+        </div>
+    }
+    else if (_notFound)
+    {
+        <div class="text-center py-16">
+            <Icon Name="alert-circle" Size="IconSize.Large" Class="text-nebula-error mb-4" />
+            <h2 class="text-xl font-medium text-nebula-text-primary mb-2">Game Not Found</h2>
+            <p class="text-nebula-text-muted mb-4">The game you're looking for doesn't exist.</p>
+            <Button Variant="ButtonVariant.Primary" Text="Back to Games" OnClick="@(() => Navigation.NavigateTo("/games"))" />
+        </div>
+    }
+    else if (_game is not null)
+    {
+        <div class="mb-6">
+            <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-4">
+                <a href="/games" class="hover:text-nebula-text-primary transition-colors">Games</a>
+                <Icon Name="chevron-right" Size="IconSize.Small" />
+                <span class="text-nebula-text-primary">@_game.Name</span>
+            </nav>
+
+            <div class="flex items-start justify-between">
+                <div class="flex items-center gap-4">
+                    @if (!string.IsNullOrEmpty(_game.IconPath))
+                    {
+                        <img src="@_game.IconPath" alt="@_game.Name" class="w-16 h-16 object-contain rounded-lg" />
+                    }
+                    else
+                    {
+                        <div class="w-16 h-16 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                            <Icon Name="gamepad-2" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <div>
+                        <h1 class="text-2xl font-semibold text-nebula-text-primary">@_game.Name</h1>
+                        <p class="text-nebula-text-muted"><code>@_game.Slug</code></p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <Button Variant="ButtonVariant.Secondary"
+                            Text="Edit"
+                            IconName="pencil"
+                            OnClick="@(() => Navigation.NavigateTo($"/games/{Id}/edit"))" />
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <Card Compact="true">
+                <ChildContent>
+                    <div class="text-center">
+                        <div class="text-2xl font-bold text-nebula-text-primary">@_game.ServerCount</div>
+                        <div class="text-sm text-nebula-text-muted">Servers</div>
+                    </div>
+                </ChildContent>
+            </Card>
+            <Card Compact="true">
+                <ChildContent>
+                    <div class="text-center">
+                        <div class="text-sm font-medium text-nebula-text-primary">@_game.ExecutableType</div>
+                        <div class="text-sm text-nebula-text-muted">Type</div>
+                    </div>
+                </ChildContent>
+            </Card>
+            <Card Compact="true">
+                <ChildContent>
+                    <div class="flex items-center justify-center gap-2">
+                        @if (_game.SupportsDocker)
+                        {
+                            <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span class="text-sm text-nebula-text-primary">Docker</span>
+                        }
+                        else
+                        {
+                            <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            <span class="text-sm text-nebula-text-muted">No Docker</span>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+            <Card Compact="true">
+                <ChildContent>
+                    <div class="flex items-center justify-center gap-2">
+                        @if (_game.SupportsMods)
+                        {
+                            <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                            <span class="text-sm text-nebula-text-primary">Mods</span>
+                        }
+                        else
+                        {
+                            <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            <span class="text-sm text-nebula-text-muted">No Mods</span>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+        </div>
+
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Executable Configuration</h2>
+            </Header>
+            <ChildContent>
+                <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm text-nebula-text-muted">Executable Path</dt>
+                        <dd class="mt-1 text-nebula-text-primary font-mono text-sm">@_game.DefaultExecutablePath</dd>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_game.SteamAppId))
+                    {
+                        <div>
+                            <dt class="text-sm text-nebula-text-muted">Steam App ID</dt>
+                            <dd class="mt-1 text-nebula-text-primary font-mono text-sm">@_game.SteamAppId</dd>
+                        </div>
+                    }
+                    <div class="md:col-span-2">
+                        <dt class="text-sm text-nebula-text-muted">Start Command</dt>
+                        <dd class="mt-1 text-nebula-text-primary font-mono text-sm bg-nebula-bg-tertiary p-2 rounded">@_game.DefaultStartCommand</dd>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_game.DefaultStopCommand))
+                    {
+                        <div class="md:col-span-2">
+                            <dt class="text-sm text-nebula-text-muted">Stop Command</dt>
+                            <dd class="mt-1 text-nebula-text-primary font-mono text-sm bg-nebula-bg-tertiary p-2 rounded">@_game.DefaultStopCommand</dd>
+                        </div>
+                    }
+                </dl>
+            </ChildContent>
+        </Card>
+
+        @if (_game.SupportsDocker && !string.IsNullOrEmpty(_game.DefaultDockerImage))
+        {
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Docker Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <dl>
+                        <dt class="text-sm text-nebula-text-muted">Default Docker Image</dt>
+                        <dd class="mt-1 text-nebula-text-primary font-mono text-sm">@_game.DefaultDockerImage</dd>
+                    </dl>
+                </ChildContent>
+            </Card>
+        }
+
+        @if (_game.SupportsMods && _game.ModProviders.Any())
+        {
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Mod Providers</h2>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-3">
+                        @foreach (var provider in _game.ModProviders.OrderBy(p => p.Priority))
+                        {
+                            <div class="flex items-center justify-between p-3 bg-nebula-bg-secondary rounded-nebula">
+                                <div class="flex items-center gap-3">
+                                    @if (provider.Enabled)
+                                    {
+                                        <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                    }
+                                    else
+                                    {
+                                        <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    }
+                                    <div>
+                                        <div class="font-medium text-nebula-text-primary">@provider.Provider</div>
+                                        @if (!string.IsNullOrEmpty(provider.GameSlug))
+                                        {
+                                            <div class="text-sm text-nebula-text-muted">@provider.GameSlug</div>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="text-right text-sm text-nebula-text-muted">
+                                    <div>Priority: @provider.Priority</div>
+                                    @if (!string.IsNullOrEmpty(provider.ModInstallPath))
+                                    {
+                                        <div class="font-mono">@provider.ModInstallPath</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+        }
+
+        @if (_game.RconDefaults is not null)
+        {
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">RCON Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <dl class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <dt class="text-sm text-nebula-text-muted">Protocol</dt>
+                            <dd class="mt-1 text-nebula-text-primary">@_game.RconDefaults.Protocol</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-nebula-text-muted">Default Port</dt>
+                            <dd class="mt-1 text-nebula-text-primary font-mono">@_game.RconDefaults.DefaultPort</dd>
+                        </div>
+                        <div>
+                            <dt class="text-sm text-nebula-text-muted">Enabled by Default</dt>
+                            <dd class="mt-1">
+                                @if (_game.RconDefaults.DefaultEnabled)
+                                {
+                                    <span class="text-nebula-success">Yes</span>
+                                }
+                                else
+                                {
+                                    <span class="text-nebula-text-muted">No</span>
+                                }
+                            </dd>
+                        </div>
+                    </dl>
+                </ChildContent>
+            </Card>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private GameDto? _game;
+    private bool _loading = true;
+    private bool _notFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGameAsync();
+    }
+
+    private async Task LoadGameAsync()
+    {
+        try
+        {
+            _loading = true;
+            var result = await GameService.GetGameByIdAsync(Id);
+
+            if (result.IsFailure)
+            {
+                _notFound = true;
+                return;
+            }
+
+            _game = result.Value;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

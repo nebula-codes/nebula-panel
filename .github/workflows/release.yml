@@ -1,0 +1,304 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - rid: linux-x64
+            os: ubuntu-latest
+            archive: tar.gz
+            asset_name: NebulaPanel-linux-x64.tar.gz
+          - rid: linux-arm64
+            os: ubuntu-latest
+            archive: tar.gz
+            asset_name: NebulaPanel-linux-arm64.tar.gz
+          - rid: win-x64
+            os: windows-latest
+            archive: zip
+            asset_name: NebulaPanel-win-x64.zip
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "Building version: $TAG"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-v2-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-v2-
+
+      - name: Restore dependencies
+        run: dotnet restore NebulaPanel.sln
+
+      - name: Publish Web application
+        shell: bash
+        run: |
+          dotnet publish src/NebulaPanel.Web/NebulaPanel.Web.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.version }} \
+            --output ./publish/web
+
+      - name: Publish Updater
+        shell: bash
+        run: |
+          dotnet publish src/NebulaPanel.Updater/NebulaPanel.Updater.csproj \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:Version=${{ steps.version.outputs.version }} \
+            --output ./publish/updater
+
+      - name: Prepare release directory
+        shell: bash
+        run: |
+          mkdir -p ./release
+          cp -r ./publish/web/* ./release/
+          cp -r ./publish/updater/* ./release/
+
+      - name: Create tar.gz archive (Linux)
+        if: matrix.archive == 'tar.gz'
+        run: |
+          cd ./release
+          tar -czvf ../${{ matrix.asset_name }} .
+
+      - name: Create zip archive (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ./release/* -DestinationPath ./${{ matrix.asset_name }}
+
+      - name: Generate SHA256 checksum (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sha256sum ${{ matrix.asset_name }} | cut -d ' ' -f 1 > ${{ matrix.asset_name }}.sha256
+
+      - name: Generate SHA256 checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Algorithm SHA256 ${{ matrix.asset_name }}).Hash.ToLower()
+          $hash | Out-File -FilePath "${{ matrix.asset_name }}.sha256" -NoNewline -Encoding ascii
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: |
+            ${{ matrix.asset_name }}
+            ${{ matrix.asset_name }}.sha256
+          retention-days: 1
+
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Check for prerelease tag
+        id: prerelease
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ "$TAG" == *"-alpha"* ]] || [[ "$TAG" == *"-beta"* ]] || [[ "$TAG" == *"-rc"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=latest,enable=${{ steps.prerelease.outputs.is_prerelease == 'false' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Create Release
+    needs: [build, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download linux-x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: ./artifacts/linux-x64
+
+      - name: Download linux-arm64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64
+          path: ./artifacts/linux-arm64
+
+      - name: Download win-x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: win-x64
+          path: ./artifacts/win-x64
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p ./release-assets
+          find ./artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} ./release-assets/ \;
+          ls -la ./release-assets/
+
+      - name: Check for prerelease tag
+        id: prerelease
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ "$TAG" == *"-alpha"* ]] || [[ "$TAG" == *"-beta"* ]] || [[ "$TAG" == *"-rc"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          CURRENT_TAG=${GITHUB_REF#refs/tags/}
+
+          echo "# What's Changed" > changelog.md
+          echo "" >> changelog.md
+
+          if [ -n "$PREV_TAG" ]; then
+            # Get commits between tags
+            git log --pretty=format:"* %s (%h)" $PREV_TAG..$CURRENT_TAG >> changelog.md
+          else
+            # First release - get all commits
+            git log --pretty=format:"* %s (%h)" >> changelog.md
+          fi
+
+          echo "" >> changelog.md
+          echo "" >> changelog.md
+
+          # Check for security commits
+          if git log --oneline $PREV_TAG..$CURRENT_TAG 2>/dev/null | grep -qi "\[SECURITY\]"; then
+            echo "has_security=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_security=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add security banner if needed
+        if: steps.changelog.outputs.has_security == 'true'
+        run: |
+          echo "> [!IMPORTANT]" > temp_changelog.md
+          echo "> This release contains security fixes. We recommend updating as soon as possible." >> temp_changelog.md
+          echo "" >> temp_changelog.md
+          cat changelog.md >> temp_changelog.md
+          mv temp_changelog.md changelog.md
+
+      - name: Add Docker image info to changelog
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "## Docker Image" >> changelog.md
+          echo "" >> changelog.md
+          echo '```bash' >> changelog.md
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> changelog.md
+          echo '```' >> changelog.md
+          echo "" >> changelog.md
+
+      - name: Add checksums to changelog
+        run: |
+          echo "## Checksums (SHA256)" >> changelog.md
+          echo "" >> changelog.md
+          echo '```' >> changelog.md
+          for f in ./release-assets/*.sha256; do
+            filename=$(basename "$f" .sha256)
+            hash=$(cat "$f")
+            echo "$hash  $filename" >> changelog.md
+          done
+          echo '```' >> changelog.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./release-assets/*
+          body_path: changelog.md
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

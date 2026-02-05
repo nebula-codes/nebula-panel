@@ -1,0 +1,87 @@
+@using NebulaPanel.Web.Components.Shared.DataGrid
+@typeparam TValue
+
+<div class="filter-pills @Class">
+    @if (ShowAllOption)
+    {
+        <button type="button"
+                class="filter-pill @(SelectedValue == null || Equals(SelectedValue, default(TValue)) ? "filter-pill-active" : "")"
+                @onclick="() => SetValue(default)">
+            @AllLabel
+            @if (TotalCount.HasValue)
+            {
+                <span class="filter-pill-count">@TotalCount</span>
+            }
+        </button>
+    }
+
+    @foreach (var option in Options)
+    {
+        <button type="button"
+                class="filter-pill @(Equals(SelectedValue, option.Value) ? "filter-pill-active" : "")"
+                @onclick="() => SetValue(option.Value)">
+            @if (!string.IsNullOrEmpty(option.Icon))
+            {
+                <Icon Name="@option.Icon" Size="IconSize.Small" />
+            }
+            <span>@option.Label</span>
+            @if (option.Count.HasValue)
+            {
+                <span class="filter-pill-count">@option.Count</span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Available filter options.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public IEnumerable<FilterPillOption<TValue>> Options { get; set; } = [];
+
+    /// <summary>
+    /// Currently selected value.
+    /// </summary>
+    [Parameter]
+    public TValue? SelectedValue { get; set; }
+
+    /// <summary>
+    /// Callback when selection changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TValue?> SelectedValueChanged { get; set; }
+
+    /// <summary>
+    /// Whether to show the "All" option.
+    /// </summary>
+    [Parameter]
+    public bool ShowAllOption { get; set; } = true;
+
+    /// <summary>
+    /// Label for the "All" option.
+    /// </summary>
+    [Parameter]
+    public string AllLabel { get; set; } = "All";
+
+    /// <summary>
+    /// Optional total count for the "All" option.
+    /// </summary>
+    [Parameter]
+    public int? TotalCount { get; set; }
+
+    /// <summary>
+    /// Additional CSS classes.
+    /// </summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private async Task SetValue(TValue? value)
+    {
+        if (!Equals(SelectedValue, value))
+        {
+            SelectedValue = value;
+            await SelectedValueChanged.InvokeAsync(value);
+        }
+    }
+}

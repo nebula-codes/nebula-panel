@@ -1,0 +1,434 @@
+@page "/servers/{ServerId:guid}/config"
+@page "/servers/{ServerId:guid}/config/{FileName}"
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.ValueObjects
+
+@inject IConfigurationService ConfigurationService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Server Configuration - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto">
+    @* Header *@
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">Server Configuration</h1>
+            <p class="text-nebula-text-muted mt-1">Manage configuration files for your server</p>
+        </div>
+        <div class="flex items-center gap-2">
+            @if (_isDirty)
+            {
+                <span class="text-sm text-nebula-warning">
+                    Unsaved changes
+                    @if (!_rawMode && ModifiedFieldCount > 0)
+                    {
+                        <span class="text-nebula-text-muted">(@ModifiedFieldCount @(ModifiedFieldCount == 1 ? "field" : "fields"))</span>
+                    }
+                </span>
+            }
+            <Button Variant="Button.ButtonVariant.Ghost"
+                    OnClick="@(() => NavigationManager.NavigateTo($"/servers/{ServerId}"))">
+                Back to Server
+            </Button>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <span class="spinner w-8 h-8"></span>
+            <span class="ml-3 text-nebula-text-muted">Loading configuration...</span>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <ErrorAlert Message="@_error" />
+    }
+    else
+    {
+        @* Config file tabs *@
+        @if (_configFiles.Count > 1)
+        {
+            <div class="border-b border-nebula-border-subtle mb-6">
+                <nav class="flex gap-4" aria-label="Configuration files">
+                    @foreach (var file in _configFiles)
+                    {
+                        var isActive = file.FileName == _selectedFileName;
+                        <button type="button"
+                                @onclick="() => SelectFile(file.FileName)"
+                                class="@(isActive ? "border-b-2 border-nebula-accent text-nebula-text-primary" : "text-nebula-text-muted hover:text-nebula-text-secondary") pb-3 px-1 text-sm font-medium transition-colors">
+                            @(file.DisplayName ?? file.FileName)
+                        </button>
+                    }
+                </nav>
+            </div>
+        }
+
+        @* Current config *@
+        @if (_currentConfig != null)
+        {
+            <Card>
+                <Header>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-semibold text-nebula-text-primary">
+                                @(_currentConfig.DisplayName ?? _currentConfig.FileName)
+                            </h2>
+                            @if (!string.IsNullOrEmpty(_currentConfig.Schema.Description))
+                            {
+                                <p class="text-sm text-nebula-text-muted mt-1">@_currentConfig.Schema.Description</p>
+                            }
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <Button Variant="Button.ButtonVariant.Ghost"
+                                    Size="Button.ButtonSize.Small"
+                                    OnClick="ToggleRawMode">
+                                <Icon Name="@(_rawMode ? "form" : "code")" Size="IconSize.Small" Class="mr-1" />
+                                @(_rawMode ? "Form View" : "Raw Editor")
+                            </Button>
+                        </div>
+                    </div>
+                </Header>
+                <ChildContent>
+                    @if (_rawMode)
+                    {
+                        <div class="space-y-4">
+                            <textarea @bind="_rawContent"
+                                      @bind:event="oninput"
+                                      rows="20"
+                                      class="textarea w-full font-mono text-sm"
+                                      spellcheck="false"></textarea>
+                        </div>
+                    }
+                    else
+                    {
+                        <ConfigForm Schema="@_currentConfig.Schema"
+                                   Values="@_values"
+                                   ValuesChanged="@OnValuesChanged"
+                                   ValidationErrors="@_validationErrors"
+                                   Disabled="@_saving" />
+                    }
+                </ChildContent>
+                <Footer>
+                    <div class="flex items-center justify-between">
+                        <Button Variant="Button.ButtonVariant.Ghost"
+                                OnClick="ResetToDefaults"
+                                Disabled="@_saving">
+                            Reset to Defaults
+                        </Button>
+                        <div class="flex items-center gap-2">
+                            @if (_isDirty)
+                            {
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        OnClick="DiscardChanges"
+                                        Disabled="@_saving">
+                                    Discard
+                                </Button>
+                            }
+                            <Button Variant="Button.ButtonVariant.Primary"
+                                    OnClick="SaveConfig"
+                                    Disabled="@(!_isDirty || _saving)">
+                                @if (_saving)
+                                {
+                                    <span class="animate-spin mr-2">...</span>
+                                }
+                                Save Changes
+                            </Button>
+                        </div>
+                    </div>
+                </Footer>
+            </Card>
+        }
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    [Parameter]
+    public string? FileName { get; set; }
+
+    private bool _loading = true;
+    private bool _saving = false;
+    private bool _rawMode = false;
+    private bool _isDirty = false;
+    private string? _error;
+
+    private List<ConfigFileDto> _configFiles = [];
+    private string? _selectedFileName;
+    private ConfigValuesDto? _currentConfig;
+    private Dictionary<string, object?> _values = new();
+    private Dictionary<string, object?> _originalValues = new();
+    private Dictionary<string, List<string>>? _validationErrors;
+    private string _rawContent = string.Empty;
+    private string _originalRawContent = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfigFilesAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_selectedFileName != FileName && !string.IsNullOrEmpty(FileName))
+        {
+            await SelectFile(FileName);
+        }
+    }
+
+    private async Task LoadConfigFilesAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            // Only show config files that actually exist on disk
+            var allConfigs = await ConfigurationService.GetConfigFilesAsync(ServerId);
+            _configFiles = allConfigs.Where(c => c.Exists).ToList();
+
+            if (_configFiles.Count == 0)
+            {
+                _error = "No configuration files found. Start the server first to generate config files.";
+                return;
+            }
+
+            // Select first file or the one from URL
+            var fileToSelect = FileName ?? _configFiles[0].FileName;
+            await SelectFile(fileToSelect);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load configuration files: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SelectFile(string fileName)
+    {
+        if (_isDirty && _selectedFileName != fileName)
+        {
+            // TODO: Show confirmation dialog
+        }
+
+        _selectedFileName = fileName;
+        _loading = true;
+        _error = null;
+        _validationErrors = null;
+
+        try
+        {
+            var result = await ConfigurationService.ReadConfigAsync(ServerId, fileName);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _currentConfig = result.Value;
+            _values = new Dictionary<string, object?>(_currentConfig!.Values);
+            _originalValues = new Dictionary<string, object?>(_currentConfig.Values);
+            _isDirty = false;
+
+            // Load raw content
+            var rawResult = await ConfigurationService.GetRawConfigAsync(ServerId, fileName);
+            _rawContent = rawResult.IsSuccess ? rawResult.Value ?? string.Empty : string.Empty;
+            _originalRawContent = _rawContent;
+
+            // Update URL if needed
+            if (FileName != fileName)
+            {
+                NavigationManager.NavigateTo($"/servers/{ServerId}/config/{Uri.EscapeDataString(fileName)}", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load configuration: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OnValuesChanged(Dictionary<string, object?> newValues)
+    {
+        _values = newValues;
+        _isDirty = !ValuesEqual(_values, _originalValues);
+        _validationErrors = null; // Clear errors on change
+    }
+
+    private bool ValuesEqual(Dictionary<string, object?> a, Dictionary<string, object?> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+
+        foreach (var kvp in a)
+        {
+            if (!b.TryGetValue(kvp.Key, out var bValue))
+                return false;
+
+            if (!Equals(kvp.Value?.ToString(), bValue?.ToString()))
+                return false;
+        }
+
+        return true;
+    }
+
+    private async Task SaveConfig()
+    {
+        if (_currentConfig == null || _selectedFileName == null)
+            return;
+
+        _saving = true;
+        _error = null;
+
+        try
+        {
+            if (_rawMode)
+            {
+                // Save raw content
+                var result = await ConfigurationService.SaveRawConfigAsync(ServerId, _selectedFileName, _rawContent);
+
+                if (result.IsFailure)
+                {
+                    _error = result.Error;
+                    return;
+                }
+
+                _originalRawContent = _rawContent;
+
+                // Reload parsed values
+                await SelectFile(_selectedFileName);
+            }
+            else
+            {
+                // Validate first
+                var validation = ConfigurationService.ValidateConfig(_currentConfig.Schema, _values);
+                if (!validation.IsValid)
+                {
+                    _validationErrors = validation.FieldErrors;
+                    return;
+                }
+
+                // Save
+                var result = await ConfigurationService.WriteConfigAsync(ServerId, new UpdateConfigRequest(
+                    FileName: _selectedFileName,
+                    Values: _values
+                ));
+
+                if (result.IsFailure)
+                {
+                    _error = result.Error;
+                    return;
+                }
+
+                _originalValues = new Dictionary<string, object?>(_values);
+                _isDirty = false;
+
+                // Reload raw content
+                var rawResult = await ConfigurationService.GetRawConfigAsync(ServerId, _selectedFileName);
+                _rawContent = rawResult.IsSuccess ? rawResult.Value ?? string.Empty : string.Empty;
+                _originalRawContent = _rawContent;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to save configuration: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void DiscardChanges()
+    {
+        if (_rawMode)
+        {
+            _rawContent = _originalRawContent;
+        }
+        else
+        {
+            _values = new Dictionary<string, object?>(_originalValues);
+        }
+        _isDirty = false;
+        _validationErrors = null;
+    }
+
+    private async Task ResetToDefaults()
+    {
+        if (_currentConfig == null || _selectedFileName == null)
+            return;
+
+        _saving = true;
+
+        try
+        {
+            var result = await ConfigurationService.ResetConfigToDefaultsAsync(ServerId, _selectedFileName);
+
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            // Reload
+            await SelectFile(_selectedFileName);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to reset configuration: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private int ModifiedFieldCount
+    {
+        get
+        {
+            if (_currentConfig?.Schema?.Fields == null)
+                return 0;
+
+            var count = 0;
+            foreach (var f in _currentConfig.Schema.Fields)
+            {
+                var key = f.JsonPath ?? f.Key;
+                if (_values.TryGetValue(key, out var currentValue))
+                {
+                    var defaultValue = f.DefaultValue;
+                    if (currentValue == null && defaultValue == null)
+                        continue;
+                    if (currentValue == null || defaultValue == null)
+                    {
+                        count++;
+                        continue;
+                    }
+                    if (currentValue.ToString() != defaultValue.ToString())
+                        count++;
+                }
+            }
+            return count;
+        }
+    }
+
+    private void ToggleRawMode()
+    {
+        _rawMode = !_rawMode;
+
+        if (_rawMode)
+        {
+            // Check if we need to update raw content based on form changes
+            _isDirty = _rawContent != _originalRawContent || !ValuesEqual(_values, _originalValues);
+        }
+    }
+}

@@ -1,0 +1,75 @@
+@inherits Microsoft.AspNetCore.Components.Web.ErrorBoundary
+@inject ILogger<NebulaErrorBoundary> Logger
+@inject NavigationManager Navigation
+
+@if (CurrentException is not null)
+{
+    <div class="bg-nebula-error/10 border border-nebula-error rounded-nebula p-6 m-4">
+        <div class="flex items-start gap-4">
+            <div class="w-10 h-10 rounded-full bg-nebula-error/20 flex items-center justify-center flex-shrink-0">
+                <Icon Name="alert-triangle" Size="IconSize.Medium" Class="text-nebula-error" />
+            </div>
+            <div class="flex-1">
+                <h3 class="text-lg font-semibold text-nebula-text-primary mb-2">Something went wrong</h3>
+                <p class="text-nebula-text-secondary mb-4">
+                    An error occurred while rendering this content. Please try again or refresh the page.
+                </p>
+
+                @if (ShowDetails)
+                {
+                    <details class="mt-4 mb-4">
+                        <summary class="cursor-pointer text-sm text-nebula-text-muted hover:text-nebula-text-secondary transition-colors">
+                            Technical details
+                        </summary>
+                        <div class="mt-2 p-4 bg-nebula-console-bg rounded-nebula text-xs font-mono overflow-auto max-h-48">
+                            <p class="text-nebula-error font-medium mb-2">@CurrentException.GetType().Name</p>
+                            <p class="text-nebula-text-secondary whitespace-pre-wrap">@CurrentException.Message</p>
+                            @if (CurrentException.StackTrace is not null)
+                            {
+                                <p class="text-nebula-text-muted mt-2 whitespace-pre-wrap text-[10px]">@CurrentException.StackTrace</p>
+                            }
+                        </div>
+                    </details>
+                }
+
+                <div class="flex gap-3">
+                    <Button Variant="ButtonVariant.Primary" Text="Try Again" OnClick="HandleRecover" />
+                    <Button Variant="ButtonVariant.Secondary" Text="Refresh Page" OnClick="HandleRefresh" />
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    @ChildContent
+}
+
+@code {
+    /// <summary>
+    /// Whether to show technical error details. Should be true in development.
+    /// </summary>
+    [Parameter]
+    public bool ShowDetails { get; set; }
+
+    protected override Task OnErrorAsync(Exception exception)
+    {
+        Logger.LogError(
+            exception,
+            "Blazor error boundary caught exception: {ExceptionType} - {Message}",
+            exception.GetType().Name,
+            exception.Message);
+
+        return base.OnErrorAsync(exception);
+    }
+
+    private void HandleRecover()
+    {
+        Recover();
+    }
+
+    private void HandleRefresh()
+    {
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+    }
+}

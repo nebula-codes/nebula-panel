@@ -1,0 +1,206 @@
+@namespace NebulaPanel.Web.Components.Shared.FileExplorer
+@using NebulaPanel.Application.DTOs
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JS
+
+@if (_isVisible)
+{
+    <div class="context-menu-backdrop" @onclick="Hide" @oncontextmenu="Hide" @oncontextmenu:preventDefault></div>
+    <div class="context-menu" style="left: @(_x)px; top: @(_y)px;">
+        @if (SelectedEntry is null)
+        {
+            <!-- Background context menu (no selection) -->
+            <button class="context-menu-item" @onclick="OnNewFolder">
+                <Icon Name="folder-plus" Size="IconSize.Small" />
+                <span>New Folder</span>
+            </button>
+            <button class="context-menu-item" @onclick="OnUpload">
+                <Icon Name="upload" Size="IconSize.Small" />
+                <span>Upload Files</span>
+            </button>
+            <div class="context-menu-divider"></div>
+            <button class="context-menu-item" @onclick="OnPaste" disabled="@(!HasClipboard)">
+                <Icon Name="clipboard" Size="IconSize.Small" />
+                <span>Paste</span>
+            </button>
+            <div class="context-menu-divider"></div>
+            <button class="context-menu-item" @onclick="OnRefresh">
+                <Icon Name="refresh-cw" Size="IconSize.Small" />
+                <span>Refresh</span>
+            </button>
+        }
+        else if (SelectedCount <= 1)
+        {
+            <!-- Single item selected -->
+            @if (SelectedEntry.Type == "directory")
+            {
+                <button class="context-menu-item" @onclick="OnOpen">
+                    <Icon Name="folder-open" Size="IconSize.Small" />
+                    <span>Open</span>
+                </button>
+            }
+            else if (SelectedEntry.IsEditable)
+            {
+                <button class="context-menu-item" @onclick="OnEdit">
+                    <Icon Name="edit" Size="IconSize.Small" />
+                    <span>Edit</span>
+                </button>
+            }
+
+            <button class="context-menu-item" @onclick="OnDownload">
+                <Icon Name="download" Size="IconSize.Small" />
+                <span>Download</span>
+            </button>
+
+            <div class="context-menu-divider"></div>
+
+            <button class="context-menu-item" @onclick="OnCopy">
+                <Icon Name="copy" Size="IconSize.Small" />
+                <span>Copy</span>
+            </button>
+            <button class="context-menu-item" @onclick="OnCut">
+                <Icon Name="scissors" Size="IconSize.Small" />
+                <span>Cut</span>
+            </button>
+
+            <div class="context-menu-divider"></div>
+
+            <button class="context-menu-item" @onclick="OnRename">
+                <Icon Name="edit" Size="IconSize.Small" />
+                <span>Rename</span>
+            </button>
+
+            @if (IsArchive(SelectedEntry))
+            {
+                <button class="context-menu-item" @onclick="OnExtract">
+                    <Icon Name="package" Size="IconSize.Small" />
+                    <span>Extract Here</span>
+                </button>
+            }
+            else
+            {
+                <button class="context-menu-item" @onclick="OnArchive">
+                    <Icon Name="package" Size="IconSize.Small" />
+                    <span>Create Archive</span>
+                </button>
+            }
+
+            <div class="context-menu-divider"></div>
+
+            <button class="context-menu-item danger" @onclick="OnDelete">
+                <Icon Name="trash" Size="IconSize.Small" />
+                <span>Delete</span>
+            </button>
+        }
+        else
+        {
+            <!-- Multiple items selected -->
+            <button class="context-menu-item" @onclick="OnDownload">
+                <Icon Name="download" Size="IconSize.Small" />
+                <span>Download All</span>
+            </button>
+            <button class="context-menu-item" @onclick="OnArchive">
+                <Icon Name="package" Size="IconSize.Small" />
+                <span>Create Archive</span>
+            </button>
+
+            <div class="context-menu-divider"></div>
+
+            <button class="context-menu-item" @onclick="OnCopy">
+                <Icon Name="copy" Size="IconSize.Small" />
+                <span>Copy</span>
+            </button>
+            <button class="context-menu-item" @onclick="OnCut">
+                <Icon Name="scissors" Size="IconSize.Small" />
+                <span>Cut</span>
+            </button>
+
+            <div class="context-menu-divider"></div>
+
+            <button class="context-menu-item danger" @onclick="OnDelete">
+                <Icon Name="trash" Size="IconSize.Small" />
+                <span>Delete All (@SelectedCount)</span>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public FileSystemEntryDto? SelectedEntry { get; set; }
+    [Parameter] public int SelectedCount { get; set; }
+    [Parameter] public bool HasClipboard { get; set; }
+
+    [Parameter] public EventCallback OnOpen { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnRename { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+    [Parameter] public EventCallback OnDownload { get; set; }
+    [Parameter] public EventCallback OnCopy { get; set; }
+    [Parameter] public EventCallback OnCut { get; set; }
+    [Parameter] public EventCallback OnPaste { get; set; }
+    [Parameter] public EventCallback OnArchive { get; set; }
+    [Parameter] public EventCallback OnExtract { get; set; }
+    [Parameter] public EventCallback OnNewFolder { get; set; }
+    [Parameter] public EventCallback OnUpload { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+
+    private bool _isVisible;
+    private double _x;
+    private double _y;
+
+    public void Show(MouseEventArgs e)
+    {
+        _x = e.ClientX;
+        _y = e.ClientY;
+        _isVisible = true;
+        StateHasChanged();
+
+        // Adjust position if menu goes off screen
+        AdjustPositionAsync();
+    }
+
+    public void Hide()
+    {
+        _isVisible = false;
+        StateHasChanged();
+    }
+
+    private async Task AdjustPositionAsync()
+    {
+        // Wait for render
+        await Task.Delay(10);
+
+        try
+        {
+            var dimensions = await JS.InvokeAsync<double[]>("eval",
+                "[window.innerWidth, window.innerHeight]");
+
+            var windowWidth = dimensions[0];
+            var windowHeight = dimensions[1];
+
+            const double menuWidth = 200;
+            const double menuHeight = 300;
+
+            if (_x + menuWidth > windowWidth)
+            {
+                _x = windowWidth - menuWidth - 10;
+            }
+
+            if (_y + menuHeight > windowHeight)
+            {
+                _y = windowHeight - menuHeight - 10;
+            }
+
+            StateHasChanged();
+        }
+        catch
+        {
+            // Ignore JS errors
+        }
+    }
+
+    private static bool IsArchive(FileSystemEntryDto entry)
+    {
+        return entry.Extension?.ToLowerInvariant() is ".zip" or ".tar" or ".gz" or ".7z" or ".rar";
+    }
+}

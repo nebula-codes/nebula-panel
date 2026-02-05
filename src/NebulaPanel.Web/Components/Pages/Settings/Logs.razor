@@ -1,0 +1,338 @@
+@page "/settings/logs"
+@attribute [Authorize(Roles = "Admin")]
+@using NebulaPanel.Application.Services
+@inject ILogViewerService LogService
+@inject IToastService Toast
+@rendermode InteractiveServer
+
+<PageTitle>System Logs - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">System Logs</h1>
+            <p class="text-nebula-text-muted mt-1">View application logs and errors.</p>
+        </div>
+        <Button Variant="ButtonVariant.Secondary"
+                IconName="refresh-cw"
+                Text="Refresh"
+                OnClick="LoadLogFiles" />
+    </div>
+
+    <div class="grid grid-cols-12 gap-6">
+        @* Log file selector *@
+        <div class="col-span-12 lg:col-span-3">
+            <Card>
+                <CardHeader>
+                    <span class="font-medium text-nebula-text-primary">Log Files</span>
+                </CardHeader>
+                <CardBody NoPadding="true">
+                    @if (_logFiles.Count == 0)
+                    {
+                        <div class="p-4 text-center text-nebula-text-muted">
+                            <Icon Name="file-text" Size="IconSize.Large" Class="mx-auto mb-2 opacity-50" />
+                            <p class="text-sm">No log files found</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="divide-y divide-nebula-border max-h-96 overflow-y-auto">
+                            @foreach (var file in _logFiles)
+                            {
+                                <button @onclick="() => SelectFile(file.FileName)"
+                                        class="@GetFileButtonClass(file.FileName)">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <Icon Name="file-text" Size="IconSize.Small" Class="text-nebula-text-muted flex-shrink-0" />
+                                        <span class="truncate text-sm">@file.FileName</span>
+                                    </div>
+                                    <span class="text-xs text-nebula-text-muted flex-shrink-0">@FormatSize(file.SizeBytes)</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                </CardBody>
+            </Card>
+        </div>
+
+        @* Log viewer *@
+        <div class="col-span-12 lg:col-span-9">
+            <Card>
+                <CardHeader>
+                    <div class="flex items-center justify-between w-full gap-4">
+                        <span class="font-medium text-nebula-text-primary truncate">
+                            @(_selectedFile ?? "Select a log file")
+                        </span>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            @* Level filter *@
+                            <select @bind="_levelFilter" @bind:after="LoadLogs" class="input w-28 text-sm py-1.5">
+                                <option value="">All Levels</option>
+                                <option value="DBG">Debug</option>
+                                <option value="INF">Info</option>
+                                <option value="WRN">Warning</option>
+                                <option value="ERR">Error</option>
+                                <option value="FTL">Fatal</option>
+                            </select>
+
+                            @* Search *@
+                            <div class="relative">
+                                <input type="text"
+                                       @bind="_searchTerm"
+                                       @bind:event="oninput"
+                                       @onkeyup="HandleSearchKeyUp"
+                                       placeholder="Search..."
+                                       class="input w-40 text-sm py-1.5 pl-8" />
+                                <Icon Name="search" Size="IconSize.Small"
+                                      Class="absolute left-2.5 top-1/2 -translate-y-1/2 text-nebula-text-muted" />
+                            </div>
+
+                            <Button Variant="ButtonVariant.Ghost"
+                                    IconName="refresh-cw"
+                                    IconOnly="true"
+                                    OnClick="LoadLogs"
+                                    Title="Refresh logs" />
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardBody NoPadding="true">
+                    <div class="font-mono text-xs bg-nebula-console-bg min-h-[400px] max-h-[600px] overflow-auto">
+                        @if (_loading)
+                        {
+                            <div class="flex items-center justify-center h-64">
+                                <div class="text-nebula-text-muted flex items-center gap-2">
+                                    <span class="spinner"></span>
+                                    <span>Loading logs...</span>
+                                </div>
+                            </div>
+                        }
+                        else if (_logContent is null)
+                        {
+                            <div class="flex items-center justify-center h-64">
+                                <div class="text-center text-nebula-text-muted">
+                                    <Icon Name="file-text" Size="IconSize.Large" Class="mx-auto mb-2 opacity-50" />
+                                    <p>Select a log file to view its contents</p>
+                                </div>
+                            </div>
+                        }
+                        else if (_logContent.Entries.Count == 0)
+                        {
+                            <div class="flex items-center justify-center h-64">
+                                <div class="text-center text-nebula-text-muted">
+                                    <Icon Name="search" Size="IconSize.Large" Class="mx-auto mb-2 opacity-50" />
+                                    <p>No log entries match your filters</p>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="divide-y divide-nebula-border-subtle">
+                                @foreach (var entry in _logContent.Entries)
+                                {
+                                    <div class="@GetEntryClass(entry.Level) px-4 py-2 hover:bg-nebula-bg-tertiary/50 transition-colors">
+                                        <div class="flex items-start gap-3">
+                                            <span class="text-nebula-text-muted whitespace-nowrap">
+                                                @entry.Timestamp.ToString("HH:mm:ss.fff")
+                                            </span>
+                                            <span class="@GetLevelClass(entry.Level) font-semibold w-10">
+                                                [@entry.Level]
+                                            </span>
+                                            <span class="text-nebula-accent truncate max-w-48" title="@entry.Source">
+                                                @TruncateSource(entry.Source)
+                                            </span>
+                                            <span class="text-nebula-text-secondary flex-1 break-words">
+                                                @entry.Message
+                                            </span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(entry.Exception))
+                                        {
+                                            <details class="mt-2 ml-[7.5rem]">
+                                                <summary class="cursor-pointer text-nebula-error hover:text-nebula-error/80 text-xs">
+                                                    View exception details
+                                                </summary>
+                                                <pre class="mt-1 p-2 bg-nebula-error/5 rounded text-nebula-error/80 whitespace-pre-wrap text-[10px] max-h-48 overflow-auto">@entry.Exception</pre>
+                                            </details>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            @if (_logContent.HasMore)
+                            {
+                                <div class="p-4 text-center border-t border-nebula-border">
+                                    <Button Variant="ButtonVariant.Secondary"
+                                            Text="Load More"
+                                            OnClick="LoadMore"
+                                            Size="ButtonSize.Small" />
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @if (_logContent is not null)
+                    {
+                        <div class="px-4 py-2 bg-nebula-bg-secondary border-t border-nebula-border text-xs text-nebula-text-muted flex items-center justify-between">
+                            <span>
+                                Showing @_logContent.Entries.Count of @_logContent.FilteredCount filtered entries
+                                (@_logContent.TotalLines total lines)
+                            </span>
+                            @if (_logContent.HasMore)
+                            {
+                                <span class="text-nebula-warning">More entries available</span>
+                            }
+                        </div>
+                    }
+                </CardBody>
+            </Card>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<LogFileInfo> _logFiles = new();
+    private string? _selectedFile;
+    private LogFileContent? _logContent;
+    private string? _levelFilter;
+    private string? _searchTerm;
+    private bool _loading;
+    private int _currentSkip;
+    private Timer? _searchDebounceTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLogFiles();
+    }
+
+    private async Task LoadLogFiles()
+    {
+        try
+        {
+            _logFiles = (await LogService.GetLogFilesAsync()).ToList();
+            if (_logFiles.Count > 0 && _selectedFile is null)
+            {
+                await SelectFile(_logFiles.First().FileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Failed to load log files: {ex.Message}");
+        }
+    }
+
+    private async Task SelectFile(string fileName)
+    {
+        _selectedFile = fileName;
+        _currentSkip = 0;
+        await LoadLogs();
+    }
+
+    private async Task LoadLogs()
+    {
+        if (string.IsNullOrEmpty(_selectedFile)) return;
+
+        try
+        {
+            _loading = true;
+            StateHasChanged();
+
+            _currentSkip = 0;
+            _logContent = await LogService.ReadLogFileAsync(
+                _selectedFile,
+                _currentSkip,
+                500,
+                _levelFilter,
+                _searchTerm);
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Failed to load logs: {ex.Message}");
+            _logContent = null;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task LoadMore()
+    {
+        if (string.IsNullOrEmpty(_selectedFile) || _logContent is null) return;
+
+        try
+        {
+            _currentSkip += 500;
+            var moreContent = await LogService.ReadLogFileAsync(
+                _selectedFile,
+                _currentSkip,
+                500,
+                _levelFilter,
+                _searchTerm);
+
+            // Append new entries
+            var allEntries = _logContent.Entries.Concat(moreContent.Entries).ToList();
+            _logContent = _logContent with
+            {
+                Entries = allEntries,
+                HasMore = moreContent.HasMore
+            };
+        }
+        catch (Exception ex)
+        {
+            Toast.ShowError($"Failed to load more logs: {ex.Message}");
+        }
+    }
+
+    private void HandleSearchKeyUp(KeyboardEventArgs e)
+    {
+        // Debounce search
+        _searchDebounceTimer?.Dispose();
+        _searchDebounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadLogs();
+                StateHasChanged();
+            });
+        }, null, 300, Timeout.Infinite);
+    }
+
+    private string GetFileButtonClass(string fileName) =>
+        fileName == _selectedFile
+            ? "w-full px-4 py-3 flex items-center justify-between text-left bg-nebula-accent/10 text-nebula-accent"
+            : "w-full px-4 py-3 flex items-center justify-between text-left hover:bg-nebula-bg-tertiary text-nebula-text-secondary transition-colors";
+
+    private static string GetLevelClass(string level) => level switch
+    {
+        "ERR" or "FTL" => "text-nebula-error",
+        "WRN" => "text-nebula-warning",
+        "INF" => "text-nebula-info",
+        "DBG" => "text-nebula-text-muted",
+        _ => "text-nebula-text-secondary"
+    };
+
+    private static string GetEntryClass(string level) => level switch
+    {
+        "ERR" or "FTL" => "bg-nebula-error/5",
+        "WRN" => "bg-nebula-warning/5",
+        _ => ""
+    };
+
+    private static string TruncateSource(string source)
+    {
+        // Show only the class name, not the full namespace
+        var lastDot = source.LastIndexOf('.');
+        return lastDot >= 0 ? source[(lastDot + 1)..] : source;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024)
+            return $"{bytes} B";
+        if (bytes < 1024 * 1024)
+            return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    public void Dispose()
+    {
+        _searchDebounceTimer?.Dispose();
+    }
+}

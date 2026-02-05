@@ -1,0 +1,263 @@
+@page "/settings/appearance"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@inject ISettingsService SettingsService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Appearance Settings - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4 max-w-4xl mx-auto">
+    <div class="flex items-center gap-2 text-sm text-nebula-text-muted mb-2">
+        <NavLink href="/settings" class="hover:text-nebula-text-secondary">Settings</NavLink>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Appearance</span>
+    </div>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Appearance Settings</h1>
+    <p class="text-nebula-text-muted mb-6">Customize the look and feel of your panel.</p>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <div class="flex items-center justify-center py-12">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-6">
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Default Theme</h2>
+                </Header>
+                <ChildContent>
+                    <p class="text-nebula-text-secondary mb-4">
+                        Select the default theme for new users and sessions. Users can override this in their browser if allowed.
+                    </p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        @foreach (var theme in _settings?.AvailableThemes ?? [])
+                        {
+                            <div @onclick="@(() => _defaultTheme = theme.Id)"
+                                 class="@GetThemeCardClass(theme.Id) cursor-pointer rounded-nebula border-2 overflow-hidden transition-all">
+                                <div class="@GetThemePreviewClass(theme.Id) h-24 flex items-center justify-center">
+                                    <div class="@GetThemePreviewContentClass(theme.Id) w-3/4 rounded p-3">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <div class="w-3 h-3 rounded-full @GetThemePreviewDotClass(theme.Id)"></div>
+                                            <div class="h-2 w-16 rounded @GetThemePreviewBarClass(theme.Id)"></div>
+                                        </div>
+                                        <div class="space-y-1.5">
+                                            <div class="h-2 w-full rounded @GetThemePreviewBarClass(theme.Id)"></div>
+                                            <div class="h-2 w-2/3 rounded @GetThemePreviewBarClass(theme.Id)"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="p-4 bg-nebula-bg-secondary">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <p class="font-medium text-nebula-text-primary">@theme.Name</p>
+                                            <p class="text-sm text-nebula-text-muted">@theme.Description</p>
+                                        </div>
+                                        @if (_defaultTheme == theme.Id)
+                                        {
+                                            <div class="w-6 h-6 rounded-full bg-nebula-accent flex items-center justify-center">
+                                                <Icon Name="check" Size="IconSize.Small" Class="text-white" />
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Accent Color</h2>
+                </Header>
+                <ChildContent>
+                    <p class="text-nebula-text-secondary mb-4">
+                        Choose the accent color used for buttons, links, and highlights throughout the panel.
+                    </p>
+
+                    <div class="flex flex-wrap gap-3">
+                        @foreach (var color in _settings?.AvailableAccentColors ?? [])
+                        {
+                            <button @onclick="@(() => _accentColor = color.Id)"
+                                    class="@GetAccentButtonClass(color.Id) w-12 h-12 rounded-nebula transition-all flex items-center justify-center"
+                                    title="@color.Name">
+                                <div class="@color.CssClass w-8 h-8 rounded-full"></div>
+                                @if (_accentColor == color.Id)
+                                {
+                                    <div class="absolute">
+                                        <Icon Name="check" Size="IconSize.Small" Class="text-white drop-shadow" />
+                                    </div>
+                                }
+                            </button>
+                        }
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <Card>
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">User Preferences</h2>
+                </Header>
+                <ChildContent>
+                    <div class="flex items-center justify-between p-4 bg-nebula-bg-secondary rounded-nebula">
+                        <div>
+                            <p class="font-medium text-nebula-text-primary">Allow User Theme Override</p>
+                            <p class="text-sm text-nebula-text-muted">Let users choose their own theme using the theme switcher in the top bar.</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" @bind="_allowUserOverride" class="sr-only peer" />
+                            <div class="w-11 h-6 bg-nebula-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-accent"></div>
+                        </label>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="@(() => Navigation.NavigateTo("/settings"))" />
+                <Button Variant="ButtonVariant.Primary" Text="Save Changes" Loading="_saving" OnClick="SaveSettings" />
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private AppearanceSettingsDto? _settings;
+    private bool _loading = true;
+    private bool _saving;
+    private string? _error;
+    private string? _success;
+
+    // Form fields
+    private string _defaultTheme = "dark";
+    private string _accentColor = "purple";
+    private bool _allowUserOverride = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSettingsAsync();
+    }
+
+    private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            _settings = await SettingsService.GetAppearanceSettingsAsync();
+
+            _defaultTheme = _settings.DefaultTheme;
+            _accentColor = _settings.AccentColor;
+            _allowUserOverride = _settings.AllowUserThemeOverride;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            var request = new UpdateAppearanceSettingsRequest(
+                _defaultTheme,
+                _allowUserOverride,
+                _accentColor);
+
+            var result = await SettingsService.UpdateAppearanceSettingsAsync(request, GetCurrentUserId());
+
+            if (result.IsSuccess)
+            {
+                _success = "Appearance settings saved successfully.";
+                _settings = result.Value;
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private string GetThemeCardClass(string themeId)
+    {
+        return _defaultTheme == themeId
+            ? "border-nebula-accent"
+            : "border-nebula-border hover:border-nebula-accent/50";
+    }
+
+    private string GetThemePreviewClass(string themeId) => themeId switch
+    {
+        "dark" => "bg-gray-900",
+        "light" => "bg-gray-100",
+        _ => "bg-gray-900"
+    };
+
+    private string GetThemePreviewContentClass(string themeId) => themeId switch
+    {
+        "dark" => "bg-gray-800",
+        "light" => "bg-white shadow",
+        _ => "bg-gray-800"
+    };
+
+    private string GetThemePreviewDotClass(string themeId) => themeId switch
+    {
+        "dark" => "bg-purple-500",
+        "light" => "bg-purple-500",
+        _ => "bg-purple-500"
+    };
+
+    private string GetThemePreviewBarClass(string themeId) => themeId switch
+    {
+        "dark" => "bg-gray-700",
+        "light" => "bg-gray-200",
+        _ => "bg-gray-700"
+    };
+
+    private string GetAccentButtonClass(string colorId)
+    {
+        return _accentColor == colorId
+            ? "ring-2 ring-offset-2 ring-nebula-accent ring-offset-nebula-bg-primary relative"
+            : "hover:scale-105 relative";
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private Guid GetCurrentUserId()
+    {
+        if (AuthState is null) return Guid.Empty;
+        var state = AuthState.Result;
+        var userIdClaim = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)
+            ?? state.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+}

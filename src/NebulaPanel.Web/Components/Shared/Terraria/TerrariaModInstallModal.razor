@@ -1,0 +1,301 @@
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.Repositories
+
+<Modal IsOpen="@IsOpen"
+       Size="ModalSize.Medium"
+       OnClose="HandleClose"
+       ShowCloseButton="true"
+       CloseOnBackdropClick="@(!_isInstalling)"
+       CloseOnEscape="@(!_isInstalling)">
+    <Header>
+        <span class="text-lg font-medium text-nebula-text-primary">Install Mod</span>
+    </Header>
+    <Body>
+        @if (Mod == null)
+        {
+            <div class="flex items-center justify-center py-12">
+                <span class="text-nebula-text-muted">No mod selected</span>
+            </div>
+        }
+        else if (_isInstalling)
+        {
+            @* Installation progress *@
+            <div class="flex flex-col items-center py-8">
+                <div class="progress-icon mb-4">
+                    @if (_installError != null)
+                    {
+                        <Icon Name="alert-circle" Size="IconSize.XLarge" Class="text-nebula-error" />
+                    }
+                    else if (_installComplete)
+                    {
+                        <Icon Name="check-circle" Size="IconSize.XLarge" Class="text-nebula-success" />
+                    }
+                    else
+                    {
+                        <div class="animate-spin rounded-full h-12 w-12 border-4 border-nebula-accent border-t-transparent"></div>
+                    }
+                </div>
+
+                <h3 class="text-lg font-medium mb-2">
+                    @if (_installError != null)
+                    {
+                        <span class="text-nebula-error">Installation Failed</span>
+                    }
+                    else if (_installComplete)
+                    {
+                        <span class="text-nebula-success">Installation Complete</span>
+                    }
+                    else
+                    {
+                        <span class="text-nebula-text-primary">Installing @Mod.Name...</span>
+                    }
+                </h3>
+
+                <p class="text-sm text-nebula-text-muted text-center">
+                    @if (_installError != null)
+                    {
+                        @_installError
+                    }
+                    else
+                    {
+                        @(_installProgress?.Message ?? "Preparing...")
+                    }
+                </p>
+
+                @if (!_installComplete && _installError == null)
+                {
+                    <div class="w-full mt-4 bg-nebula-bg-tertiary rounded-full h-2">
+                        <div class="bg-nebula-accent h-2 rounded-full transition-all duration-300"
+                             style="width: @(_installProgress?.Percentage ?? 0)%"></div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="flex flex-col gap-4">
+                @* Mod Header *@
+                <div class="flex gap-4">
+                    <div class="w-16 h-16 flex-shrink-0">
+                        @if (!string.IsNullOrEmpty(Mod.IconUrl))
+                        {
+                            <img src="@Mod.IconUrl" alt="@Mod.Name" class="w-full h-full object-cover rounded-lg" />
+                        }
+                        else
+                        {
+                            <div class="w-full h-full flex items-center justify-center bg-nebula-bg-tertiary rounded-lg">
+                                <Icon Name="package" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                            </div>
+                        }
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-lg font-semibold text-nebula-text-primary mb-1">@Mod.Name</h2>
+                        @if (!string.IsNullOrEmpty(Mod.Author))
+                        {
+                            <p class="text-sm text-nebula-text-secondary">by @Mod.Author</p>
+                        }
+                        @if (!string.IsNullOrEmpty(Mod.Summary))
+                        {
+                            <p class="text-sm text-nebula-text-muted mt-2 line-clamp-2">@Mod.Summary</p>
+                        }
+                    </div>
+                </div>
+
+                @* Stats *@
+                <div class="flex items-center gap-4 text-sm text-nebula-text-muted border-t border-nebula-border-subtle pt-4">
+                    <span class="flex items-center gap-1">
+                        <Icon Name="users" Size="IconSize.Small" />
+                        @FormatNumber(Mod.Downloads) subscribers
+                    </span>
+                    @if (Mod.UpdatedAt.HasValue)
+                    {
+                        <span class="flex items-center gap-1">
+                            <Icon Name="clock" Size="IconSize.Small" />
+                            Updated @FormatRelativeDate(Mod.UpdatedAt.Value)
+                        </span>
+                    }
+                </div>
+
+                @* Install Notice *@
+                <div class="bg-nebula-bg-secondary rounded-nebula p-3 text-sm">
+                    <div class="flex items-start gap-2">
+                        <Icon Name="info" Size="IconSize.Small" Class="text-nebula-accent mt-0.5" />
+                        <p class="text-nebula-text-secondary">
+                            This mod will be downloaded from Steam Workshop and installed to your server's Mods folder.
+                            The server may need to be restarted for changes to take effect.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        }
+    </Body>
+    <Footer>
+        @if (_installComplete)
+        {
+            <div class="flex justify-end">
+                <Button Variant="ButtonVariant.Primary" Text="Done" OnClick="HandleInstallComplete" />
+            </div>
+        }
+        else if (_installError != null)
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="HandleClose" />
+                <Button Variant="ButtonVariant.Primary" Text="Try Again" OnClick="StartInstall" />
+            </div>
+        }
+        else if (_isInstalling)
+        {
+            <div class="flex justify-end">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" Disabled="true" />
+            </div>
+        }
+        else
+        {
+            <div class="flex justify-end gap-3">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="HandleClose" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Install"
+                        IconName="download"
+                        OnClick="StartInstall" />
+            </div>
+        }
+    </Footer>
+</Modal>
+
+@code {
+    /// <summary>
+    /// The mod to install.
+    /// </summary>
+    [Parameter]
+    public ModSearchItem? Mod { get; set; }
+
+    /// <summary>
+    /// The server ID to install the mod to.
+    /// </summary>
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    /// <summary>
+    /// Whether the modal is open.
+    /// </summary>
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    /// <summary>
+    /// Callback when the modal is closed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Callback when the mod has been successfully installed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnInstalled { get; set; }
+
+    [Inject]
+    private ITerrariaModService ModService { get; set; } = default!;
+
+    [Inject]
+    private IGameServerRepository ServerRepository { get; set; } = default!;
+
+    // Install state
+    private bool _isInstalling;
+    private bool _installComplete;
+    private string? _installError;
+    private TerrariaModInstallProgress? _installProgress;
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && !_isInstalling)
+        {
+            // Reset state when modal opens
+            _installComplete = false;
+            _installError = null;
+            _installProgress = null;
+        }
+    }
+
+    private async Task StartInstall()
+    {
+        if (Mod == null) return;
+
+        _isInstalling = true;
+        _installComplete = false;
+        _installError = null;
+        _installProgress = null;
+        StateHasChanged();
+
+        try
+        {
+            var server = await ServerRepository.GetByIdAsync(ServerId);
+            if (server == null)
+            {
+                _installError = "Server not found";
+                return;
+            }
+
+            var progress = new Progress<TerrariaModInstallProgress>(p =>
+            {
+                _installProgress = p;
+                InvokeAsync(StateHasChanged);
+            });
+
+            var result = await ModService.InstallModAsync(server, Mod.Id, progress);
+
+            if (result.Success)
+            {
+                _installComplete = true;
+            }
+            else
+            {
+                _installError = result.Error ?? "Installation failed";
+            }
+        }
+        catch (Exception ex)
+        {
+            _installError = $"Installation failed: {ex.Message}";
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleInstallComplete()
+    {
+        await OnInstalled.InvokeAsync();
+    }
+
+    private async Task HandleClose()
+    {
+        if (_isInstalling && !_installComplete && _installError == null) return;
+
+        _isInstalling = false;
+        _installComplete = false;
+        _installError = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private static string FormatNumber(long number) => number switch
+    {
+        >= 1_000_000 => $"{number / 1_000_000.0:F1}M",
+        >= 1_000 => $"{number / 1_000.0:F1}K",
+        _ => number.ToString("N0")
+    };
+
+    private static string FormatRelativeDate(DateTime date)
+    {
+        var diff = DateTime.UtcNow - date;
+        var days = diff.TotalDays;
+        if (days < 1) return "today";
+        if (days < 2) return "yesterday";
+        if (days < 7) return $"{(int)days}d ago";
+        if (days < 30) return $"{(int)(days / 7)}w ago";
+        if (days < 365) return $"{(int)(days / 30)}mo ago";
+        return date.ToString("MMM yyyy");
+    }
+}

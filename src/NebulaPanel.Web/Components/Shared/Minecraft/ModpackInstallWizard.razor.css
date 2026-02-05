@@ -1,0 +1,167 @@
+.modpack-install-wizard {
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+/* Modpack Icon */
+.modpack-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--nebula-radius);
+    object-fit: cover;
+}
+
+.modpack-icon-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--nebula-radius);
+    background-color: var(--nebula-bg-tertiary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--nebula-text-muted);
+}
+
+/* Memory Slider */
+.memory-slider-container {
+    padding: 0.5rem 0;
+}
+
+.memory-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--nebula-bg-tertiary);
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+
+.memory-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--nebula-accent);
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: transform 0.15s ease;
+}
+
+.memory-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+}
+
+.memory-slider::-webkit-slider-thumb:active {
+    transform: scale(0.95);
+}
+
+.memory-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--nebula-accent);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.memory-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.memory-current {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--nebula-accent);
+    background: rgba(139, 92, 246, 0.1);
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--nebula-radius);
+}
+
+/* Deployment Options */
+.deployment-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.deployment-option {
+    display: flex;
+    align-items: flex-start;
+    padding: 1rem;
+    border-radius: var(--nebula-radius-lg);
+    border: 1px solid var(--nebula-border-subtle);
+    background-color: var(--nebula-bg-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.deployment-option:hover {
+    border-color: var(--nebula-border);
+    background-color: var(--nebula-bg-tertiary);
+}
+
+.deployment-option.selected {
+    border-color: var(--nebula-accent);
+    background-color: rgba(139, 92, 246, 0.05);
+}
+
+/* RCON Config */
+.rcon-config {
+    padding: 1rem;
+    border-radius: var(--nebula-radius);
+    background-color: var(--nebula-bg-secondary);
+    border: 1px solid var(--nebula-border-subtle);
+}
+
+/* Icon Buttons */
+.btn-icon-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--nebula-radius);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--nebula-text-muted);
+    transition: all 0.15s ease;
+}
+
+.btn-icon-sm:hover {
+    background-color: var(--nebula-bg-tertiary);
+    color: var(--nebula-text-secondary);
+}
+
+/* Wizard Actions */
+.wizard-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--nebula-border-subtle);
+}
+
+/* Spinner for loading states */
+.spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

@@ -1,0 +1,105 @@
+/* Nebula Panel - Main Application Styles */
+/* This file contains Blazor-specific overrides and legacy styles during migration */
+
+/* Blazor error boundary */
+.blazor-error-boundary {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.9) 0%, rgba(185, 28, 28, 0.9) 100%);
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+    border-radius: var(--nebula-radius);
+    margin: 1rem;
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred. Please refresh the page.";
+}
+
+/* Blazor reconnect modal styles - override defaults */
+#components-reconnect-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+}
+
+#components-reconnect-modal.components-reconnect-show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#components-reconnect-modal > div {
+    background: var(--nebula-bg-secondary);
+    border: 1px solid var(--nebula-border);
+    border-radius: var(--nebula-radius-lg);
+    padding: 2rem;
+    text-align: center;
+    color: var(--nebula-text-primary);
+    box-shadow: var(--nebula-shadow-lg);
+}
+
+/* Validation message styling */
+.validation-message {
+    color: var(--nebula-error);
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
+/* Form validation states */
+.valid.modified:not([type=checkbox]) {
+    outline: 2px solid var(--nebula-success);
+    outline-offset: -2px;
+}
+
+.invalid {
+    outline: 2px solid var(--nebula-error);
+    outline-offset: -2px;
+}
+
+/* Loading spinner */
+.spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Toast slide-in animation */
+@keyframes slide-in-right {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.animate-slide-in {
+    animation: slide-in-right 0.3s ease-out;
+}
+
+/* Focus visible overrides for better accessibility */
+:focus-visible {
+    outline: none;
+    box-shadow: var(--nebula-focus-ring);
+}
+
+/* Print styles */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+}
