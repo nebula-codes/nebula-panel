@@ -33,7 +33,8 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configure listen URLs from appsettings.json (override with ASPNETCORE_URLS env var)
+// Configure listen URLs from appsettings.json
+// Development uses localhost:5000, production/Docker uses 0.0.0.0:5000
 var urls = builder.Configuration["Urls"];
 if (!string.IsNullOrEmpty(urls))
 {
