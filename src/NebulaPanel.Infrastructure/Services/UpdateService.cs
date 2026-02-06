@@ -244,7 +244,13 @@ public class UpdateService : IUpdateService
                 return UpdateDownloadResult.Failed("No compatible download found for this platform");
             }
 
-            var downloadPath = Path.Combine(_updateDir, $"{version}.tar.gz");
+            var extension = Path.GetExtension(asset.Name);
+            if (string.IsNullOrEmpty(extension))
+                extension = ".tar.gz";
+            // Handle .tar.gz double extension
+            if (asset.Name.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+                extension = ".tar.gz";
+            var downloadPath = Path.Combine(_updateDir, $"{version}{extension}");
 
             // Report initial progress
             var initialProgress = PanelUpdateProgress.Preparing($"Starting download of {version}...");
@@ -319,8 +325,9 @@ public class UpdateService : IUpdateService
         UpdateOptions options,
         CancellationToken cancellationToken = default)
     {
-        var downloadPath = Path.Combine(_updateDir, $"{version}.tar.gz");
-        if (!File.Exists(downloadPath))
+        // Find the downloaded archive (could be .tar.gz or .zip)
+        var downloadPath = FindDownloadedArchive(version);
+        if (downloadPath is null)
         {
             return Result.Failure("Update not downloaded. Please download the update first.");
         }
@@ -761,6 +768,18 @@ public class UpdateService : IUpdateService
             return PlatformTarget.Docker;
 
         return PlatformTarget.LinuxX64;
+    }
+
+    private string? FindDownloadedArchive(string version)
+    {
+        // Check for both .zip and .tar.gz formats
+        var zipPath = Path.Combine(_updateDir, $"{version}.zip");
+        if (File.Exists(zipPath)) return zipPath;
+
+        var tarGzPath = Path.Combine(_updateDir, $"{version}.tar.gz");
+        if (File.Exists(tarGzPath)) return tarGzPath;
+
+        return null;
     }
 
     private static PlatformTarget GetCurrentPlatform()

@@ -12,7 +12,7 @@ public sealed record UpdateManifest
     public required string Version { get; init; }
 
     /// <summary>
-    /// Full path to the downloaded update package (.tar.gz).
+    /// Full path to the downloaded update package (.tar.gz or .zip).
     /// </summary>
     public required string DownloadPath { get; init; }
 

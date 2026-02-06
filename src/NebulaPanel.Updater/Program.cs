@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using ICSharpCode.SharpZipLib.GZip;
@@ -112,7 +113,14 @@ public static class Program
 
             try
             {
-                await ExtractTarGzAsync(manifest.DownloadPath, extractDir).ConfigureAwait(false);
+                if (IsZipArchive(manifest.DownloadPath))
+                {
+                    await ExtractZipAsync(manifest.DownloadPath, extractDir).ConfigureAwait(false);
+                }
+                else
+                {
+                    await ExtractTarGzAsync(manifest.DownloadPath, extractDir).ConfigureAwait(false);
+                }
 
                 // Verify extraction produced files
                 var extractedFiles = Directory.GetFiles(extractDir, "*", SearchOption.AllDirectories);
@@ -321,25 +329,40 @@ public static class Program
         }
     }
 
+    private static bool IsZipArchive(string archivePath)
+    {
+        return archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static async Task<bool> VerifyArchiveAsync(string archivePath, UpdaterLogger logger)
     {
         try
         {
             var entryCount = 0;
 
-            await Task.Run(() =>
+            if (IsZipArchive(archivePath))
             {
-                using var sourceStream = File.OpenRead(archivePath);
-                using var gzipStream = new GZipInputStream(sourceStream);
-                using var tarInputStream = new TarInputStream(gzipStream, null);
-
-                // Iterate through entries to verify they can be read
-                TarEntry? entry;
-                while ((entry = tarInputStream.GetNextEntry()) is not null)
+                await Task.Run(() =>
                 {
-                    entryCount++;
-                }
-            }).ConfigureAwait(false);
+                    using var archive = ZipFile.OpenRead(archivePath);
+                    entryCount = archive.Entries.Count;
+                }).ConfigureAwait(false);
+            }
+            else
+            {
+                await Task.Run(() =>
+                {
+                    using var sourceStream = File.OpenRead(archivePath);
+                    using var gzipStream = new GZipInputStream(sourceStream);
+                    using var tarInputStream = new TarInputStream(gzipStream, null);
+
+                    TarEntry? entry;
+                    while ((entry = tarInputStream.GetNextEntry()) is not null)
+                    {
+                        entryCount++;
+                    }
+                }).ConfigureAwait(false);
+            }
 
             logger.Info($"Archive verified: {entryCount} entries found");
             return entryCount > 0;
@@ -408,6 +431,11 @@ public static class Program
         await using var gzipStream = new GZipInputStream(sourceStream);
         using var tarArchive = TarArchive.CreateInputTarArchive(gzipStream, null);
         tarArchive.ExtractContents(destinationDir);
+    }
+
+    private static async Task ExtractZipAsync(string sourcePath, string destinationDir)
+    {
+        await Task.Run(() => ZipFile.ExtractToDirectory(sourcePath, destinationDir)).ConfigureAwait(false);
     }
 
     private static void CopyDirectory(string source, string destination, bool overwrite)
@@ -649,7 +677,23 @@ public static class Program
             {
                 var json = await File.ReadAllTextAsync(appsettingsPath).ConfigureAwait(false);
                 var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("Kestrel", out var kestrel) &&
+
+                // Check "Urls" config key first (e.g. "http://0.0.0.0:5000")
+                if (doc.RootElement.TryGetProperty("Urls", out var urlsProp))
+                {
+                    var urlsValue = urlsProp.GetString();
+                    if (urlsValue is not null)
+                    {
+                        // Take the first URL if semicolon-separated
+                        var firstUrl = urlsValue.Split(';', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                        if (firstUrl is not null && Uri.TryCreate(firstUrl.Trim(), UriKind.Absolute, out var uri))
+                        {
+                            port = uri.Port;
+                        }
+                    }
+                }
+                // Fall back to Kestrel config
+                else if (doc.RootElement.TryGetProperty("Kestrel", out var kestrel) &&
                     kestrel.TryGetProperty("Endpoints", out var endpoints) &&
                     endpoints.TryGetProperty("Http", out var http) &&
                     http.TryGetProperty("Url", out var url))
