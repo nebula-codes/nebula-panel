@@ -275,12 +275,8 @@ if (!app.Environment.IsEnvironment("Testing"))
 app.UseGlobalExceptionHandler();
 app.UseSecurityHeaders();
 
-if (!app.Environment.IsDevelopment())
-{
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
-    app.UseHttpsRedirection();
-}
+// Serve static files from wwwroot as fallback (covers _framework files not in MapStaticAssets manifest)
+app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
