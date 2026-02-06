@@ -189,6 +189,34 @@
                 </div>
             </div>
         </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/webhooks"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="webhook" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Webhooks</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Send HTTP notifications when server events occur.
+                    </p>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/api-keys"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="key" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">API Keys</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Manage API keys for external application access.
+                    </p>
+                </div>
+            </div>
+        </Card>
     </div>
 </div>
 

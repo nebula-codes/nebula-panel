@@ -1,0 +1,440 @@
+@page "/settings/webhooks"
+@attribute [Authorize]
+@inject IWebhookService WebhookService
+@inject IToastService ToastService
+@inject AuthenticationStateProvider AuthStateProvider
+@using System.Security.Claims
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@rendermode InteractiveServer
+
+<PageTitle>Webhooks - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">Webhooks</h1>
+            <p class="text-sm text-nebula-text-muted mt-1">Send HTTP notifications when events occur on your servers.</p>
+        </div>
+        <Button Variant="ButtonVariant.Primary" IconName="plus" OnClick="ShowCreateModal">
+            New Webhook
+        </Button>
+    </div>
+
+    @* Webhook endpoints list *@
+    <Card>
+        @if (_isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <Icon Name="loader-2" Size="IconSize.Large" Class="animate-spin text-nebula-text-muted" />
+            </div>
+        }
+        else if (_endpoints.Count == 0)
+        {
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mb-4">
+                    <Icon Name="webhook" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                </div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">No webhooks configured</h3>
+                <p class="text-sm text-nebula-text-muted mt-1 max-w-sm">
+                    Create webhook endpoints to receive HTTP notifications when server events occur.
+                </p>
+                <Button Variant="ButtonVariant.Primary" IconName="plus" Class="mt-4" OnClick="ShowCreateModal">
+                    Create Webhook
+                </Button>
+            </div>
+        }
+        else
+        {
+            <div class="divide-y divide-nebula-border">
+                @foreach (var endpoint in _endpoints)
+                {
+                    <div class="p-4 hover:bg-nebula-bg-secondary/50 transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="p-2 rounded-nebula @(endpoint.IsEnabled ? "bg-nebula-accent/10" : "bg-nebula-bg-tertiary") flex-shrink-0">
+                                <Icon Name="webhook"
+                                      Size="IconSize.Small"
+                                      Class="@(endpoint.IsEnabled ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-medium text-nebula-text-primary">@endpoint.Name</h3>
+                                    @if (!endpoint.IsEnabled)
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">Disabled</span>
+                                    }
+                                    @if (endpoint.FailureCount > 0)
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-danger/10 text-nebula-danger">
+                                            @endpoint.FailureCount failures
+                                        </span>
+                                    }
+                                </div>
+                                <p class="text-sm text-nebula-text-muted mt-0.5 truncate">@endpoint.Url</p>
+                                <div class="flex items-center gap-4 mt-1 text-xs text-nebula-text-muted">
+                                    <span>@endpoint.SubscribedEvents.Count event(s)</span>
+                                    @if (endpoint.LastDeliveryAt.HasValue)
+                                    {
+                                        <span>Last delivery: @endpoint.LastDeliveryAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <Button Variant="ButtonVariant.Ghost" IconName="send" Loading="_testingId == endpoint.Id" OnClick="@(() => TestWebhook(endpoint.Id))" />
+                                <Button Variant="ButtonVariant.Ghost" IconName="list" OnClick="@(() => ShowDeliveries(endpoint))" />
+                                <Button Variant="ButtonVariant.Ghost" IconName="pencil" OnClick="@(() => ShowEditModal(endpoint))" />
+                                <Button Variant="ButtonVariant.Ghost" IconName="trash-2" OnClick="@(() => DeleteEndpoint(endpoint.Id))" />
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </Card>
+</div>
+
+@* Create/Edit Modal *@
+@if (_showModal)
+{
+    <Modal Title="@(_editingEndpoint is null ? "Create Webhook" : "Edit Webhook")"
+           @bind-IsOpen="_showModal">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Name</label>
+                <input type="text" @bind="_form.Name"
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent"
+                       placeholder="e.g. Discord Notification" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">URL</label>
+                <input type="url" @bind="_form.Url"
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent"
+                       placeholder="https://example.com/webhook" />
+            </div>
+
+            @if (_editingEndpoint is not null)
+            {
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="isEnabled" @bind="_form.IsEnabled"
+                           class="rounded border-nebula-border" />
+                    <label for="isEnabled" class="text-sm text-nebula-text-secondary">Enabled</label>
+                </div>
+            }
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-2">Events</label>
+                <div class="grid grid-cols-2 gap-2">
+                    @foreach (var eventType in Enum.GetValues<WebhookEventType>())
+                    {
+                        var isChecked = _form.SubscribedEvents.Contains(eventType);
+                        <label class="flex items-center gap-2 p-2 rounded-nebula hover:bg-nebula-bg-secondary cursor-pointer text-sm">
+                            <input type="checkbox"
+                                   checked="@isChecked"
+                                   @onchange="@(e => ToggleEvent(eventType, (bool)(e.Value ?? false)))"
+                                   class="rounded border-nebula-border" />
+                            <span class="text-nebula-text-primary">@FormatEventType(eventType)</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="text-sm text-nebula-danger">@_modalError</div>
+            }
+
+            <div class="flex justify-end gap-2 mt-6">
+                <Button Variant="ButtonVariant.Ghost" Text="Cancel" OnClick="CloseModal" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="@(_editingEndpoint is null ? "Create" : "Save")"
+                        Loading="_isSaving"
+                        OnClick="SaveEndpoint" />
+            </div>
+        </div>
+    </Modal>
+}
+
+@* Deliveries Modal *@
+@if (_showDeliveries)
+{
+    <Modal Title="@($"Deliveries — {_deliveriesEndpoint?.Name}")"
+           @bind-IsOpen="_showDeliveries">
+        <div class="space-y-2">
+            @if (_deliveries.Count == 0)
+            {
+                <p class="text-sm text-nebula-text-muted py-6 text-center">No deliveries recorded yet.</p>
+            }
+            else
+            {
+                <div class="max-h-[400px] overflow-y-auto divide-y divide-nebula-border">
+                    @foreach (var delivery in _deliveries)
+                    {
+                        <div class="py-2 flex items-center gap-3">
+                            <div class="flex-shrink-0">
+                                @if (delivery.Success)
+                                {
+                                    <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success" />
+                                }
+                                else
+                                {
+                                    <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-danger" />
+                                }
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm text-nebula-text-primary">@FormatEventType(delivery.EventType)</div>
+                                <div class="text-xs text-nebula-text-muted">
+                                    @delivery.AttemptedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                    @if (delivery.HttpStatusCode.HasValue)
+                                    {
+                                        <span> · HTTP @delivery.HttpStatusCode</span>
+                                    }
+                                    <span> · @(delivery.DurationMs)ms</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            <div class="flex justify-end mt-4">
+                <Button Variant="ButtonVariant.Ghost" Text="Close" OnClick="@(() => _showDeliveries = false)" />
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    private List<WebhookEndpointDto> _endpoints = [];
+    private bool _isLoading = true;
+    private bool _showModal;
+    private bool _isSaving;
+    private WebhookEndpointDto? _editingEndpoint;
+    private string? _modalError;
+    private Guid? _currentUserId;
+    private Guid? _testingId;
+    private WebhookFormModel _form = new();
+
+    private bool _showDeliveries;
+    private WebhookEndpointDto? _deliveriesEndpoint;
+    private List<WebhookDeliveryDto> _deliveries = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUserId = await GetCurrentUserIdAsync();
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            if (_currentUserId.HasValue)
+            {
+                _endpoints = (await WebhookService.GetByOwnerAsync(_currentUserId.Value)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load webhooks: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        _editingEndpoint = null;
+        _form = new WebhookFormModel();
+        _modalError = null;
+        _showModal = true;
+    }
+
+    private void ShowEditModal(WebhookEndpointDto endpoint)
+    {
+        _editingEndpoint = endpoint;
+        _form = new WebhookFormModel
+        {
+            Name = endpoint.Name,
+            Url = endpoint.Url,
+            IsEnabled = endpoint.IsEnabled,
+            SubscribedEvents = endpoint.SubscribedEvents.ToHashSet()
+        };
+        _modalError = null;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _editingEndpoint = null;
+        _modalError = null;
+    }
+
+    private void ToggleEvent(WebhookEventType eventType, bool isChecked)
+    {
+        if (isChecked)
+            _form.SubscribedEvents.Add(eventType);
+        else
+            _form.SubscribedEvents.Remove(eventType);
+    }
+
+    private async Task SaveEndpoint()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "Name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_form.Url))
+        {
+            _modalError = "URL is required.";
+            return;
+        }
+
+        if (_form.SubscribedEvents.Count == 0)
+        {
+            _modalError = "Select at least one event.";
+            return;
+        }
+
+        _isSaving = true;
+        _modalError = null;
+
+        try
+        {
+            if (_editingEndpoint is null)
+            {
+                if (!_currentUserId.HasValue)
+                {
+                    _modalError = "Not authenticated.";
+                    return;
+                }
+
+                var request = new CreateWebhookEndpointRequest(
+                    _form.Name, _form.Url, _form.SubscribedEvents.ToList());
+
+                var result = await WebhookService.CreateAsync(request, _currentUserId.Value);
+                if (result.IsFailure)
+                {
+                    _modalError = result.Error;
+                    return;
+                }
+                ToastService.ShowSuccess("Webhook created.");
+            }
+            else
+            {
+                var request = new UpdateWebhookEndpointRequest(
+                    _form.Name, _form.Url, _form.IsEnabled, _form.SubscribedEvents.ToList());
+
+                var result = await WebhookService.UpdateAsync(_editingEndpoint.Id, request);
+                if (result.IsFailure)
+                {
+                    _modalError = result.Error;
+                    return;
+                }
+                ToastService.ShowSuccess("Webhook updated.");
+            }
+
+            CloseModal();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteEndpoint(Guid id)
+    {
+        try
+        {
+            var result = await WebhookService.DeleteAsync(id);
+            if (result.IsFailure)
+            {
+                ToastService.ShowError(result.Error ?? "Failed to delete webhook.");
+                return;
+            }
+            ToastService.ShowSuccess("Webhook deleted.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete webhook: {ex.Message}");
+        }
+    }
+
+    private async Task TestWebhook(Guid endpointId)
+    {
+        _testingId = endpointId;
+        try
+        {
+            var result = await WebhookService.TestWebhookAsync(endpointId);
+            if (result.IsSuccess)
+                ToastService.ShowSuccess("Test webhook delivered successfully.");
+            else
+                ToastService.ShowError(result.Error ?? "Test delivery failed.");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Test failed: {ex.Message}");
+        }
+        finally
+        {
+            _testingId = null;
+        }
+    }
+
+    private async Task ShowDeliveries(WebhookEndpointDto endpoint)
+    {
+        _deliveriesEndpoint = endpoint;
+        try
+        {
+            _deliveries = (await WebhookService.GetDeliveriesAsync(endpoint.Id)).ToList();
+        }
+        catch
+        {
+            _deliveries = [];
+        }
+        _showDeliveries = true;
+    }
+
+    private async Task<Guid?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return null;
+        return userId;
+    }
+
+    private static string FormatEventType(WebhookEventType type) => type switch
+    {
+        WebhookEventType.ServerStarted => "Server Started",
+        WebhookEventType.ServerStopped => "Server Stopped",
+        WebhookEventType.ServerCrashed => "Server Crashed",
+        WebhookEventType.BackupCompleted => "Backup Completed",
+        WebhookEventType.BackupFailed => "Backup Failed",
+        WebhookEventType.UpdateAvailable => "Update Available",
+        WebhookEventType.ServerInstalled => "Server Installed",
+        WebhookEventType.ServerDeleted => "Server Deleted",
+        _ => type.ToString()
+    };
+
+    private sealed class WebhookFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public bool IsEnabled { get; set; } = true;
+        public HashSet<WebhookEventType> SubscribedEvents { get; set; } = [];
+    }
+}

@@ -1,8 +1,10 @@
 using System.Text;
 using Hangfire;
 using Hangfire.InMemory;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using NebulaPanel.Web.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -174,7 +176,9 @@ builder.Services.AddAuthentication(options =>
             return Task.CompletedTask;
         }
     };
-});
+})
+.AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
+    ApiKeyAuthenticationHandler.SchemeName, _ => { });
 
 // Add authorization
 builder.Services.AddAuthorization(options => options.AddNebulaPolicies());

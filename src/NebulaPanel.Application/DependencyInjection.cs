@@ -23,6 +23,10 @@ public static class DependencyInjection
         // Alert rules
         services.AddScoped<IAlertRuleService, AlertRuleService>();
 
+        // Webhooks & API keys
+        services.AddScoped<IWebhookService, WebhookService>();
+        services.AddScoped<IApiKeyService, ApiKeyService>();
+
         // Dashboard services
         services.AddScoped<IServerActivityService, ServerActivityService>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();

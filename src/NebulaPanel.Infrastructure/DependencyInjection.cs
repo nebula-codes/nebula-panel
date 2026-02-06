@@ -30,6 +30,7 @@ using NebulaPanel.Infrastructure.OfficialGames.Hytale;
 using NebulaPanel.Infrastructure.OfficialGames.Terraria;
 using NebulaPanel.Infrastructure.Security;
 using NebulaPanel.Infrastructure.Health;
+using NebulaPanel.Infrastructure.Webhooks;
 
 namespace NebulaPanel.Infrastructure;
 
@@ -56,6 +57,9 @@ public static class DependencyInjection
         services.AddScoped<IModCacheSyncStatusRepository, ModCacheSyncStatusRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IAlertRuleRepository, AlertRuleRepository>();
+        services.AddScoped<IWebhookEndpointRepository, WebhookEndpointRepository>();
+        services.AddScoped<IWebhookDeliveryRepository, WebhookDeliveryRepository>();
+        services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 
         // Database info service
         services.AddScoped<IDatabaseInfoService, DatabaseInfoService>();
@@ -289,6 +293,14 @@ public static class DependencyInjection
 
         // Log viewer service
         services.AddScoped<ILogViewerService, LogViewerService>();
+
+        // Webhooks
+        services.AddHttpClient("Webhooks", client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NebulaPanel/1.0 (webhook)");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddScoped<IWebhookDispatcher, HttpWebhookDispatcher>();
 
         // RCON password migration (one-time startup)
         services.AddHostedService<RconPasswordMigrationService>();

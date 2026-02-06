@@ -57,6 +57,13 @@ public class NebulaPanelDbContext(DbContextOptions<NebulaPanelDbContext> options
     // Alerts
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
 
+    // Webhooks
+    public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
+    public DbSet<WebhookDelivery> WebhookDeliveries => Set<WebhookDelivery>();
+
+    // API Keys
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

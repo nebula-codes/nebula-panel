@@ -1,0 +1,332 @@
+@page "/settings/api-keys"
+@attribute [Authorize]
+@inject IApiKeyService ApiKeyService
+@inject IToastService ToastService
+@inject AuthenticationStateProvider AuthStateProvider
+@using System.Security.Claims
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@rendermode InteractiveServer
+
+<PageTitle>API Keys - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">API Keys</h1>
+            <p class="text-sm text-nebula-text-muted mt-1">Create API keys to authenticate external applications and scripts.</p>
+        </div>
+        <Button Variant="ButtonVariant.Primary" IconName="plus" OnClick="ShowCreateModal">
+            New API Key
+        </Button>
+    </div>
+
+    @* API Keys list *@
+    <Card>
+        @if (_isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <Icon Name="loader-2" Size="IconSize.Large" Class="animate-spin text-nebula-text-muted" />
+            </div>
+        }
+        else if (_apiKeys.Count == 0)
+        {
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mb-4">
+                    <Icon Name="key" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                </div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">No API keys</h3>
+                <p class="text-sm text-nebula-text-muted mt-1 max-w-sm">
+                    Create API keys to authenticate with the Nebula Panel API using the <code class="px-1 py-0.5 rounded bg-nebula-bg-tertiary text-nebula-text-secondary">X-API-Key</code> header.
+                </p>
+                <Button Variant="ButtonVariant.Primary" IconName="plus" Class="mt-4" OnClick="ShowCreateModal">
+                    Create API Key
+                </Button>
+            </div>
+        }
+        else
+        {
+            <div class="divide-y divide-nebula-border">
+                @foreach (var key in _apiKeys)
+                {
+                    <div class="p-4 hover:bg-nebula-bg-secondary/50 transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="p-2 rounded-nebula @(key.IsRevoked ? "bg-nebula-bg-tertiary" : "bg-nebula-accent/10") flex-shrink-0">
+                                <Icon Name="key"
+                                      Size="IconSize.Small"
+                                      Class="@(key.IsRevoked ? "text-nebula-text-muted" : "text-nebula-accent")" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-medium text-nebula-text-primary">@key.Name</h3>
+                                    @if (key.IsRevoked)
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-danger/10 text-nebula-danger">Revoked</span>
+                                    }
+                                    else if (key.ExpiresAt.HasValue && key.ExpiresAt.Value < DateTime.UtcNow)
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-warning/10 text-nebula-warning">Expired</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-success/10 text-nebula-success">Active</span>
+                                    }
+                                </div>
+                                <div class="flex items-center gap-3 mt-0.5">
+                                    <code class="text-sm text-nebula-text-muted">@(key.KeyPrefix)...</code>
+                                </div>
+                                <div class="flex items-center gap-4 mt-1 text-xs text-nebula-text-muted">
+                                    <span>Created: @key.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                                    @if (key.ExpiresAt.HasValue)
+                                    {
+                                        <span>Expires: @key.ExpiresAt.Value.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>No expiration</span>
+                                    }
+                                    @if (key.LastUsedAt.HasValue)
+                                    {
+                                        <span>Last used: @key.LastUsedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                @if (!key.IsRevoked)
+                                {
+                                    <Button Variant="ButtonVariant.Ghost" IconName="trash-2" OnClick="@(() => RevokeKey(key.Id))" />
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </Card>
+</div>
+
+@* Create Modal *@
+@if (_showCreateModal)
+{
+    <Modal Title="Create API Key"
+           @bind-IsOpen="_showCreateModal">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Name</label>
+                <input type="text" @bind="_createForm.Name"
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent"
+                       placeholder="e.g. CI/CD Pipeline" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Expiration (optional)</label>
+                <select @bind="_createForm.ExpiresInDays"
+                        class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent">
+                    <option value="0">Never</option>
+                    <option value="30">30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                    <option value="180">180 days</option>
+                    <option value="365">1 year</option>
+                </select>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="text-sm text-nebula-danger">@_modalError</div>
+            }
+
+            <div class="flex justify-end gap-2 mt-6">
+                <Button Variant="ButtonVariant.Ghost" Text="Cancel" OnClick="@(() => _showCreateModal = false)" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Create"
+                        Loading="_isCreating"
+                        OnClick="CreateKey" />
+            </div>
+        </div>
+    </Modal>
+}
+
+@* Show Key Modal (shown once after creation) *@
+@if (_showKeyModal && _createdKey is not null)
+{
+    <Modal Title="API Key Created"
+           @bind-IsOpen="_showKeyModal">
+        <div class="space-y-4">
+            <div class="p-4 rounded-nebula bg-nebula-warning/10 border border-nebula-warning/30">
+                <div class="flex items-start gap-2">
+                    <Icon Name="alert-triangle" Size="IconSize.Small" Class="text-nebula-warning mt-0.5" />
+                    <div class="text-sm text-nebula-warning">
+                        Copy this key now. You won't be able to see it again.
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">API Key</label>
+                <div class="flex items-center gap-2">
+                    <code class="flex-1 px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm font-mono break-all select-all">@_createdKey.RawKey</code>
+                    <Button Variant="ButtonVariant.Secondary" IconName="copy" OnClick="CopyKey" />
+                </div>
+            </div>
+
+            <div class="text-sm text-nebula-text-muted">
+                <p>Use this key in the <code class="px-1 py-0.5 rounded bg-nebula-bg-tertiary text-nebula-text-secondary">X-API-Key</code> header when making API requests.</p>
+            </div>
+
+            <div class="flex justify-end mt-6">
+                <Button Variant="ButtonVariant.Primary" Text="Done" OnClick="CloseKeyModal" />
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    private List<ApiKeyDto> _apiKeys = [];
+    private bool _isLoading = true;
+    private bool _showCreateModal;
+    private bool _isCreating;
+    private string? _modalError;
+    private Guid? _currentUserId;
+    private CreateFormModel _createForm = new();
+
+    private bool _showKeyModal;
+    private ApiKeyCreatedDto? _createdKey;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUserId = await GetCurrentUserIdAsync();
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            if (_currentUserId.HasValue)
+            {
+                _apiKeys = (await ApiKeyService.GetByUserAsync(_currentUserId.Value)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load API keys: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        _createForm = new CreateFormModel();
+        _modalError = null;
+        _showCreateModal = true;
+    }
+
+    private async Task CreateKey()
+    {
+        if (string.IsNullOrWhiteSpace(_createForm.Name))
+        {
+            _modalError = "Name is required.";
+            return;
+        }
+
+        if (!_currentUserId.HasValue)
+        {
+            _modalError = "Not authenticated.";
+            return;
+        }
+
+        _isCreating = true;
+        _modalError = null;
+
+        try
+        {
+            int? expiresInDays = _createForm.ExpiresInDays > 0 ? _createForm.ExpiresInDays : null;
+            var request = new CreateApiKeyRequest(_createForm.Name, null, expiresInDays);
+            var result = await ApiKeyService.CreateAsync(request, _currentUserId.Value);
+
+            if (result.IsFailure)
+            {
+                _modalError = result.Error;
+                return;
+            }
+
+            _createdKey = result.Value;
+            _showCreateModal = false;
+            _showKeyModal = true;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _isCreating = false;
+        }
+    }
+
+    private async Task RevokeKey(Guid id)
+    {
+        if (!_currentUserId.HasValue) return;
+
+        try
+        {
+            var result = await ApiKeyService.RevokeAsync(id, _currentUserId.Value);
+            if (result.IsFailure)
+            {
+                ToastService.ShowError(result.Error ?? "Failed to revoke API key.");
+                return;
+            }
+            ToastService.ShowSuccess("API key revoked.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to revoke API key: {ex.Message}");
+        }
+    }
+
+    private async Task CopyKey()
+    {
+        if (_createdKey is not null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("navigator.clipboard.writeText", _createdKey.RawKey);
+                ToastService.ShowSuccess("API key copied to clipboard.");
+            }
+            catch
+            {
+                ToastService.ShowError("Failed to copy. Please select and copy manually.");
+            }
+        }
+    }
+
+    private void CloseKeyModal()
+    {
+        _showKeyModal = false;
+        _createdKey = null;
+    }
+
+    private async Task<Guid?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return null;
+        return userId;
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private sealed class CreateFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public int ExpiresInDays { get; set; }
+    }
+}
