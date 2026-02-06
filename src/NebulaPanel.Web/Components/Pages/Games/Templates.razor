@@ -247,7 +247,7 @@
             {
                 var template = System.Text.Json.JsonSerializer.Deserialize<NebulaPanel.Domain.ValueObjects.GameTemplate>(
                     _fileContent,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+                    new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true });
 
                 if (template?.Definition is not null)
                 {
