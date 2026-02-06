@@ -69,6 +69,18 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
         }
     }
 
+    public async Task<string?> GetRefreshTokenAsync()
+    {
+        try
+        {
+            return await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", "refreshToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async Task SetTokenAsync(string token)
     {
         await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "accessToken", token);
@@ -79,9 +91,15 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 
+    public async Task SetRefreshTokenAsync(string refreshToken)
+    {
+        await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "refreshToken", refreshToken);
+    }
+
     public async Task ClearTokenAsync()
     {
         await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "accessToken");
+        await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "refreshToken");
         _currentUser = new ClaimsPrincipal(new ClaimsIdentity());
         _tokenExpiration = null;
         StopTokenExpirationTimer();

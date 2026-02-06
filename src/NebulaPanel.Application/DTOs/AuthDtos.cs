@@ -18,6 +18,12 @@ public record AuthResponse(
     UserDto User
 );
 
+/// <summary>
+/// Internal result carrying both the client-facing auth response and the raw refresh token for cookie storage.
+/// The refresh token must NOT be serialized to the client — it belongs in an HTTP-only cookie.
+/// </summary>
+public record AuthTokenResult(AuthResponse Response, string RefreshToken);
+
 public record RefreshTokenRequest(string RefreshToken);
 
 /// <summary>

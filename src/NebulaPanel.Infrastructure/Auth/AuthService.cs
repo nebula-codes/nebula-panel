@@ -27,7 +27,7 @@ public class AuthService(
     private readonly JwtSettings _jwtSettings = jwtSettings.Value;
     private readonly AccountLockoutSettings _lockoutSettings = lockoutSettings.Value;
 
-    public async Task<Result<AuthResponse>> LoginAsync(
+    public async Task<Result<AuthTokenResult>> LoginAsync(
         LoginRequest request,
         string? ipAddress = null,
         string? userAgent = null,
@@ -42,7 +42,7 @@ public class AuthService(
             await auditService.LogLoginRateLimitedAsync(request.Username, ipAddress, userAgent, retryAfter, ct)
                 .ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>(Error.RateLimited(retryAfter));
+            return Result.Failure<AuthTokenResult>(Error.RateLimited(retryAfter));
         }
 
         // Record the attempt for rate limiting
@@ -55,7 +55,7 @@ public class AuthService(
             logger.LogWarning("Login attempt failed: user {Username} not found", request.Username);
             await auditService.LogLoginFailedAsync(request.Username, ipAddress, userAgent, "User not found", ct)
                 .ConfigureAwait(false);
-            return Result.Failure<AuthResponse>(Error.InvalidCredentials());
+            return Result.Failure<AuthTokenResult>(Error.InvalidCredentials());
         }
 
         // Check if account is locked
@@ -74,7 +74,7 @@ public class AuthService(
                 $"Account locked until {user.LockoutEndTime:u}",
                 ct).ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>(Error.AccountLocked(user.LockoutEndTime));
+            return Result.Failure<AuthTokenResult>(Error.AccountLocked(user.LockoutEndTime));
         }
 
         // Check if lockout has expired and reset if needed
@@ -96,7 +96,7 @@ public class AuthService(
             logger.LogWarning("Login attempt failed: user {Username} is inactive", request.Username);
             await auditService.LogLoginFailedAsync(request.Username, ipAddress, userAgent, "Account disabled", ct)
                 .ConfigureAwait(false);
-            return Result.Failure<AuthResponse>(Error.AccountDisabled());
+            return Result.Failure<AuthTokenResult>(Error.AccountDisabled());
         }
 
         if (!BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
@@ -119,14 +119,14 @@ public class AuthService(
                 await auditService.LogAccountLockedAsync(user.Id, user.Username, ipAddress, userAgent, user.LockoutEndTime.Value, ct)
                     .ConfigureAwait(false);
 
-                return Result.Failure<AuthResponse>(Error.AccountLocked(user.LockoutEndTime));
+                return Result.Failure<AuthTokenResult>(Error.AccountLocked(user.LockoutEndTime));
             }
 
             await userRepository.UpdateAsync(user, ct).ConfigureAwait(false);
             await auditService.LogLoginFailedAsync(request.Username, ipAddress, userAgent, "Invalid password", ct)
                 .ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>(Error.InvalidCredentials());
+            return Result.Failure<AuthTokenResult>(Error.InvalidCredentials());
         }
 
         // Successful login - reset failed attempts and clear rate limit
@@ -152,26 +152,27 @@ public class AuthService(
             .ConfigureAwait(false);
 
         var expiresInSeconds = _jwtSettings.AccessTokenExpirationMinutes * 60;
-        return new AuthResponse(
+        var response = new AuthResponse(
             accessToken,
             DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes),
             expiresInSeconds,
             ToUserDto(user, roles, permissions)
         );
+        return new AuthTokenResult(response, refreshToken);
     }
 
-    public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
+    public async Task<Result<AuthTokenResult>> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
         // Check if username exists
         if (await userRepository.ExistsByUsernameAsync(request.Username, ct).ConfigureAwait(false))
         {
-            return Result.Failure<AuthResponse>(Error.AlreadyExists("Username", request.Username));
+            return Result.Failure<AuthTokenResult>(Error.AlreadyExists("Username", request.Username));
         }
 
         // Check if email exists
         if (await userRepository.ExistsByEmailAsync(request.Email, ct).ConfigureAwait(false))
         {
-            return Result.Failure<AuthResponse>(Error.AlreadyExists("Email", request.Email));
+            return Result.Failure<AuthTokenResult>(Error.AlreadyExists("Email", request.Email));
         }
 
         // Check if this is the first user (will be admin)
@@ -212,20 +213,21 @@ public class AuthService(
 
         // Generate tokens
         var accessToken = jwtService.GenerateAccessToken(user, roles, permissions);
-        await CreateRefreshTokenAsync(user.Id, ct).ConfigureAwait(false);
+        var refreshToken = await CreateRefreshTokenAsync(user.Id, ct).ConfigureAwait(false);
 
         logger.LogInformation("User {Username} registered successfully (first user: {IsFirstUser})", request.Username, isFirstUser);
 
         var expiresInSeconds = _jwtSettings.AccessTokenExpirationMinutes * 60;
-        return new AuthResponse(
+        var response = new AuthResponse(
             accessToken,
             DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes),
             expiresInSeconds,
             ToUserDto(user, roles, permissions)
         );
+        return new AuthTokenResult(response, refreshToken);
     }
 
-    public async Task<Result<AuthResponse>> RefreshTokenAsync(
+    public async Task<Result<AuthTokenResult>> RefreshTokenAsync(
         string refreshToken,
         string? ipAddress = null,
         string? userAgent = null,
@@ -239,7 +241,7 @@ public class AuthService(
 
         if (token == null)
         {
-            return Result.Failure<AuthResponse>(Error.InvalidCredentials("Invalid refresh token"));
+            return Result.Failure<AuthTokenResult>(Error.InvalidCredentials("Invalid refresh token"));
         }
 
         if (!token.IsActive)
@@ -253,7 +255,7 @@ public class AuthService(
                 "Token expired or revoked",
                 ct).ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>(Error.TokenExpired());
+            return Result.Failure<AuthTokenResult>(Error.TokenExpired());
         }
 
         if (!token.User.IsActive)
@@ -267,7 +269,7 @@ public class AuthService(
                 "Account disabled",
                 ct).ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>(Error.AccountDisabled());
+            return Result.Failure<AuthTokenResult>(Error.AccountDisabled());
         }
 
         // Check if account is locked
@@ -282,7 +284,7 @@ public class AuthService(
                 "Account locked",
                 ct).ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>(Error.AccountLocked(token.User.LockoutEndTime));
+            return Result.Failure<AuthTokenResult>(Error.AccountLocked(token.User.LockoutEndTime));
         }
 
         // Revoke current token
@@ -310,12 +312,13 @@ public class AuthService(
             ct: ct).ConfigureAwait(false);
 
         var expiresInSeconds = _jwtSettings.AccessTokenExpirationMinutes * 60;
-        return new AuthResponse(
+        var response = new AuthResponse(
             accessToken,
             DateTime.UtcNow.AddMinutes(_jwtSettings.AccessTokenExpirationMinutes),
             expiresInSeconds,
             ToUserDto(token.User, roles, permissions)
         );
+        return new AuthTokenResult(response, newRefreshToken);
     }
 
     public async Task<Result> RevokeRefreshTokenAsync(

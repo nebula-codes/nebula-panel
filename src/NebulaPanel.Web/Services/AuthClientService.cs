@@ -1,6 +1,5 @@
 namespace NebulaPanel.Web.Services;
 
-using System.Net.Http.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using NebulaPanel.Application.Common;
@@ -50,8 +49,9 @@ public class AuthClientService : IAuthClientService, IDisposable
 
             if (result.IsSuccess)
             {
-                await _authStateProvider.SetTokenAsync(result.Value!.AccessToken);
-                return new AuthResult(true, User: result.Value.User);
+                await _authStateProvider.SetTokenAsync(result.Value!.Response.AccessToken);
+                await _authStateProvider.SetRefreshTokenAsync(result.Value.RefreshToken);
+                return new AuthResult(true, User: result.Value.Response.User);
             }
 
             return MapAuthError(result.ErrorInfo);
@@ -119,27 +119,28 @@ public class AuthClientService : IAuthClientService, IDisposable
         {
             _logger.LogDebug("Attempting to refresh access token");
 
-            var response = await _httpClient.PostAsync("api/auth/refresh", null);
-
-            if (response.IsSuccessStatusCode)
+            var refreshToken = await _authStateProvider.GetRefreshTokenAsync();
+            if (string.IsNullOrEmpty(refreshToken))
             {
-                var authResponse = await response.Content.ReadFromJsonAsync<AuthResponse>();
-                if (authResponse != null)
-                {
-                    await _authStateProvider.SetTokenAsync(authResponse.AccessToken);
-                    _logger.LogDebug("Token refresh successful");
-                    return new AuthResult(true, User: authResponse.User);
-                }
+                _logger.LogWarning("No refresh token available");
+                return new AuthResult(false, "No refresh token", "SessionExpired");
             }
 
-            // Handle error response
-            var errorResponse = await TryParseErrorResponse(response);
-            _logger.LogWarning("Token refresh failed: {Error}", errorResponse?.Error ?? "Unknown error");
+            var ipAddress = GetClientIpAddress();
+            var userAgent = GetUserAgent();
 
-            return new AuthResult(
-                false,
-                errorResponse?.Error ?? "Token refresh failed",
-                errorResponse?.ErrorCode ?? "SessionExpired");
+            var result = await _authService.RefreshTokenAsync(refreshToken, ipAddress, userAgent);
+
+            if (result.IsSuccess)
+            {
+                await _authStateProvider.SetTokenAsync(result.Value!.Response.AccessToken);
+                await _authStateProvider.SetRefreshTokenAsync(result.Value.RefreshToken);
+                _logger.LogDebug("Token refresh successful");
+                return new AuthResult(true, User: result.Value.Response.User);
+            }
+
+            _logger.LogWarning("Token refresh failed: {Error}", result.Error);
+            return MapAuthError(result.ErrorInfo);
         }
         catch (Exception ex)
         {
@@ -208,18 +209,6 @@ public class AuthClientService : IAuthClientService, IDisposable
     {
         _logger.LogInformation("Session expired");
         OnSessionExpired?.Invoke(this, EventArgs.Empty);
-    }
-
-    private static async Task<AuthErrorResponse?> TryParseErrorResponse(HttpResponseMessage response)
-    {
-        try
-        {
-            return await response.Content.ReadFromJsonAsync<AuthErrorResponse>();
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     private static AuthResult MapAuthError(Error? error)

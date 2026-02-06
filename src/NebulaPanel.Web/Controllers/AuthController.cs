@@ -26,9 +26,9 @@ public class AuthController(IAuthService authService) : ControllerBase
         }
 
         // Set refresh token in HTTP-only cookie
-        SetRefreshTokenCookie(result.Value!.AccessToken);
+        SetRefreshTokenCookie(result.Value!.RefreshToken);
 
-        return Ok(result.Value);
+        return Ok(result.Value.Response);
     }
 
     [Authorize(Policy = "CreateUsers")]
@@ -42,7 +42,7 @@ public class AuthController(IAuthService authService) : ControllerBase
             return BadRequest(new { error = result.Error });
         }
 
-        return Ok(result.Value);
+        return Ok(result.Value.Response);
     }
 
     [HttpPost("refresh")]
@@ -65,9 +65,9 @@ public class AuthController(IAuthService authService) : ControllerBase
             return HandleAuthError(result.ErrorInfo);
         }
 
-        SetRefreshTokenCookie(result.Value!.AccessToken);
+        SetRefreshTokenCookie(result.Value!.RefreshToken);
 
-        return Ok(result.Value);
+        return Ok(result.Value.Response);
     }
 
     [Authorize]

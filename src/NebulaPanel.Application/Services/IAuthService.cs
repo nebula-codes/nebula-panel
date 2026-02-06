@@ -5,15 +5,15 @@ using NebulaPanel.Application.DTOs;
 
 public interface IAuthService
 {
-    Task<Result<AuthResponse>> LoginAsync(
+    Task<Result<AuthTokenResult>> LoginAsync(
         LoginRequest request,
         string? ipAddress = null,
         string? userAgent = null,
         CancellationToken ct = default);
 
-    Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request, CancellationToken ct = default);
+    Task<Result<AuthTokenResult>> RegisterAsync(RegisterRequest request, CancellationToken ct = default);
 
-    Task<Result<AuthResponse>> RefreshTokenAsync(
+    Task<Result<AuthTokenResult>> RefreshTokenAsync(
         string refreshToken,
         string? ipAddress = null,
         string? userAgent = null,
