@@ -145,7 +145,7 @@
             if (result.Success)
             {
                 var returnUrl = string.IsNullOrEmpty(ReturnUrl) ? "/" : ReturnUrl;
-                Navigation.NavigateTo(returnUrl, forceLoad: true);
+                Navigation.NavigateTo(returnUrl, forceLoad: false);
             }
             else
             {
