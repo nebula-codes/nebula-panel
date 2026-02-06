@@ -129,7 +129,7 @@ builder.Services.AddAuthentication(options =>
         ClockSkew = TimeSpan.Zero
     };
 
-    // Support JWT in SignalR
+    // Support JWT in SignalR and handle browser navigation to protected pages
     options.Events = new JwtBearerEvents
     {
         OnMessageReceived = context =>
@@ -140,6 +140,28 @@ builder.Services.AddAuthentication(options =>
             if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
             {
                 context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            // For non-API/non-hub requests (browser navigation), redirect to login
+            // instead of returning 401. JWT Bearer defaults to 401 which blocks
+            // browser access to Blazor pages that have [Authorize].
+            var path = context.Request.Path;
+            if (!path.StartsWithSegments("/api") && !path.StartsWithSegments("/hubs"))
+            {
+                context.HandleResponse();
+                var returnUrl = context.Request.Path + context.Request.QueryString;
+                if (!string.IsNullOrEmpty(returnUrl) && returnUrl != "/")
+                {
+                    context.Response.Redirect($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
+                }
+                else
+                {
+                    context.Response.Redirect("/login");
+                }
             }
 
             return Task.CompletedTask;

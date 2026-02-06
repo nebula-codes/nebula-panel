@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using NebulaPanel.Integration.Tests.Fixtures;
@@ -17,9 +18,11 @@ public class AuthControllerTests
     }
 
     [Fact]
-    public async Task Register_WithValidData_ReturnsSuccess()
+    public async Task Register_WithValidData_AsAdmin_ReturnsSuccess()
     {
-        // Arrange
+        // Arrange - authenticate as admin
+        await AuthenticateAsAdminAsync();
+
         var uniqueId = Guid.NewGuid().ToString("N")[..8];
         var request = new
         {
@@ -38,9 +41,34 @@ public class AuthControllerTests
     }
 
     [Fact]
+    public async Task Register_WithoutAuth_ReturnsUnauthorizedOrForbidden()
+    {
+        // Arrange
+        var uniqueId = Guid.NewGuid().ToString("N")[..8];
+        var request = new
+        {
+            Username = $"noauth_{uniqueId}",
+            Email = $"noauth_{uniqueId}@example.com",
+            Password = "Password123!"
+        };
+
+        // Act
+        var response = await _client.PostAsync(
+            "/api/auth/register",
+            CreateJsonContent(request));
+
+        // Assert - registration must be rejected for unauthenticated users
+        response.IsSuccessStatusCode.Should().BeFalse();
+        response.StatusCode.Should().BeOneOf(
+            HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Register_WithDuplicateUsername_ReturnsBadRequest()
     {
-        // Arrange - First registration
+        // Arrange - authenticate as admin
+        await AuthenticateAsAdminAsync();
+
         var uniqueId = Guid.NewGuid().ToString("N")[..8];
         var request = new
         {
@@ -68,7 +96,9 @@ public class AuthControllerTests
     [Fact]
     public async Task Register_WithDuplicateEmail_ReturnsBadRequest()
     {
-        // Arrange - First registration
+        // Arrange - authenticate as admin
+        await AuthenticateAsAdminAsync();
+
         var uniqueId = Guid.NewGuid().ToString("N")[..8];
         var request = new
         {
@@ -96,7 +126,8 @@ public class AuthControllerTests
     [Fact]
     public async Task Login_WithValidCredentials_ReturnsTokens()
     {
-        // Arrange - Register first
+        // Arrange - Register a user first via admin
+        await AuthenticateAsAdminAsync();
         var uniqueId = Guid.NewGuid().ToString("N")[..8];
         var registerRequest = new
         {
@@ -105,6 +136,7 @@ public class AuthControllerTests
             Password = "Password123!"
         };
         await _client.PostAsync("/api/auth/register", CreateJsonContent(registerRequest));
+        _client.DefaultRequestHeaders.Authorization = null;
 
         // Act
         var loginRequest = new
@@ -126,7 +158,8 @@ public class AuthControllerTests
     [Fact]
     public async Task Login_WithInvalidCredentials_ReturnsUnauthorized()
     {
-        // Arrange - Register first
+        // Arrange - Register a user first via admin
+        await AuthenticateAsAdminAsync();
         var uniqueId = Guid.NewGuid().ToString("N")[..8];
         var registerRequest = new
         {
@@ -135,6 +168,7 @@ public class AuthControllerTests
             Password = "Password123!"
         };
         await _client.PostAsync("/api/auth/register", CreateJsonContent(registerRequest));
+        _client.DefaultRequestHeaders.Authorization = null;
 
         // Act - Login with wrong password
         var loginRequest = new
@@ -258,6 +292,22 @@ public class AuthControllerTests
             "NewPassword123!");
 
         loginResponse.AccessToken.Should().NotBeNullOrEmpty();
+    }
+
+    private async Task AuthenticateAsAdminAsync()
+    {
+        var loginRequest = new { Username = "admin", Password = "admin" };
+        var loginResponse = await _client.PostAsync(
+            "/api/auth/login",
+            CreateJsonContent(loginRequest));
+        loginResponse.EnsureSuccessStatusCode();
+
+        var loginJson = await loginResponse.Content.ReadAsStringAsync();
+        var loginResult = JsonSerializer.Deserialize<AuthResponse>(
+            loginJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", loginResult!.AccessToken);
     }
 
     private static StringContent CreateJsonContent(object obj)

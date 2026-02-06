@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using NebulaPanel.Infrastructure.Persistence;
+using static NebulaPanel.Infrastructure.Persistence.DataSeeder;
 
 namespace NebulaPanel.Integration.Tests.Fixtures;
 
@@ -83,12 +84,15 @@ public class NebulaPanelWebApplicationFactory : WebApplicationFactory<Program>, 
                 }
             });
 
-            // Build service provider to create database
+            // Build service provider to create database and seed data
             var sp = services.BuildServiceProvider();
 
             using var scope = sp.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<NebulaPanelDbContext>();
             db.Database.EnsureCreated();
+
+            // Seed roles, permissions, and default admin user
+            DataSeeder.SeedDataAsync(sp).GetAwaiter().GetResult();
         });
     }
 

@@ -32,12 +32,31 @@ public class AuthenticatedClientFixture
 
     /// <summary>
     /// Registers a new user and authenticates the client.
+    /// Registration requires admin privileges, so this first logs in as admin.
     /// </summary>
     public async Task<RegisterResponse> RegisterAndAuthenticateAsync(
         string username = "testuser",
         string email = "test@example.com",
         string password = "TestPassword123!")
     {
+        // Login as admin to register the new user (registration requires CreateUsers permission)
+        var adminLogin = new { Username = "admin", Password = "admin" };
+        var adminLoginResponse = await _client.PostAsync(
+            "/api/auth/login",
+            new StringContent(
+                JsonSerializer.Serialize(adminLogin),
+                Encoding.UTF8,
+                "application/json"));
+        adminLoginResponse.EnsureSuccessStatusCode();
+
+        var adminLoginJson = await adminLoginResponse.Content.ReadAsStringAsync();
+        var adminLoginResult = JsonSerializer.Deserialize<AuthResponse>(
+            adminLoginJson,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLoginResult!.AccessToken);
+
+        // Register the new user as admin
         var registerRequest = new { Username = username, Email = email, Password = password };
         var registerResponse = await _client.PostAsync(
             "/api/auth/register",
@@ -53,8 +72,9 @@ public class AuthenticatedClientFixture
             responseJson,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        // Now login to get the access token
+        // Now login as the new user
         var loginRequest = new { Username = username, Password = password };
+        _client.DefaultRequestHeaders.Authorization = null;
         var loginResponse = await _client.PostAsync(
             "/api/auth/login",
             new StringContent(

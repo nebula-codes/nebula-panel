@@ -39,7 +39,7 @@ Access the panel at http://localhost:5000
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `ASPNETCORE_ENVIRONMENT` | Runtime environment | `Production` | No |
-| `ConnectionStrings__DefaultConnection` | Database connection string | `Data Source=/app/data/nebula.db` | No |
+| `Database__ConnectionString` | Database connection string | `Data Source=/app/data/nebula.db` | No |
 | `Jwt__Secret` | JWT signing key (min 64 chars) | - | **Yes** |
 | `CurseForge__ApiKey` | CurseForge API key for mod downloads | - | No |
 | `Modrinth__ApiKey` | Modrinth API key for mod downloads | - | No |

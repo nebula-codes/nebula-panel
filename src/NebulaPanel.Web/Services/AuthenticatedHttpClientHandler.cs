@@ -101,7 +101,6 @@ public class AuthenticatedHttpClientHandler : DelegatingHandler
 
         var path = uri.PathAndQuery.ToLowerInvariant();
         return path.Contains("/api/auth/login") ||
-               path.Contains("/api/auth/register") ||
                path.Contains("/api/auth/refresh");
     }
 

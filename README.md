@@ -53,7 +53,7 @@ Common environment variables:
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `Jwt__Secret` | JWT signing key (min 64 characters) | Yes |
-| `ConnectionStrings__DefaultConnection` | Database connection string | No |
+| `Database__ConnectionString` | Database connection string | No |
 | `CurseForge__ApiKey` | CurseForge API key for mod downloads | No |
 | `Modrinth__ApiKey` | Modrinth API key for mod downloads | No |
 

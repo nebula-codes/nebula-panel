@@ -31,6 +31,7 @@ public class AuthController(IAuthService authService) : ControllerBase
         return Ok(result.Value);
     }
 
+    [Authorize(Policy = "CreateUsers")]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {

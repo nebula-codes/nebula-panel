@@ -63,7 +63,7 @@ USER nebula
 # Environment variables
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV ConnectionStrings__DefaultConnection="Data Source=/app/data/nebula.db"
+ENV Database__ConnectionString="Data Source=/app/data/nebula.db"
 
 # Expose port
 EXPOSE 5000

@@ -2,7 +2,7 @@ namespace NebulaPanel.Domain.ValueObjects;
 
 public record ModCacheSettings
 {
-    public bool Enabled { get; init; } = true;
+    public bool Enabled { get; init; } = false;
     public bool ModrinthEnabled { get; init; } = true;
     public bool CurseForgeEnabled { get; init; } = true;
     public bool CacheModpacks { get; init; } = true;

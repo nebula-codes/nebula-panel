@@ -1,7 +1,9 @@
 namespace NebulaPanel.Web.Services;
 
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using NebulaPanel.Application.Common;
 using NebulaPanel.Application.DTOs;
 using NebulaPanel.Application.Services;
 
@@ -9,6 +11,7 @@ public class AuthClientService : IAuthClientService, IDisposable
 {
     private readonly IAuthService _authService;
     private readonly AuthStateProvider _authStateProvider;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly HttpClient _httpClient;
     private readonly ILogger<AuthClientService> _logger;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -20,11 +23,13 @@ public class AuthClientService : IAuthClientService, IDisposable
     public AuthClientService(
         IAuthService authService,
         AuthStateProvider authStateProvider,
+        IHttpContextAccessor httpContextAccessor,
         HttpClient httpClient,
         ILogger<AuthClientService> logger)
     {
         _authService = authService;
         _authStateProvider = authStateProvider;
+        _httpContextAccessor = httpContextAccessor;
         _httpClient = httpClient;
         _logger = logger;
 
@@ -37,39 +42,11 @@ public class AuthClientService : IAuthClientService, IDisposable
     {
         try
         {
-            var response = await _httpClient.PostAsJsonAsync("api/auth/login", new { username, password });
+            var ipAddress = GetClientIpAddress();
+            var userAgent = GetUserAgent();
 
-            if (response.IsSuccessStatusCode)
-            {
-                var authResponse = await response.Content.ReadFromJsonAsync<AuthResponse>();
-                if (authResponse != null)
-                {
-                    await _authStateProvider.SetTokenAsync(authResponse.AccessToken);
-                    return new AuthResult(true, User: authResponse.User);
-                }
-            }
-
-            // Handle error response
-            var errorResponse = await TryParseErrorResponse(response);
-            return new AuthResult(
-                false,
-                errorResponse?.Error ?? "Login failed",
-                errorResponse?.ErrorCode,
-                RetryAfterSeconds: errorResponse?.RetryAfterSeconds,
-                LockoutEndTime: errorResponse?.LockoutEndTime);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during login");
-            return new AuthResult(false, ex.Message);
-        }
-    }
-
-    public async Task<AuthResult> RegisterAsync(string username, string email, string password)
-    {
-        try
-        {
-            var result = await _authService.RegisterAsync(new RegisterRequest(username, email, password));
+            var result = await _authService.LoginAsync(
+                new LoginRequest(username, password), ipAddress, userAgent);
 
             if (result.IsSuccess)
             {
@@ -77,11 +54,11 @@ public class AuthClientService : IAuthClientService, IDisposable
                 return new AuthResult(true, User: result.Value.User);
             }
 
-            return new AuthResult(false, result.Error);
+            return MapAuthError(result.ErrorInfo);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during registration");
+            _logger.LogError(ex, "Error during login");
             return new AuthResult(false, ex.Message);
         }
     }
@@ -243,6 +220,54 @@ public class AuthClientService : IAuthClientService, IDisposable
         {
             return null;
         }
+    }
+
+    private static AuthResult MapAuthError(Error? error)
+    {
+        if (error is null)
+            return new AuthResult(false, "Login failed");
+
+        return error.Code switch
+        {
+            ErrorCode.RateLimited => new AuthResult(
+                false,
+                error.Message,
+                "RateLimited",
+                RetryAfterSeconds: int.TryParse(error.Details, out var seconds) ? seconds : null),
+
+            ErrorCode.AccountLocked => new AuthResult(
+                false,
+                error.Message,
+                "AccountLocked",
+                LockoutEndTime: DateTime.TryParse(error.Details, out var endTime) ? endTime : null),
+
+            ErrorCode.AccountDisabled => new AuthResult(false, error.Message, "AccountDisabled"),
+            ErrorCode.InvalidCredentials => new AuthResult(false, error.Message, "InvalidCredentials"),
+            _ => new AuthResult(false, error.Message, error.Code.ToString())
+        };
+    }
+
+    private string? GetClientIpAddress()
+    {
+        var context = _httpContextAccessor.HttpContext;
+        if (context is null) return null;
+
+        var forwardedFor = context.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(forwardedFor))
+        {
+            var ip = forwardedFor.Split(',').FirstOrDefault()?.Trim();
+            if (!string.IsNullOrEmpty(ip)) return ip;
+        }
+
+        var realIp = context.Request.Headers["X-Real-IP"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(realIp)) return realIp;
+
+        return context.Connection.RemoteIpAddress?.ToString();
+    }
+
+    private string? GetUserAgent()
+    {
+        return _httpContextAccessor.HttpContext?.Request.Headers.UserAgent.FirstOrDefault();
     }
 
     private static IEnumerable<System.Security.Claims.Claim> ParseClaimsFromToken(string jwt)
