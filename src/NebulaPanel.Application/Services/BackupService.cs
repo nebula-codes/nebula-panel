@@ -49,7 +49,7 @@ public class BackupService(
         var backup = await _backupRepository.GetByIdWithServerAsync(id, cancellationToken).ConfigureAwait(false);
         if (backup is null)
         {
-            return Result.Failure<BackupDto>($"Backup with ID '{id}' not found.");
+            return Result.Failure<BackupDto>(Error.NotFound("Backup", id.ToString()));
         }
         return MapToDto(backup);
     }
@@ -113,7 +113,7 @@ public class BackupService(
         var paths = relativePaths?.ToArray();
         if (paths is null || paths.Length == 0)
         {
-            return Result.Failure<BackupDto>("At least one path must be specified for a selective backup.");
+            return Result.Failure<BackupDto>(Error.Validation("At least one path must be specified for a selective backup."));
         }
 
         return await CreateBackupInternalAsync(
@@ -169,12 +169,12 @@ public class BackupService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<BackupDto>($"Server with ID '{serverId}' not found.");
+            return Result.Failure<BackupDto>(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (string.IsNullOrEmpty(server.InstallPath) || !Directory.Exists(server.InstallPath))
         {
-            return Result.Failure<BackupDto>($"Server install path does not exist: {server.InstallPath}");
+            return Result.Failure<BackupDto>(Error.InvalidOperation($"Server install path does not exist: {server.InstallPath}"));
         }
 
         // Generate backup name if not provided
@@ -270,17 +270,17 @@ public class BackupService(
         var backup = await _backupRepository.GetByIdWithServerAsync(backupId, cancellationToken).ConfigureAwait(false);
         if (backup is null)
         {
-            return Result.Failure($"Backup with ID '{backupId}' not found.");
+            return Result.Failure(Error.NotFound("Backup", backupId.ToString()));
         }
 
         if (backup.Status != BackupStatus.Completed)
         {
-            return Result.Failure($"Cannot restore backup with status '{backup.Status}'. Only completed backups can be restored.");
+            return Result.Failure(Error.InvalidOperation($"Cannot restore backup with status '{backup.Status}'. Only completed backups can be restored."));
         }
 
         if (!_backupFileManager.BackupFileExists(backup.FilePath))
         {
-            return Result.Failure($"Backup file not found: {backup.FilePath}");
+            return Result.Failure(Error.NotFound("Backup file", backup.FilePath));
         }
 
         var server = backup.Server;
@@ -353,7 +353,7 @@ public class BackupService(
         var backup = await _backupRepository.GetByIdAsync(backupId, cancellationToken).ConfigureAwait(false);
         if (backup is null)
         {
-            return Result.Failure($"Backup with ID '{backupId}' not found.");
+            return Result.Failure(Error.NotFound("Backup", backupId.ToString()));
         }
 
         _logger.LogInformation("Deleting backup '{BackupName}' ({BackupId})", backup.Name, backupId);
@@ -385,12 +385,12 @@ public class BackupService(
         var backup = await _backupRepository.GetByIdAsync(backupId, cancellationToken).ConfigureAwait(false);
         if (backup is null)
         {
-            return Result.Failure<Stream>($"Backup with ID '{backupId}' not found.");
+            return Result.Failure<Stream>(Error.NotFound("Backup", backupId.ToString()));
         }
 
         if (!_backupFileManager.BackupFileExists(backup.FilePath))
         {
-            return Result.Failure<Stream>($"Backup file not found: {backup.FilePath}");
+            return Result.Failure<Stream>(Error.NotFound("Backup file", backup.FilePath));
         }
 
         var stream = await _backupFileManager.OpenBackupStreamAsync(backup.FilePath, cancellationToken)
@@ -404,12 +404,12 @@ public class BackupService(
         var backup = await _backupRepository.GetByIdAsync(backupId, cancellationToken).ConfigureAwait(false);
         if (backup is null)
         {
-            return Result.Failure<IReadOnlyList<string>>($"Backup with ID '{backupId}' not found.");
+            return Result.Failure<IReadOnlyList<string>>(Error.NotFound("Backup", backupId.ToString()));
         }
 
         if (!_backupFileManager.BackupFileExists(backup.FilePath))
         {
-            return Result.Failure<IReadOnlyList<string>>($"Backup file not found: {backup.FilePath}");
+            return Result.Failure<IReadOnlyList<string>>(Error.NotFound("Backup file", backup.FilePath));
         }
 
         var contents = await _backupFileManager.GetBackupContentsAsync(backup.FilePath, cancellationToken)
@@ -429,7 +429,7 @@ public class BackupService(
     {
         if (keepCount < 1)
         {
-            return Result.Failure<int>("Keep count must be at least 1.");
+            return Result.Failure<int>(Error.Validation("Keep count must be at least 1."));
         }
 
         _logger.LogInformation(

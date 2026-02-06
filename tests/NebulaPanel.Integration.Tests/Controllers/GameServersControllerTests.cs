@@ -165,7 +165,7 @@ public class GameServersControllerTests
     }
 
     [Fact]
-    public async Task Create_WithNonExistentGame_ReturnsBadRequest()
+    public async Task Create_WithNonExistentGame_ReturnsNotFound()
     {
         // Arrange
         var (auth, _, _) = await SetupTestContextAsync();
@@ -185,7 +185,7 @@ public class GameServersControllerTests
             CreateJsonContent(request));
 
         // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]

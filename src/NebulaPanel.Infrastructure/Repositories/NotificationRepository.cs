@@ -42,6 +42,13 @@ public class NotificationRepository(NebulaPanelDbContext context) : INotificatio
             .ConfigureAwait(false);
     }
 
+    public async Task<int> GetCountAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        return await context.Notifications
+            .CountAsync(n => n.UserId == userId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task AddAsync(Notification notification, CancellationToken cancellationToken = default)
     {
         await context.Notifications.AddAsync(notification, cancellationToken).ConfigureAwait(false);

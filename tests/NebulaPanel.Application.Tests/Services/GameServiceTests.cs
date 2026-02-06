@@ -360,7 +360,7 @@ public class GameServiceTests
         var result = await _sut.GetAvailableVersionsAsync("unknown");
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Should().Contain("No official game provider");
+        result.ErrorInfo?.Code.Should().Be(ErrorCode.NotFound);
     }
 
     #endregion

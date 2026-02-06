@@ -38,7 +38,7 @@ public class GameService(
         var game = await _gameRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (game is null)
         {
-            return Result.Failure<GameDto>($"Game with ID '{id}' not found.");
+            return Result.Failure<GameDto>(Error.NotFound("Game", id.ToString()));
         }
 
         var serverCount = await _gameRepository.GetServerCountAsync(id, cancellationToken).ConfigureAwait(false);
@@ -50,7 +50,7 @@ public class GameService(
         var game = await _gameRepository.GetBySlugAsync(slug, cancellationToken).ConfigureAwait(false);
         if (game is null)
         {
-            return Result.Failure<GameDto>($"Game with slug '{slug}' not found.");
+            return Result.Failure<GameDto>(Error.NotFound("Game", slug));
         }
 
         var serverCount = await _gameRepository.GetServerCountAsync(game.Id, cancellationToken).ConfigureAwait(false);
@@ -61,7 +61,7 @@ public class GameService(
     {
         if (await _gameRepository.SlugExistsAsync(request.Slug, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<GameDto>($"A game with slug '{request.Slug}' already exists.");
+            return Result.Failure<GameDto>(Error.AlreadyExists("Game", request.Slug));
         }
 
         // Download icon if it's a URL
@@ -115,18 +115,18 @@ public class GameService(
         var game = await _gameRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (game is null)
         {
-            return Result.Failure<GameDto>($"Game with ID '{id}' not found.");
+            return Result.Failure<GameDto>(Error.NotFound("Game", id.ToString()));
         }
 
         // Block editing official games' core definition
         if (game.SourceType == GameSourceType.Official)
         {
-            return Result.Failure<GameDto>("Official games cannot have their core definition modified. Only custom games can be edited.");
+            return Result.Failure<GameDto>(Error.InvalidOperation("Official games cannot have their core definition modified. Only custom games can be edited."));
         }
 
         if (await _gameRepository.SlugExistsAsync(request.Slug, id, cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<GameDto>($"A game with slug '{request.Slug}' already exists.");
+            return Result.Failure<GameDto>(Error.AlreadyExists("Game", request.Slug));
         }
 
         // Download icon if it's a URL and different from current
@@ -176,13 +176,13 @@ public class GameService(
     {
         if (!await _gameRepository.ExistsAsync(id, cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure($"Game with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("Game", id.ToString()));
         }
 
         var serverCount = await _gameRepository.GetServerCountAsync(id, cancellationToken).ConfigureAwait(false);
         if (serverCount > 0)
         {
-            return Result.Failure($"Cannot delete game: {serverCount} server(s) are still using this game.");
+            return Result.Failure(Error.Conflict($"Cannot delete game: {serverCount} server(s) are still using this game."));
         }
 
         await _gameRepository.DeleteAsync(id, cancellationToken).ConfigureAwait(false);
@@ -216,7 +216,7 @@ public class GameService(
         var provider = _officialGameRegistry.GetProvider(gameSlug);
         if (provider is null)
         {
-            return Result.Failure<IReadOnlyList<GameVersionDto>>($"No official game provider found for '{gameSlug}'.");
+            return Result.Failure<IReadOnlyList<GameVersionDto>>(Error.NotFound("Game provider", gameSlug));
         }
 
         var versions = await provider.GetAvailableVersionsAsync(cancellationToken).ConfigureAwait(false);

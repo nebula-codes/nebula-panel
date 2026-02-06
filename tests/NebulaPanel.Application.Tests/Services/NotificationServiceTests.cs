@@ -58,8 +58,8 @@ public class NotificationServiceTests
             .ReturnsAsync(3);
         _mockRepo.Setup(r => r.GetByUserIdAsync(userId, 5, true, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<Notification> { CreateNotification(userId) });
-        _mockRepo.Setup(r => r.GetByUserIdAsync(userId, int.MaxValue, true, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<Notification> { CreateNotification(userId), CreateNotification(userId), CreateNotification(userId), CreateNotification(userId), CreateNotification(userId) });
+        _mockRepo.Setup(r => r.GetCountAsync(userId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(5);
 
         var result = await _sut.GetSummaryAsync(userId);
 

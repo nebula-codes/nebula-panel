@@ -22,6 +22,7 @@ public class GameServerServiceTests
             rconService: null,
             _fixture.ImageService.Object,
             serverActivityService: null,
+            _fixture.EncryptionService.Object,
             _fixture.Logger.Object);
     }
 
@@ -150,7 +151,7 @@ public class GameServerServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("already have a server named");
+        result.ErrorInfo?.Code.Should().Be(ErrorCode.AlreadyExists);
     }
 
     [Fact]
@@ -337,7 +338,7 @@ public class GameServerServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("already stopped");
+        result.ErrorInfo?.Code.Should().Be(ErrorCode.ServerStopped);
     }
 
     #endregion
@@ -412,7 +413,7 @@ public class GameServerServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().ContainEquivalentOf("stop the server");
+        result.ErrorInfo?.Code.Should().Be(ErrorCode.ServerRunning);
     }
 
     [Fact]

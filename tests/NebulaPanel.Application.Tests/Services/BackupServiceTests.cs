@@ -230,7 +230,7 @@ public class BackupServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Backup file not found");
+        result.ErrorInfo?.Code.Should().Be(ErrorCode.NotFound);
     }
 
     [Fact]

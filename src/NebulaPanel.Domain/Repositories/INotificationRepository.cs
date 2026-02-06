@@ -31,6 +31,11 @@ public interface INotificationRepository
     Task<int> GetUnreadCountAsync(Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets the total count of notifications for a user.
+    /// </summary>
+    Task<int> GetCountAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Adds a new notification.
     /// </summary>
     Task AddAsync(Notification notification, CancellationToken cancellationToken = default);

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NebulaPanel.Application.DTOs;
 using NebulaPanel.Application.Services;
+using NebulaPanel.Web.Extensions;
 
 namespace NebulaPanel.Web.Controllers;
 
@@ -35,20 +36,14 @@ public class GameServersController(IGameServerService serverService) : Controlle
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<GameServerDto>> GetById(Guid id, CancellationToken cancellationToken)
+    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
         var result = await _serverService.GetServerByIdAsync(id, cancellationToken);
-
-        if (result.IsFailure)
-        {
-            return NotFound(new { error = result.Error });
-        }
-
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpPost]
-    public async Task<ActionResult<GameServerDto>> Create([FromBody] CreateGameServerRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Create([FromBody] CreateGameServerRequest request, CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
         if (userId is null)
@@ -57,51 +52,25 @@ public class GameServersController(IGameServerService serverService) : Controlle
         }
 
         var result = await _serverService.CreateServerAsync(request, userId.Value, cancellationToken);
-
-        if (result.IsFailure)
-        {
-            return BadRequest(new { error = result.Error });
-        }
-
-        return CreatedAtAction(nameof(GetById), new { id = result.Value!.Id }, result.Value);
+        return result.ToCreatedResult();
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<ActionResult<GameServerDto>> Update(Guid id, [FromBody] UpdateGameServerRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateGameServerRequest request, CancellationToken cancellationToken)
     {
         var result = await _serverService.UpdateServerAsync(id, request, cancellationToken);
-
-        if (result.IsFailure)
-        {
-            if (result.Error!.Contains("not found"))
-            {
-                return NotFound(new { error = result.Error });
-            }
-            return BadRequest(new { error = result.Error });
-        }
-
-        return Ok(result.Value);
+        return result.ToActionResult();
     }
 
     [HttpDelete("{id:guid}")]
-    public async Task<ActionResult> Delete(
+    public async Task<IActionResult> Delete(
         Guid id,
         [FromQuery] bool deleteFiles = false,
         [FromQuery] bool deleteContainer = false,
         CancellationToken cancellationToken = default)
     {
         var result = await _serverService.DeleteServerAsync(id, deleteFiles, deleteContainer, cancellationToken);
-
-        if (result.IsFailure)
-        {
-            if (result.Error!.Contains("not found"))
-            {
-                return NotFound(new { error = result.Error });
-            }
-            return BadRequest(new { error = result.Error });
-        }
-
-        return NoContent();
+        return result.ToNoContentResult();
     }
 
     private Guid? GetCurrentUserId()

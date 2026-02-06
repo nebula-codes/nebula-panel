@@ -40,12 +40,12 @@ public class NotificationService(
             .ConfigureAwait(false);
 
         var totalCount = await notificationRepository
-            .GetByUserIdAsync(userId, int.MaxValue, true, cancellationToken)
+            .GetCountAsync(userId, cancellationToken)
             .ConfigureAwait(false);
 
         return new NotificationSummaryDto(
             unreadCount,
-            totalCount.Count,
+            totalCount,
             recent.Select(MapToDto).ToList()
         );
     }
