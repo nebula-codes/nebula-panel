@@ -31,6 +31,13 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure listen URLs from appsettings.json (override with ASPNETCORE_URLS env var)
+var urls = builder.Configuration["Urls"];
+if (!string.IsNullOrEmpty(urls))
+{
+    builder.WebHost.UseUrls(urls.Split(';'));
+}
+
 // Validate JWT secret is configured in production
 if (builder.Environment.IsProduction())
 {

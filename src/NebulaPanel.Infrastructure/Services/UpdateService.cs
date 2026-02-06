@@ -94,7 +94,7 @@ public class UpdateService : IUpdateService
         Directory.CreateDirectory(_updateDir);
         Directory.CreateDirectory(_backupDir);
 
-        _logger.LogInformation("Update service initialized. Current version: {Version}", CurrentVersion.FullVersion);
+        _logger.LogDebug("Update service initialized. Current version: {Version}", CurrentVersion.FullVersion);
     }
 
     /// <inheritdoc />

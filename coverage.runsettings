@@ -5,16 +5,7 @@
       <DataCollector friendlyName="XPlat Code Coverage">
         <Configuration>
           <Format>cobertura</Format>
-          <Exclude>
-            <!-- Exclude Blazor components (UI layer) -->
-            [*]NebulaPanel.Web.Components.*
-            <!-- Exclude migrations -->
-            [*]NebulaPanel.Infrastructure.Persistence.Migrations.*
-            <!-- Exclude Program.cs entry points -->
-            [*]Program
-            <!-- Exclude test assemblies -->
-            [*.Tests]*
-          </Exclude>
+          <Exclude>[*]NebulaPanel.Web.Components.*,[*]NebulaPanel.Infrastructure.Persistence.Migrations.*,[*]Program,[*.Tests]*,[*]System.Text.RegularExpressions.Generated*</Exclude>
           <ExcludeByFile>
             <!-- Exclude auto-generated files -->
             **/Migrations/*.cs
