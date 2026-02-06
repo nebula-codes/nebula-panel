@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<ICachedModRepository, CachedModRepository>();
         services.AddScoped<IModCacheSyncStatusRepository, ModCacheSyncStatusRepository>();
         services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IAlertRuleRepository, AlertRuleRepository>();
 
         // Database info service
         services.AddScoped<IDatabaseInfoService, DatabaseInfoService>();
@@ -69,6 +70,8 @@ public static class DependencyInjection
         // Rate limiting and security audit services
         services.AddSingleton<ILoginRateLimiter, LoginRateLimiter>();
         services.AddScoped<ISecurityAuditService, SecurityAuditService>();
+        services.AddScoped<IAuditService, AuditService>();
+        services.AddScoped<IAuditQueryService, AuditQueryService>();
 
         // Server executors
         services.AddSingleton<IServerExecutor, NativeProcessExecutor>();
@@ -286,6 +289,9 @@ public static class DependencyInjection
 
         // Log viewer service
         services.AddScoped<ILogViewerService, LogViewerService>();
+
+        // RCON password migration (one-time startup)
+        services.AddHostedService<RconPasswordMigrationService>();
 
         return services;
     }

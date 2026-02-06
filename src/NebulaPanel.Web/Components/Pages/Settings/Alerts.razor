@@ -1,0 +1,382 @@
+@page "/settings/alerts"
+@attribute [Authorize]
+@inject IAlertRuleService AlertRuleService
+@inject IGameServerService ServerService
+@inject IToastService ToastService
+@inject AuthenticationStateProvider AuthStateProvider
+@using System.Security.Claims
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@rendermode InteractiveServer
+
+<PageTitle>Alerts - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">Alert Rules</h1>
+            <p class="text-sm text-nebula-text-muted mt-1">Get notified when server resource usage exceeds thresholds.</p>
+        </div>
+        <Button Variant="ButtonVariant.Primary" IconName="plus" OnClick="ShowCreateModal">
+            New Alert Rule
+        </Button>
+    </div>
+
+    @* Alert rules list *@
+    <Card>
+        @if (_isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <Icon Name="loader-2" Size="IconSize.Large" Class="animate-spin text-nebula-text-muted" />
+            </div>
+        }
+        else if (_rules.Count == 0)
+        {
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mb-4">
+                    <Icon Name="bell-ring" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                </div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">No alert rules</h3>
+                <p class="text-sm text-nebula-text-muted mt-1 max-w-sm">
+                    Create alert rules to get notified when server resource usage crosses your defined thresholds.
+                </p>
+                <Button Variant="ButtonVariant.Primary" IconName="plus" Class="mt-4" OnClick="ShowCreateModal">
+                    Create Alert Rule
+                </Button>
+            </div>
+        }
+        else
+        {
+            <div class="divide-y divide-nebula-border">
+                @foreach (var rule in _rules)
+                {
+                    <div class="p-4 hover:bg-nebula-bg-secondary/50 transition-colors">
+                        <div class="flex items-center gap-4">
+                            <div class="p-2 rounded-nebula @(rule.IsEnabled ? "bg-nebula-accent/10" : "bg-nebula-bg-tertiary") flex-shrink-0">
+                                <Icon Name="@GetResourceIcon(rule.ResourceType)"
+                                      Size="IconSize.Small"
+                                      Class="@(rule.IsEnabled ? "text-nebula-accent" : "text-nebula-text-muted")" />
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <h3 class="font-medium text-nebula-text-primary">@rule.Name</h3>
+                                    @if (!rule.IsEnabled)
+                                    {
+                                        <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">Disabled</span>
+                                    }
+                                </div>
+                                <p class="text-sm text-nebula-text-muted mt-0.5">
+                                    @rule.ResourceType @FormatComparison(rule.Comparison) @rule.Threshold@GetUnit(rule.ResourceType)
+                                    for @rule.DurationSeconds seconds
+                                    @if (rule.ServerName is not null)
+                                    {
+                                        <span>on <span class="text-nebula-text-secondary">@rule.ServerName</span></span>
+                                    }
+                                </p>
+                                <div class="flex items-center gap-4 mt-1 text-xs text-nebula-text-muted">
+                                    <span>Cooldown: @rule.CooldownMinutes min</span>
+                                    @if (rule.LastTriggeredAt.HasValue)
+                                    {
+                                        <span>Last triggered: @rule.LastTriggeredAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                                <Button Variant="ButtonVariant.Ghost" IconName="pencil" OnClick="@(() => ShowEditModal(rule))" />
+                                <Button Variant="ButtonVariant.Ghost" IconName="trash-2" OnClick="@(() => DeleteRule(rule.Id))" />
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </Card>
+</div>
+
+@* Create/Edit Modal *@
+@if (_showModal)
+{
+    <Modal Title="@(_editingRule is null ? "Create Alert Rule" : "Edit Alert Rule")"
+           @bind-IsOpen="_showModal">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Name</label>
+                <input type="text" @bind="_form.Name"
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent"
+                       placeholder="e.g. High CPU Alert" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Server (optional)</label>
+                <select @bind="_form.ServerId"
+                        class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent">
+                    <option value="">All Servers</option>
+                    @foreach (var server in _servers)
+                    {
+                        <option value="@server.Id">@server.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Resource</label>
+                    <select @bind="_form.ResourceType"
+                            class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent">
+                        @foreach (var type in Enum.GetValues<AlertResourceType>())
+                        {
+                            <option value="@type">@type</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Condition</label>
+                    <select @bind="_form.Comparison"
+                            class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent">
+                        <option value="@AlertComparison.GreaterThan">Greater Than</option>
+                        <option value="@AlertComparison.LessThan">Less Than</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Threshold</label>
+                    <input type="number" @bind="_form.Threshold" step="0.1"
+                           class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Duration (sec)</label>
+                    <input type="number" @bind="_form.DurationSeconds" min="10"
+                           class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Cooldown (min)</label>
+                    <input type="number" @bind="_form.CooldownMinutes" min="1"
+                           class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+                </div>
+            </div>
+
+            @if (_editingRule is not null)
+            {
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="isEnabled" @bind="_form.IsEnabled"
+                           class="rounded border-nebula-border" />
+                    <label for="isEnabled" class="text-sm text-nebula-text-secondary">Enabled</label>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <div class="text-sm text-nebula-danger">@_modalError</div>
+            }
+
+            <div class="flex justify-end gap-2 mt-6">
+                <Button Variant="ButtonVariant.Ghost" Text="Cancel" OnClick="CloseModal" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="@(_editingRule is null ? "Create" : "Save")"
+                        Loading="_isSaving"
+                        OnClick="SaveRule" />
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    private List<AlertRuleDto> _rules = [];
+    private List<GameServerListItemDto> _servers = [];
+    private bool _isLoading = true;
+    private bool _showModal;
+    private bool _isSaving;
+    private AlertRuleDto? _editingRule;
+    private string? _modalError;
+    private Guid? _currentUserId;
+    private AlertFormModel _form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUserId = await GetCurrentUserIdAsync();
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            if (_currentUserId.HasValue)
+            {
+                _rules = (await AlertRuleService.GetByOwnerAsync(_currentUserId.Value)).ToList();
+            }
+            _servers = (await ServerService.GetAllServersAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load data: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        _editingRule = null;
+        _form = new AlertFormModel();
+        _modalError = null;
+        _showModal = true;
+    }
+
+    private void ShowEditModal(AlertRuleDto rule)
+    {
+        _editingRule = rule;
+        _form = new AlertFormModel
+        {
+            Name = rule.Name,
+            ServerId = rule.ServerId?.ToString() ?? string.Empty,
+            ResourceType = rule.ResourceType,
+            Comparison = rule.Comparison,
+            Threshold = rule.Threshold,
+            DurationSeconds = rule.DurationSeconds,
+            IsEnabled = rule.IsEnabled,
+            CooldownMinutes = rule.CooldownMinutes
+        };
+        _modalError = null;
+        _showModal = true;
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _editingRule = null;
+        _modalError = null;
+    }
+
+    private async Task SaveRule()
+    {
+        if (string.IsNullOrWhiteSpace(_form.Name))
+        {
+            _modalError = "Name is required.";
+            return;
+        }
+
+        _isSaving = true;
+        _modalError = null;
+
+        try
+        {
+            Guid? serverId = Guid.TryParse(_form.ServerId, out var sid) ? sid : null;
+
+            if (_editingRule is null)
+            {
+                if (!_currentUserId.HasValue)
+                {
+                    _modalError = "Not authenticated.";
+                    return;
+                }
+
+                var request = new CreateAlertRuleRequest(
+                    serverId, _form.Name, _form.ResourceType, _form.Comparison,
+                    _form.Threshold, _form.DurationSeconds, _form.CooldownMinutes);
+
+                var result = await AlertRuleService.CreateAsync(request, _currentUserId.Value);
+                if (result.IsFailure)
+                {
+                    _modalError = result.Error;
+                    return;
+                }
+                ToastService.ShowSuccess("Alert rule created.");
+            }
+            else
+            {
+                var request = new UpdateAlertRuleRequest(
+                    _form.Name, _form.ResourceType, _form.Comparison,
+                    _form.Threshold, _form.DurationSeconds, _form.IsEnabled, _form.CooldownMinutes);
+
+                var result = await AlertRuleService.UpdateAsync(_editingRule.Id, request);
+                if (result.IsFailure)
+                {
+                    _modalError = result.Error;
+                    return;
+                }
+                ToastService.ShowSuccess("Alert rule updated.");
+            }
+
+            CloseModal();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _modalError = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task DeleteRule(Guid id)
+    {
+        try
+        {
+            var result = await AlertRuleService.DeleteAsync(id);
+            if (result.IsFailure)
+            {
+                ToastService.ShowError(result.Error ?? "Failed to delete rule.");
+                return;
+            }
+            ToastService.ShowSuccess("Alert rule deleted.");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete rule: {ex.Message}");
+        }
+    }
+
+    private async Task<Guid?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return null;
+        return userId;
+    }
+
+    private static string GetResourceIcon(AlertResourceType type) => type switch
+    {
+        AlertResourceType.CPU => "cpu",
+        AlertResourceType.Memory => "memory-stick",
+        AlertResourceType.Disk => "hard-drive",
+        _ => "activity"
+    };
+
+    private static string FormatComparison(AlertComparison comparison) => comparison switch
+    {
+        AlertComparison.GreaterThan => ">",
+        AlertComparison.LessThan => "<",
+        _ => comparison.ToString()
+    };
+
+    private static string GetUnit(AlertResourceType type) => type switch
+    {
+        AlertResourceType.CPU => "%",
+        AlertResourceType.Memory => " MB",
+        AlertResourceType.Disk => "%",
+        _ => ""
+    };
+
+    private sealed class AlertFormModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string ServerId { get; set; } = string.Empty;
+        public AlertResourceType ResourceType { get; set; } = AlertResourceType.CPU;
+        public AlertComparison Comparison { get; set; } = AlertComparison.GreaterThan;
+        public double Threshold { get; set; } = 90;
+        public int DurationSeconds { get; set; } = 60;
+        public bool IsEnabled { get; set; } = true;
+        public int CooldownMinutes { get; set; } = 15;
+    }
+}

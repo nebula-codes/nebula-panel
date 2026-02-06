@@ -1,0 +1,261 @@
+@page "/settings/audit-log"
+@attribute [Authorize(Policy = "RequireAdmin")]
+@inject IAuditQueryService AuditQueryService
+@inject IToastService ToastService
+@using NebulaPanel.Application.Common
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@rendermode InteractiveServer
+
+<PageTitle>Audit Log - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    <div>
+        <h1 class="text-2xl font-bold text-nebula-text-primary">Audit Log</h1>
+        <p class="text-sm text-nebula-text-muted mt-1">Security events, login attempts, and system changes.</p>
+    </div>
+
+    @* Filters *@
+    <Card>
+        <div class="flex flex-wrap items-end gap-4">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Search</label>
+                <input type="text" @bind="_searchTerm" @bind:event="oninput" @bind:after="LoadEventsAsync"
+                       placeholder="Search by username or details..."
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary placeholder-nebula-text-muted text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Event Type</label>
+                <select @bind="_selectedEventType" @bind:after="LoadEventsAsync"
+                        class="px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent">
+                    <option value="">All Events</option>
+                    @foreach (var eventType in Enum.GetValues<SecurityEventType>())
+                    {
+                        <option value="@eventType">@FormatEventType(eventType)</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">From</label>
+                <input type="date" @bind="_fromDate" @bind:after="LoadEventsAsync"
+                       class="px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">To</label>
+                <input type="date" @bind="_toDate" @bind:after="LoadEventsAsync"
+                       class="px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+            </div>
+            <Button Variant="ButtonVariant.Ghost" Text="Clear" IconName="x" OnClick="ClearFilters" />
+        </div>
+    </Card>
+
+    @* Events table *@
+    <Card>
+        @if (_isLoading)
+        {
+            <div class="flex items-center justify-center py-12">
+                <Icon Name="loader-2" Size="IconSize.Large" Class="animate-spin text-nebula-text-muted" />
+            </div>
+        }
+        else if (_events.Count == 0)
+        {
+            <div class="flex flex-col items-center justify-center py-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mb-4">
+                    <Icon Name="shield" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                </div>
+                <h3 class="text-lg font-medium text-nebula-text-primary">No audit events</h3>
+                <p class="text-sm text-nebula-text-muted mt-1">
+                    No security events match your filters.
+                </p>
+            </div>
+        }
+        else
+        {
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-nebula-border">
+                            <th class="text-left px-4 py-3 text-nebula-text-muted font-medium">Time</th>
+                            <th class="text-left px-4 py-3 text-nebula-text-muted font-medium">Event</th>
+                            <th class="text-left px-4 py-3 text-nebula-text-muted font-medium">User</th>
+                            <th class="text-left px-4 py-3 text-nebula-text-muted font-medium">Status</th>
+                            <th class="text-left px-4 py-3 text-nebula-text-muted font-medium">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-nebula-border">
+                        @foreach (var evt in _events)
+                        {
+                            <tr class="hover:bg-nebula-bg-secondary/50 transition-colors">
+                                <td class="px-4 py-3 text-nebula-text-secondary whitespace-nowrap">
+                                    @evt.OccurredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span class="px-2 py-0.5 text-xs rounded-full @GetEventBadgeClass(evt.EventType)">
+                                        @FormatEventType(evt.EventType)
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-nebula-text-primary">
+                                    @(evt.Username ?? "System")
+                                </td>
+                                <td class="px-4 py-3">
+                                    @if (evt.Success)
+                                    {
+                                        <span class="text-nebula-success flex items-center gap-1">
+                                            <Icon Name="check-circle" Size="IconSize.XSmall" /> Success
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-nebula-danger flex items-center gap-1">
+                                            <Icon Name="x-circle" Size="IconSize.XSmall" /> Failed
+                                        </span>
+                                    }
+                                </td>
+                                <td class="px-4 py-3 text-nebula-text-muted max-w-xs truncate" title="@evt.Details">
+                                    @(evt.Details ?? "—")
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @* Pagination *@
+            @if (_totalPages > 1)
+            {
+                <div class="flex items-center justify-between px-4 py-3 border-t border-nebula-border">
+                    <span class="text-sm text-nebula-text-muted">
+                        Showing @((_page - 1) * _pageSize + 1)–@Math.Min(_page * _pageSize, _totalCount) of @_totalCount events
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <Button Variant="ButtonVariant.Ghost" IconName="chevron-left" Size="ButtonSize.Small"
+                                Disabled="@(_page <= 1)" OnClick="PreviousPage" />
+                        <span class="text-sm text-nebula-text-secondary">Page @_page of @_totalPages</span>
+                        <Button Variant="ButtonVariant.Ghost" IconName="chevron-right" Size="ButtonSize.Small"
+                                Disabled="@(_page >= _totalPages)" OnClick="NextPage" />
+                    </div>
+                </div>
+            }
+        }
+    </Card>
+</div>
+
+@code {
+    private List<AuditEventDto> _events = [];
+    private bool _isLoading = true;
+    private int _page = 1;
+    private int _pageSize = 50;
+    private int _totalCount;
+    private int _totalPages;
+    private string? _searchTerm;
+    private SecurityEventType? _selectedEventType;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEventsAsync();
+    }
+
+    private async Task LoadEventsAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            var request = new AuditLogQueryRequest(
+                _page, _pageSize,
+                UserId: null,
+                EventType: _selectedEventType,
+                From: _fromDate?.ToUniversalTime(),
+                To: _toDate?.Date.AddDays(1).ToUniversalTime(),
+                SearchTerm: _searchTerm);
+
+            var result = await AuditQueryService.QueryAsync(request);
+            _events = result.Items.ToList();
+            _totalCount = result.TotalCount;
+            _totalPages = (int)Math.Ceiling((double)_totalCount / _pageSize);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load audit events: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task PreviousPage()
+    {
+        if (_page > 1)
+        {
+            _page--;
+            await LoadEventsAsync();
+        }
+    }
+
+    private async Task NextPage()
+    {
+        if (_page < _totalPages)
+        {
+            _page++;
+            await LoadEventsAsync();
+        }
+    }
+
+    private async Task ClearFilters()
+    {
+        _searchTerm = null;
+        _selectedEventType = null;
+        _fromDate = null;
+        _toDate = null;
+        _page = 1;
+        await LoadEventsAsync();
+    }
+
+    private static string FormatEventType(SecurityEventType type) => type switch
+    {
+        SecurityEventType.LoginSuccess => "Login",
+        SecurityEventType.LoginFailed => "Login Failed",
+        SecurityEventType.LoginFailedRateLimited => "Rate Limited",
+        SecurityEventType.AccountLocked => "Account Locked",
+        SecurityEventType.Logout => "Logout",
+        SecurityEventType.TokenRefresh => "Token Refresh",
+        SecurityEventType.TokenRefreshFailed => "Token Refresh Failed",
+        SecurityEventType.PasswordChanged => "Password Changed",
+        SecurityEventType.ServerStarted => "Server Started",
+        SecurityEventType.ServerStopped => "Server Stopped",
+        SecurityEventType.ServerCreated => "Server Created",
+        SecurityEventType.ServerDeleted => "Server Deleted",
+        SecurityEventType.ServerUpdated => "Server Updated",
+        SecurityEventType.ServerInstalled => "Server Installed",
+        SecurityEventType.RoleCreated => "Role Created",
+        SecurityEventType.RoleUpdated => "Role Updated",
+        SecurityEventType.RoleDeleted => "Role Deleted",
+        SecurityEventType.UserRoleAssigned => "Role Assigned",
+        SecurityEventType.UserRoleRemoved => "Role Removed",
+        SecurityEventType.FileUploaded => "File Uploaded",
+        SecurityEventType.FileDeleted => "File Deleted",
+        SecurityEventType.FileModified => "File Modified",
+        SecurityEventType.SettingsChanged => "Settings Changed",
+        SecurityEventType.ApiKeyCreated => "API Key Created",
+        SecurityEventType.ApiKeyRevoked => "API Key Revoked",
+        SecurityEventType.BackupCreated => "Backup Created",
+        SecurityEventType.BackupRestored => "Backup Restored",
+        _ => type.ToString()
+    };
+
+    private static string GetEventBadgeClass(SecurityEventType type) => type switch
+    {
+        SecurityEventType.LoginSuccess or SecurityEventType.TokenRefresh or SecurityEventType.Logout
+            => "bg-nebula-success/20 text-nebula-success",
+        SecurityEventType.LoginFailed or SecurityEventType.LoginFailedRateLimited or SecurityEventType.AccountLocked or SecurityEventType.TokenRefreshFailed
+            => "bg-nebula-danger/20 text-nebula-danger",
+        SecurityEventType.ServerStarted or SecurityEventType.ServerCreated or SecurityEventType.ServerInstalled
+            => "bg-nebula-accent/20 text-nebula-accent",
+        SecurityEventType.ServerStopped or SecurityEventType.ServerDeleted
+            => "bg-nebula-warning/20 text-nebula-warning",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+}

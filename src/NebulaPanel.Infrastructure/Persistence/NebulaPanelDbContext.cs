@@ -54,6 +54,9 @@ public class NebulaPanelDbContext(DbContextOptions<NebulaPanelDbContext> options
     // Security audit
     public DbSet<SecurityAuditEvent> SecurityAuditEvents => Set<SecurityAuditEvent>();
 
+    // Alerts
+    public DbSet<AlertRule> AlertRules => Set<AlertRule>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

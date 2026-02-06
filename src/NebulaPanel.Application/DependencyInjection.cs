@@ -20,6 +20,9 @@ public static class DependencyInjection
         services.AddScoped<IModCacheService, ModCacheService>();
         services.AddScoped<INotificationService, NotificationService>();
 
+        // Alert rules
+        services.AddScoped<IAlertRuleService, AlertRuleService>();
+
         // Dashboard services
         services.AddScoped<IServerActivityService, ServerActivityService>();
         services.AddScoped<IAnnouncementService, AnnouncementService>();

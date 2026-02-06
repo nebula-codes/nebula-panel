@@ -27,7 +27,9 @@ public class GameServerService(
     IRconService? rconService,
     IImageService imageService,
     IServerActivityService? serverActivityService,
-    ILogger<GameServerService> logger) : IGameServerService
+    IEncryptionService encryptionService,
+    ILogger<GameServerService> logger,
+    IAuditService? auditService = null) : IGameServerService
 {
     private readonly IGameServerRepository _serverRepository = serverRepository;
     private readonly IGameRepository _gameRepository = gameRepository;
@@ -36,6 +38,8 @@ public class GameServerService(
     private readonly IRconService? _rconService = rconService;
     private readonly IImageService _imageService = imageService;
     private readonly IServerActivityService? _serverActivityService = serverActivityService;
+    private readonly IEncryptionService _encryptionService = encryptionService;
+    private readonly IAuditService? _auditService = auditService;
     private readonly ILogger<GameServerService> _logger = logger;
 
     public async Task<IReadOnlyList<GameServerListItemDto>> GetAllServersAsync(CancellationToken cancellationToken = default)
@@ -55,7 +59,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(id, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<GameServerDto>($"Server with ID '{id}' not found.");
+            return Result.Failure<GameServerDto>(Error.NotFound("Server", id.ToString()));
         }
 
         return MapToDto(server);
@@ -67,20 +71,20 @@ public class GameServerService(
         var game = await _gameRepository.GetByIdAsync(request.GameId, cancellationToken).ConfigureAwait(false);
         if (game is null)
         {
-            return Result.Failure<GameServerDto>($"Game with ID '{request.GameId}' not found.");
+            return Result.Failure<GameServerDto>(Error.NotFound("Game", request.GameId.ToString()));
         }
 
         // Validate unique name per owner
         if (await _serverRepository.NameExistsForOwnerAsync(request.Name, ownerId, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<GameServerDto>($"You already have a server named '{request.Name}'.");
+            return Result.Failure<GameServerDto>(Error.AlreadyExists("Server", request.Name));
         }
 
         // Validate port availability
         var bindAddress = request.BindAddress ?? "0.0.0.0";
         if (await _serverRepository.IsPortInUseAsync(request.PrimaryPort, bindAddress, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<GameServerDto>($"Port {request.PrimaryPort} is already in use on {bindAddress}.");
+            return Result.Failure<GameServerDto>(Error.PortInUse(request.PrimaryPort));
         }
 
         // Validate deployment type configuration
@@ -88,18 +92,18 @@ public class GameServerService(
         {
             if (request.DockerConfig is null)
             {
-                return Result.Failure<GameServerDto>("Docker configuration is required for Docker deployment type.");
+                return Result.Failure<GameServerDto>(Error.Validation("Docker configuration is required for Docker deployment type."));
             }
             if (!game.SupportsDocker)
             {
-                return Result.Failure<GameServerDto>($"Game '{game.Name}' does not support Docker deployment.");
+                return Result.Failure<GameServerDto>(Error.Validation($"Game '{game.Name}' does not support Docker deployment."));
             }
         }
         else if (request.DeploymentType == ServerDeploymentType.Native)
         {
             if (request.NativeConfig is null)
             {
-                return Result.Failure<GameServerDto>("Native configuration is required for Native deployment type.");
+                return Result.Failure<GameServerDto>(Error.Validation("Native configuration is required for Native deployment type."));
             }
         }
 
@@ -149,8 +153,17 @@ public class GameServerService(
             ResourceLimits = MapResourceLimits(request.ResourceLimits)
         };
 
+        EncryptRconPassword(server);
+
         await _serverRepository.AddAsync(server, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Created server {ServerName} with ID {ServerId} for owner {OwnerId}", server.Name, server.Id, ownerId);
+
+        if (_auditService is not null)
+        {
+            await _auditService.LogServerOperationAsync(
+                SecurityEventType.ServerCreated, ownerId, string.Empty,
+                server.Id, server.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
 
         // Reload with includes for the DTO
         server = await _serverRepository.GetByIdWithGameAsync(server.Id, cancellationToken).ConfigureAwait(false);
@@ -162,20 +175,20 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(id, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<GameServerDto>($"Server with ID '{id}' not found.");
+            return Result.Failure<GameServerDto>(Error.NotFound("Server", id.ToString()));
         }
 
         // Validate unique name per owner
         if (await _serverRepository.NameExistsForOwnerAsync(request.Name, server.OwnerId, id, cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<GameServerDto>($"You already have a server named '{request.Name}'.");
+            return Result.Failure<GameServerDto>(Error.AlreadyExists("Server", request.Name));
         }
 
         // Validate port availability
         var bindAddress = request.BindAddress ?? server.BindAddress;
         if (await _serverRepository.IsPortInUseAsync(request.PrimaryPort, bindAddress, id, cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<GameServerDto>($"Port {request.PrimaryPort} is already in use on {bindAddress}.");
+            return Result.Failure<GameServerDto>(Error.PortInUse(request.PrimaryPort));
         }
 
         // For Docker servers, if port changes, we need to remove the existing container
@@ -241,6 +254,8 @@ public class GameServerService(
         server.RconConfig = MapRconConfig(request.RconConfig) ?? server.RconConfig;
         server.ResourceLimits = MapResourceLimits(request.ResourceLimits) ?? server.ResourceLimits;
 
+        EncryptRconPassword(server);
+
         // Update explicit port mappings in DockerConfig when ports change
         if (server.DeploymentType == ServerDeploymentType.Docker && server.DockerConfig?.Ports is { Count: > 0 })
         {
@@ -270,13 +285,13 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("Server", id.ToString()));
         }
 
         // Only allow deletion of stopped, unknown, or crashed servers
         if (server.Status != ServerStatus.Stopped && server.Status != ServerStatus.Unknown && server.Status != ServerStatus.Crashed)
         {
-            return Result.Failure($"Cannot delete server: server is currently {server.Status}. Please stop the server first.");
+            return Result.Failure(Error.ServerRunning("delete"));
         }
 
         var serverName = server.Name;
@@ -300,6 +315,13 @@ public class GameServerService(
         // Delete from database first
         await _serverRepository.DeleteAsync(id, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Deleted server {ServerName} with ID {ServerId} from database", serverName, id);
+
+        if (_auditService is not null)
+        {
+            await _auditService.LogServerOperationAsync(
+                SecurityEventType.ServerDeleted, server.OwnerId, string.Empty,
+                id, serverName, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
 
         // Delete server files if requested
         if (deleteFiles && !string.IsNullOrEmpty(installPath) && Directory.Exists(installPath))
@@ -325,7 +347,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{serverId}' not found.");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.Status == ServerStatus.Running || server.Status == ServerStatus.Starting)
@@ -381,6 +403,13 @@ public class GameServerService(
                         cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
 
+                if (_auditService is not null)
+                {
+                    await _auditService.LogServerOperationAsync(
+                        SecurityEventType.ServerStarted, server.OwnerId, string.Empty,
+                        server.Id, server.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+
                 return Result.Success();
             }
             else
@@ -419,17 +448,17 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{serverId}' not found.");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.Status == ServerStatus.Stopped || server.Status == ServerStatus.Unknown)
         {
-            return Result.Failure("Server is already stopped.");
+            return Result.Failure(Error.ServerStopped());
         }
 
         if (server.Status == ServerStatus.Stopping)
         {
-            return Result.Failure("Server is already stopping.");
+            return Result.Failure(Error.InvalidOperation("Server is already stopping."));
         }
 
         _logger.LogInformation("Stopping server {ServerName} ({ServerId})", server.Name, server.Id);
@@ -473,6 +502,13 @@ public class GameServerService(
                     cancellationToken: cancellationToken).ConfigureAwait(false);
             }
 
+            if (_auditService is not null)
+            {
+                await _auditService.LogServerOperationAsync(
+                    SecurityEventType.ServerStopped, server.OwnerId, string.Empty,
+                    server.Id, server.Name, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+
             if (success)
             {
                 _logger.LogInformation("Successfully stopped server {ServerName}", server.Name);
@@ -505,7 +541,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{serverId}' not found.");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.Status == ServerStatus.Installing || server.Status == ServerStatus.Updating)
@@ -595,12 +631,12 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{serverId}' not found.");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.Status == ServerStatus.Stopped || server.Status == ServerStatus.Unknown)
         {
-            return Result.Failure("Server is already stopped.");
+            return Result.Failure(Error.ServerStopped());
         }
 
         _logger.LogWarning("Force killing server {ServerName} ({ServerId})", server.Name, server.Id);
@@ -643,12 +679,12 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<ResourceUsage>($"Server with ID '{serverId}' not found.");
+            return Result.Failure<ResourceUsage>(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.Status != ServerStatus.Running)
         {
-            return Result.Failure<ResourceUsage>("Server is not running.");
+            return Result.Failure<ResourceUsage>(Error.ServerStopped("get resource usage"));
         }
 
         try
@@ -669,12 +705,12 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<string?>($"Server with ID '{serverId}' not found.");
+            return Result.Failure<string?>(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.Status != ServerStatus.Running)
         {
-            return Result.Failure<string?>("Server is not running.");
+            return Result.Failure<string?>(Error.ServerStopped("send command"));
         }
 
         // For Docker servers, prefer RCON when available (stdin is unreliable in containers)
@@ -758,7 +794,19 @@ public class GameServerService(
             _logger.LogInformation("Attempting RCON connection to {Host}:{Port} for server {ServerName}",
                 server.RconConfig!.Host, server.RconConfig.Port, server.Name);
 
-            var response = await _rconService!.SendCommandAsync(server.RconConfig, command, cancellationToken).ConfigureAwait(false);
+            var rconConfig = new RconConfiguration
+            {
+                Enabled = server.RconConfig.Enabled,
+                Protocol = server.RconConfig.Protocol,
+                Host = server.RconConfig.Host,
+                Port = server.RconConfig.Port,
+                Password = DecryptRconPassword(server.RconConfig.Password ?? ""),
+                UseWebSocket = server.RconConfig.UseWebSocket,
+                WebRconPath = server.RconConfig.WebRconPath,
+                TimeoutSeconds = server.RconConfig.TimeoutSeconds
+            };
+
+            var response = await _rconService!.SendCommandAsync(rconConfig, command, cancellationToken).ConfigureAwait(false);
 
             if (response is not null)
             {
@@ -800,17 +848,17 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure("Server not found");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (server.DeploymentType != ServerDeploymentType.Docker)
         {
-            return Result.Failure("Server is not a Docker deployment");
+            return Result.Failure(Error.InvalidOperation("Server is not a Docker deployment"));
         }
 
         if (server.Status == ServerStatus.Running || server.Status == ServerStatus.Starting)
         {
-            return Result.Failure("Cannot recreate container while server is running. Stop the server first.");
+            return Result.Failure(Error.ServerRunning("recreate container"));
         }
 
         try
@@ -881,37 +929,56 @@ public class GameServerService(
         }
     }
 
-    private static GameServerDto MapToDto(GameServer server) => new(
-        server.Id,
-        server.Name,
-        server.Description,
-        server.IconPath,
-        server.IconPath ?? server.Game.IconPath, // EffectiveIcon: server icon if set, otherwise game icon
-        server.GameId,
-        server.Game.Name,
-        server.Game.IconPath,
-        server.DeploymentType,
-        server.InstallPath,
-        server.DockerContainerId,
-        server.DockerConfig,
-        server.NativeConfig,
-        server.RconConfig,
-        server.PrimaryPort,
-        server.AdditionalPorts,
-        server.BindAddress,
-        server.Status,
-        server.LastStarted,
-        server.LastStopped,
-        server.ProcessId,
-        server.ResourceLimits,
-        server.OwnerId,
-        server.Owner.Username,
-        server.InstalledModpack,
-        server.InstalledVersion,
-        server.HytaleInfo,
-        server.IsPinned,
-        server.Tags
-    );
+    private GameServerDto MapToDto(GameServer server)
+    {
+        var rconConfig = server.RconConfig;
+        if (rconConfig is not null && !string.IsNullOrEmpty(rconConfig.Password))
+        {
+            rconConfig = new RconConfiguration
+            {
+                Enabled = rconConfig.Enabled,
+                Protocol = rconConfig.Protocol,
+                Host = rconConfig.Host,
+                Port = rconConfig.Port,
+                Password = DecryptRconPassword(rconConfig.Password),
+                UseWebSocket = rconConfig.UseWebSocket,
+                WebRconPath = rconConfig.WebRconPath,
+                TimeoutSeconds = rconConfig.TimeoutSeconds
+            };
+        }
+
+        return new GameServerDto(
+            server.Id,
+            server.Name,
+            server.Description,
+            server.IconPath,
+            server.IconPath ?? server.Game.IconPath,
+            server.GameId,
+            server.Game.Name,
+            server.Game.IconPath,
+            server.DeploymentType,
+            server.InstallPath,
+            server.DockerContainerId,
+            server.DockerConfig,
+            server.NativeConfig,
+            rconConfig,
+            server.PrimaryPort,
+            server.AdditionalPorts,
+            server.BindAddress,
+            server.Status,
+            server.LastStarted,
+            server.LastStopped,
+            server.ProcessId,
+            server.ResourceLimits,
+            server.OwnerId,
+            server.Owner.Username,
+            server.InstalledModpack,
+            server.InstalledVersion,
+            server.HytaleInfo,
+            server.IsPinned,
+            server.Tags
+        );
+    }
 
     private static GameServerListItemDto MapToListItemDto(GameServer server) => new(
         server.Id,
@@ -1010,6 +1077,27 @@ public class GameServerService(
         };
     }
 
+    private void EncryptRconPassword(GameServer server)
+    {
+        if (server.RconConfig is not null && !string.IsNullOrEmpty(server.RconConfig.Password))
+        {
+            server.RconConfig.Password = _encryptionService.Encrypt(server.RconConfig.Password);
+        }
+    }
+
+    private string DecryptRconPassword(string encryptedPassword)
+    {
+        try
+        {
+            return _encryptionService.Decrypt(encryptedPassword);
+        }
+        catch
+        {
+            // If decryption fails, the password may be stored in plain text (pre-migration)
+            return encryptedPassword;
+        }
+    }
+
     public async Task<Result> InstallServerAsync(
         Guid serverId,
         string? branch = null,
@@ -1020,7 +1108,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{serverId}' not found.");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (string.IsNullOrEmpty(server.Game.SteamAppId))
@@ -1097,7 +1185,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure($"Server with ID '{serverId}' not found.");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (string.IsNullOrEmpty(server.Game.SteamAppId))
@@ -1171,7 +1259,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<bool>($"Server with ID '{serverId}' not found.");
+            return Result.Failure<bool>(Error.NotFound("Server", serverId.ToString()));
         }
 
         return !string.IsNullOrEmpty(server.Game.SteamAppId);
@@ -1182,7 +1270,7 @@ public class GameServerService(
         var server = await _serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<SteamAppInfo?>($"Server with ID '{serverId}' not found.");
+            return Result.Failure<SteamAppInfo?>(Error.NotFound("Server", serverId.ToString()));
         }
 
         if (string.IsNullOrEmpty(server.Game.SteamAppId))

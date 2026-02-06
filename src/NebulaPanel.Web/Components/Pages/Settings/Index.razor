@@ -162,17 +162,30 @@
             </div>
         </Card>
 
-        <Card Interactive="false" Class="opacity-60">
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/audit-log"))">
             <div class="flex items-start gap-4">
-                <div class="w-12 h-12 rounded-nebula bg-nebula-bg-tertiary flex items-center justify-center">
-                    <Icon Name="bell" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="shield" Size="IconSize.Medium" Class="text-nebula-accent" />
                 </div>
                 <div>
-                    <h3 class="font-medium text-nebula-text-primary">Notifications</h3>
+                    <h3 class="font-medium text-nebula-text-primary">Audit Log</h3>
                     <p class="text-sm text-nebula-text-muted mt-1">
-                        Configure alerts, webhooks, and notification preferences.
+                        View security events, login attempts, and system changes.
                     </p>
-                    <span class="text-xs text-nebula-text-muted mt-2 inline-block">Coming soon</span>
+                </div>
+            </div>
+        </Card>
+
+        <Card Interactive="true" OnClick="@(() => NavigateTo("/settings/alerts"))">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-nebula bg-nebula-accent/10 flex items-center justify-center">
+                    <Icon Name="bell-ring" Size="IconSize.Medium" Class="text-nebula-accent" />
+                </div>
+                <div>
+                    <h3 class="font-medium text-nebula-text-primary">Alerts</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1">
+                        Configure resource usage alerts for servers.
+                    </p>
                 </div>
             </div>
         </Card>

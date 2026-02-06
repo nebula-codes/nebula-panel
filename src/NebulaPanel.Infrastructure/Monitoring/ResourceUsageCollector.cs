@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NebulaPanel.Application.DTOs;
+using NebulaPanel.Application.Services;
 using NebulaPanel.Domain.Entities;
 using NebulaPanel.Domain.Enums;
 using NebulaPanel.Domain.Interfaces;
@@ -132,7 +134,88 @@ public class ResourceUsageCollector : BackgroundService
         {
             await historyRepository.AddBatchAsync(usageRecords, cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("Collected resource usage for {Count} servers", usageRecords.Count);
+
+            await CheckAlertThresholdsAsync(scope.ServiceProvider, usageRecords, cancellationToken)
+                .ConfigureAwait(false);
         }
+    }
+
+    private async Task CheckAlertThresholdsAsync(
+        IServiceProvider services,
+        List<ResourceUsageHistory> usageRecords,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var alertRuleRepository = services.GetRequiredService<IAlertRuleRepository>();
+            var notificationService = services.GetRequiredService<INotificationService>();
+
+            var enabledRules = await alertRuleRepository.GetEnabledAsync(cancellationToken).ConfigureAwait(false);
+            if (enabledRules.Count == 0)
+                return;
+
+            var now = DateTime.UtcNow;
+
+            foreach (var rule in enabledRules)
+            {
+                // Cooldown check
+                if (rule.LastTriggeredAt.HasValue &&
+                    (now - rule.LastTriggeredAt.Value).TotalMinutes < rule.CooldownMinutes)
+                    continue;
+
+                // Only CPU and Memory alerts for per-server rules
+                if (rule.ResourceType == AlertResourceType.Disk)
+                    continue; // Disk alerts are host-level only, handled elsewhere if needed
+
+                if (rule.ServerId.HasValue)
+                {
+                    var usage = usageRecords.FirstOrDefault(u => u.ServerId == rule.ServerId.Value);
+                    if (usage is null)
+                        continue;
+
+                    var value = rule.ResourceType switch
+                    {
+                        AlertResourceType.CPU => usage.CpuPercent,
+                        AlertResourceType.Memory => usage.MemoryBytes / (1024.0 * 1024.0), // MB
+                        _ => 0
+                    };
+
+                    if (!IsThresholdBreached(value, rule.Comparison, rule.Threshold))
+                        continue;
+
+                    rule.LastTriggeredAt = now;
+                    await alertRuleRepository.UpdateAsync(rule, cancellationToken).ConfigureAwait(false);
+
+                    var serverName = rule.Server?.Name ?? rule.ServerId.Value.ToString();
+                    await notificationService.CreateAsync(new CreateNotificationRequest(
+                        rule.OwnerId,
+                        NotificationType.Warning,
+                        $"Alert: {rule.Name}",
+                        $"Server '{serverName}' {rule.ResourceType} is {value:F1} (threshold: {rule.Comparison} {rule.Threshold})",
+                        ActionUrl: null,
+                        RelatedEntityId: rule.ServerId
+                    ), cancellationToken).ConfigureAwait(false);
+
+                    _logger.LogWarning(
+                        "Alert triggered: {RuleName} for server {ServerId} — {ResourceType} = {Value:F1}",
+                        rule.Name, rule.ServerId, rule.ResourceType, value);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking alert thresholds");
+        }
+    }
+
+    private static bool IsThresholdBreached(double value, AlertComparison comparison, double threshold)
+    {
+        return comparison switch
+        {
+            AlertComparison.GreaterThan => value > threshold,
+            AlertComparison.LessThan => value < threshold,
+            _ => false
+        };
     }
 
     private async Task CleanupOldDataAsync(CancellationToken cancellationToken)
