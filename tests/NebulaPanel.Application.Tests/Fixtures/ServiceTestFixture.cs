@@ -13,6 +13,7 @@ public class ServiceTestFixture
     public Mock<IServerExecutor> NativeExecutor { get; }
     public Mock<IServerExecutor> DockerExecutor { get; }
     public Mock<IImageService> ImageService { get; }
+    public Mock<IEncryptionService> EncryptionService { get; }
     public Mock<ILogger<GameServerService>> Logger { get; }
 
     public ServiceTestFixture()
@@ -23,7 +24,12 @@ public class ServiceTestFixture
         NativeExecutor = new Mock<IServerExecutor>();
         DockerExecutor = new Mock<IServerExecutor>();
         ImageService = new Mock<IImageService>();
+        EncryptionService = new Mock<IEncryptionService>();
         Logger = new Mock<ILogger<GameServerService>>();
+
+        // Setup encryption to pass through by default
+        EncryptionService.Setup(e => e.Encrypt(It.IsAny<string>())).Returns((string s) => s);
+        EncryptionService.Setup(e => e.Decrypt(It.IsAny<string>())).Returns((string s) => s);
 
         // Setup executor factory to return appropriate executors
         NativeExecutor.Setup(e => e.DeploymentType).Returns(ServerDeploymentType.Native);

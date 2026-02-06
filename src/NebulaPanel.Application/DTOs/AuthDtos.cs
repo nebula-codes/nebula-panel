@@ -1,8 +1,15 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace NebulaPanel.Application.DTOs;
 
-public record LoginRequest(string Username, string Password);
+public record LoginRequest(
+    [Required, StringLength(50)] string Username,
+    [Required, StringLength(128)] string Password);
 
-public record RegisterRequest(string Username, string Email, string Password);
+public record RegisterRequest(
+    [Required, StringLength(50, MinimumLength = 3)] string Username,
+    [Required, EmailAddress, StringLength(256)] string Email,
+    [Required, StringLength(128, MinimumLength = 8)] string Password);
 
 public record AuthResponse(
     string AccessToken,
@@ -34,12 +41,14 @@ public record UserDto(
     IReadOnlyList<string> Permissions
 );
 
-public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public record ChangePasswordRequest(
+    [Required, StringLength(128)] string CurrentPassword,
+    [Required, StringLength(128, MinimumLength = 8)] string NewPassword);
 
 public record CreateUserRequest(
-    string Username,
-    string Email,
-    string Password,
+    [Required, StringLength(50, MinimumLength = 3)] string Username,
+    [Required, EmailAddress, StringLength(256)] string Email,
+    [Required, StringLength(128, MinimumLength = 8)] string Password,
     IReadOnlyList<Guid>? RoleIds
 );
 

@@ -268,6 +268,7 @@ if (!app.Environment.IsEnvironment("Testing"))
 
 // Configure the HTTP request pipeline.
 app.UseGlobalExceptionHandler();
+app.UseSecurityHeaders();
 
 if (!app.Environment.IsDevelopment())
 {

@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using NebulaPanel.Domain.Enums;
 using NebulaPanel.Domain.ValueObjects;
 
@@ -38,12 +39,13 @@ public record GameListItemDto(
 );
 
 public record CreateGameRequest(
-    string Name,
-    string Slug,
+    [Required, StringLength(100, MinimumLength = 1)] string Name,
+    [Required, RegularExpression(@"^[a-z0-9\-]+$", ErrorMessage = "Slug must contain only lowercase letters, numbers, and hyphens.")]
+    [StringLength(100, MinimumLength = 1)] string Slug,
     string? SteamAppId,
     ExecutableType ExecutableType,
-    string DefaultExecutablePath,
-    string DefaultStartCommand,
+    [Required] string DefaultExecutablePath,
+    [Required] string DefaultStartCommand,
     string? DefaultStopCommand,
     bool SupportsDocker,
     string? DefaultDockerImage,
@@ -56,12 +58,13 @@ public record CreateGameRequest(
 );
 
 public record UpdateGameRequest(
-    string Name,
-    string Slug,
+    [Required, StringLength(100, MinimumLength = 1)] string Name,
+    [Required, RegularExpression(@"^[a-z0-9\-]+$", ErrorMessage = "Slug must contain only lowercase letters, numbers, and hyphens.")]
+    [StringLength(100, MinimumLength = 1)] string Slug,
     string? SteamAppId,
     ExecutableType ExecutableType,
-    string DefaultExecutablePath,
-    string DefaultStartCommand,
+    [Required] string DefaultExecutablePath,
+    [Required] string DefaultStartCommand,
     string? DefaultStopCommand,
     bool SupportsDocker,
     string? DefaultDockerImage,

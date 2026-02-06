@@ -1,5 +1,7 @@
 namespace NebulaPanel.Infrastructure.Auth;
 
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -163,13 +165,13 @@ public class AuthService(
         // Check if username exists
         if (await userRepository.ExistsByUsernameAsync(request.Username, ct).ConfigureAwait(false))
         {
-            return Result.Failure<AuthResponse>("Username is already taken");
+            return Result.Failure<AuthResponse>(Error.AlreadyExists("Username", request.Username));
         }
 
         // Check if email exists
         if (await userRepository.ExistsByEmailAsync(request.Email, ct).ConfigureAwait(false))
         {
-            return Result.Failure<AuthResponse>("Email is already registered");
+            return Result.Failure<AuthResponse>(Error.AlreadyExists("Email", request.Email));
         }
 
         // Check if this is the first user (will be admin)
@@ -229,14 +231,15 @@ public class AuthService(
         string? userAgent = null,
         CancellationToken ct = default)
     {
+        var tokenHash = HashToken(refreshToken);
         var token = await context.RefreshTokens
             .Include(rt => rt.User)
-            .FirstOrDefaultAsync(rt => rt.Token == refreshToken, ct)
+            .FirstOrDefaultAsync(rt => rt.TokenHash == tokenHash, ct)
             .ConfigureAwait(false);
 
         if (token == null)
         {
-            return Result.Failure<AuthResponse>("Invalid refresh token");
+            return Result.Failure<AuthResponse>(Error.InvalidCredentials("Invalid refresh token"));
         }
 
         if (!token.IsActive)
@@ -250,7 +253,7 @@ public class AuthService(
                 "Token expired or revoked",
                 ct).ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>("Refresh token is expired or revoked");
+            return Result.Failure<AuthResponse>(Error.TokenExpired());
         }
 
         if (!token.User.IsActive)
@@ -264,7 +267,7 @@ public class AuthService(
                 "Account disabled",
                 ct).ConfigureAwait(false);
 
-            return Result.Failure<AuthResponse>("Account is disabled");
+            return Result.Failure<AuthResponse>(Error.AccountDisabled());
         }
 
         // Check if account is locked
@@ -287,7 +290,7 @@ public class AuthService(
 
         // Create new refresh token
         var newRefreshToken = await CreateRefreshTokenAsync(token.UserId, ct).ConfigureAwait(false);
-        token.ReplacedByToken = newRefreshToken;
+        token.ReplacedByTokenHash = HashToken(newRefreshToken);
 
         await context.SaveChangesAsync(ct).ConfigureAwait(false);
 
@@ -357,12 +360,12 @@ public class AuthService(
 
         if (user == null)
         {
-            return Result.Failure("User not found");
+            return Result.Failure(Error.NotFound("User", userId.ToString()));
         }
 
         if (!BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash))
         {
-            return Result.Failure("Current password is incorrect");
+            return Result.Failure(Error.InvalidCredentials("Current password is incorrect"));
         }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
@@ -384,7 +387,7 @@ public class AuthService(
 
         if (user == null)
         {
-            return Result.Failure<UserDto>("User not found");
+            return Result.Failure<UserDto>(Error.NotFound("User", userId.ToString()));
         }
 
         var roles = await permissionService.GetUserRolesAsync(userId, ct).ConfigureAwait(false);
@@ -401,11 +404,12 @@ public class AuthService(
 
     private async Task<string> CreateRefreshTokenAsync(Guid userId, CancellationToken ct)
     {
+        var rawToken = jwtService.GenerateRefreshToken();
         var token = new RefreshToken
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            Token = jwtService.GenerateRefreshToken(),
+            TokenHash = HashToken(rawToken),
             ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenExpirationDays),
             CreatedAt = DateTime.UtcNow
         };
@@ -413,8 +417,11 @@ public class AuthService(
         context.RefreshTokens.Add(token);
         await context.SaveChangesAsync(ct).ConfigureAwait(false);
 
-        return token.Token;
+        return rawToken;
     }
+
+    private static string HashToken(string token) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private static UserDto ToUserDto(User user, IReadOnlyList<string> roles, IReadOnlyList<string> permissions)
     {

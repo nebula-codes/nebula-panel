@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using NebulaPanel.Domain.Enums;
 using NebulaPanel.Domain.ValueObjects;
 
@@ -53,13 +54,13 @@ public record GameServerListItemDto(
 );
 
 public record CreateGameServerRequest(
-    string Name,
-    string? Description,
-    string? IconUrl,  // URL or local path to server icon
-    Guid GameId,
+    [Required, StringLength(100, MinimumLength = 1)] string Name,
+    [StringLength(500)] string? Description,
+    string? IconUrl,
+    [Required] Guid GameId,
     ServerDeploymentType DeploymentType,
-    string InstallPath,
-    int PrimaryPort,
+    [Required, StringLength(500)] string InstallPath,
+    [Range(1024, 65535)] int PrimaryPort,
     Dictionary<string, int>? AdditionalPorts,
     string? BindAddress,
     DockerConfigurationRequest? DockerConfig,
@@ -69,11 +70,11 @@ public record CreateGameServerRequest(
 );
 
 public record UpdateGameServerRequest(
-    string Name,
-    string? Description,
-    string? IconUrl,  // URL or local path to server icon (null = keep existing, empty = clear)
-    string InstallPath,
-    int PrimaryPort,
+    [Required, StringLength(100, MinimumLength = 1)] string Name,
+    [StringLength(500)] string? Description,
+    string? IconUrl,
+    [Required, StringLength(500)] string InstallPath,
+    [Range(1024, 65535)] int PrimaryPort,
     Dictionary<string, int>? AdditionalPorts,
     string? BindAddress,
     DockerConfigurationRequest? DockerConfig,

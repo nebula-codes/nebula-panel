@@ -10,7 +10,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
             CreatedAt = DateTime.UtcNow.AddHours(-1)
         };
@@ -30,7 +30,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             CreatedAt = DateTime.UtcNow
         };
@@ -51,7 +51,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = now,
             CreatedAt = now.AddMinutes(-5)
         };
@@ -69,7 +69,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             CreatedAt = DateTime.UtcNow.AddHours(-1),
             RevokedAt = DateTime.UtcNow
@@ -90,7 +90,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             CreatedAt = DateTime.UtcNow,
             RevokedAt = null
@@ -111,7 +111,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             CreatedAt = DateTime.UtcNow,
             RevokedAt = null
@@ -132,7 +132,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
             CreatedAt = DateTime.UtcNow.AddHours(-1),
             RevokedAt = null
@@ -153,7 +153,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             CreatedAt = DateTime.UtcNow.AddHours(-1),
             RevokedAt = DateTime.UtcNow
@@ -174,7 +174,7 @@ public class RefreshTokenTests
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "test-token",
+            TokenHash = "test-token-hash",
             ExpiresAt = DateTime.UtcNow.AddMinutes(-1),
             CreatedAt = DateTime.UtcNow.AddHours(-1),
             RevokedAt = DateTime.UtcNow.AddMinutes(-5)
@@ -188,20 +188,20 @@ public class RefreshTokenTests
     }
 
     [Fact]
-    public void ReplacedByToken_CanBeSetAndRetrieved()
+    public void ReplacedByTokenHash_CanBeSetAndRetrieved()
     {
         // Arrange
         var token = new RefreshToken
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid(),
-            Token = "old-token",
+            TokenHash = "old-token-hash",
             ExpiresAt = DateTime.UtcNow.AddHours(1),
             CreatedAt = DateTime.UtcNow,
-            ReplacedByToken = "new-token"
+            ReplacedByTokenHash = "new-token-hash"
         };
 
         // Assert
-        token.ReplacedByToken.Should().Be("new-token");
+        token.ReplacedByTokenHash.Should().Be("new-token-hash");
     }
 }
