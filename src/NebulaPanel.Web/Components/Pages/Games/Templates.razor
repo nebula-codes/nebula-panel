@@ -1,0 +1,376 @@
+@page "/games/templates"
+@attribute [Authorize]
+@inject IGameTemplateService TemplateService
+@inject IToastService ToastService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@rendermode InteractiveServer
+
+<PageTitle>Game Templates - Nebula Panel</PageTitle>
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-nebula-text-primary">Game Templates</h1>
+            <p class="text-sm text-nebula-text-muted mt-1">Import and browse game templates to quickly set up new games.</p>
+        </div>
+    </div>
+
+    @* Tab navigation *@
+    <div class="flex gap-1 border-b border-nebula-border">
+        <button type="button"
+                class="px-4 py-2 text-sm font-medium transition-colors @(_activeTab == "import" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
+                @onclick="@(() => _activeTab = "import")">
+            Import File
+        </button>
+        <button type="button"
+                class="px-4 py-2 text-sm font-medium transition-colors @(_activeTab == "community" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
+                @onclick="@(() => { _activeTab = "community"; _ = LoadCommunityTemplatesAsync(); })">
+            Community
+        </button>
+    </div>
+
+    @if (_activeTab == "import")
+    {
+        @* Import tab *@
+        <Card>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Template File</label>
+                    <div class="flex items-center gap-3">
+                        <InputFile OnChange="OnFileSelected" accept=".json"
+                                   class="text-sm text-nebula-text-primary file:mr-4 file:py-2 file:px-4 file:rounded-nebula file:border-0 file:text-sm file:font-medium file:bg-nebula-accent file:text-white hover:file:bg-nebula-accent-hover file:cursor-pointer" />
+                    </div>
+                </div>
+
+                @if (_importPreview is not null)
+                {
+                    <div class="p-4 rounded-nebula bg-nebula-bg-secondary border border-nebula-border">
+                        <h3 class="font-medium text-nebula-text-primary mb-2">Template Preview</h3>
+                        <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                            <div>
+                                <span class="text-nebula-text-muted">Name:</span>
+                                <span class="text-nebula-text-primary ml-2">@_importPreview.Name</span>
+                            </div>
+                            <div>
+                                <span class="text-nebula-text-muted">Slug:</span>
+                                <span class="text-nebula-text-primary ml-2">@_importPreview.Slug</span>
+                            </div>
+                            <div>
+                                <span class="text-nebula-text-muted">Executable:</span>
+                                <span class="text-nebula-text-primary ml-2">@_importPreview.ExecutableType</span>
+                            </div>
+                            <div>
+                                <span class="text-nebula-text-muted">Docker:</span>
+                                <span class="text-nebula-text-primary ml-2">@(_importPreview.SupportsDocker ? "Yes" : "No")</span>
+                            </div>
+                            <div>
+                                <span class="text-nebula-text-muted">Mods:</span>
+                                <span class="text-nebula-text-primary ml-2">@(_importPreview.SupportsMods ? "Yes" : "No")</span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_importPreview.Author))
+                            {
+                                <div>
+                                    <span class="text-nebula-text-muted">Author:</span>
+                                    <span class="text-nebula-text-primary ml-2">@_importPreview.Author</span>
+                                </div>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(_importPreview.Description))
+                        {
+                            <p class="text-sm text-nebula-text-muted mt-2">@_importPreview.Description</p>
+                        }
+                        @if (_importPreview.Tags.Count > 0)
+                        {
+                            <div class="flex gap-1 mt-2">
+                                @foreach (var tag in _importPreview.Tags)
+                                {
+                                    <span class="px-2 py-0.5 text-xs rounded-full bg-nebula-accent/10 text-nebula-accent">@tag</span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @if (_validationResult is not null && !_validationResult.IsValid)
+                    {
+                        <div class="p-3 rounded-nebula bg-nebula-danger/10 border border-nebula-danger/30">
+                            <p class="text-sm font-medium text-nebula-danger mb-1">Validation Errors</p>
+                            <ul class="list-disc list-inside text-sm text-nebula-danger">
+                                @foreach (var error in _validationResult.Errors)
+                                {
+                                    <li>@error</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    <div class="flex gap-2">
+                        <Button Variant="ButtonVariant.Primary"
+                                Text="Import as Custom Game"
+                                IconName="download"
+                                Loading="_isImporting"
+                                Disabled="@(_validationResult is not null && !_validationResult.IsValid)"
+                                OnClick="ImportFile" />
+                        <Button Variant="ButtonVariant.Ghost"
+                                Text="Clear"
+                                OnClick="ClearImport" />
+                    </div>
+                }
+            </div>
+        </Card>
+    }
+    else
+    {
+        @* Community tab *@
+        <div class="flex items-center gap-3 mb-4">
+            <div class="flex-1">
+                <input type="text"
+                       @bind="_communityQuery"
+                       @bind:event="oninput"
+                       @bind:after="SearchCommunityDebounced"
+                       placeholder="Search community templates..."
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent" />
+            </div>
+        </div>
+
+        <Card>
+            @if (_communityLoading)
+            {
+                <div class="flex items-center justify-center py-12">
+                    <Icon Name="loader-2" Size="IconSize.Large" Class="animate-spin text-nebula-text-muted" />
+                </div>
+            }
+            else if (_communityTemplates.Count == 0)
+            {
+                <div class="flex flex-col items-center justify-center py-12 text-center">
+                    <div class="w-16 h-16 rounded-full bg-nebula-bg-tertiary flex items-center justify-center mb-4">
+                        <Icon Name="globe" Size="IconSize.XLarge" Class="text-nebula-text-muted" />
+                    </div>
+                    <h3 class="text-lg font-medium text-nebula-text-primary">No community templates found</h3>
+                    <p class="text-sm text-nebula-text-muted mt-1 max-w-sm">
+                        @if (string.IsNullOrEmpty(_communityQuery))
+                        {
+                            <span>The community template repository is empty or unavailable.</span>
+                        }
+                        else
+                        {
+                            <span>No templates match your search query.</span>
+                        }
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="divide-y divide-nebula-border">
+                    @foreach (var template in _communityTemplates)
+                    {
+                        <div class="p-4 hover:bg-nebula-bg-secondary/50 transition-colors">
+                            <div class="flex items-center gap-4">
+                                <div class="p-2 rounded-nebula bg-nebula-accent/10 flex-shrink-0">
+                                    <Icon Name="gamepad-2" Size="IconSize.Small" Class="text-nebula-accent" />
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <h3 class="font-medium text-nebula-text-primary">@template.Name</h3>
+                                    @if (!string.IsNullOrEmpty(template.Description))
+                                    {
+                                        <p class="text-sm text-nebula-text-muted mt-0.5 truncate">@template.Description</p>
+                                    }
+                                    <div class="flex items-center gap-3 mt-1">
+                                        @if (!string.IsNullOrEmpty(template.Author))
+                                        {
+                                            <span class="text-xs text-nebula-text-muted">by @template.Author</span>
+                                        }
+                                        @if (template.Tags.Count > 0)
+                                        {
+                                            <div class="flex gap-1">
+                                                @foreach (var tag in template.Tags.Take(3))
+                                                {
+                                                    <span class="px-1.5 py-0.5 text-xs rounded-full bg-nebula-bg-tertiary text-nebula-text-muted">@tag</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                <Button Variant="ButtonVariant.Secondary"
+                                        Text="Import"
+                                        IconName="download"
+                                        Size="ButtonSize.Small"
+                                        Loading="_importingSlug == template.Slug"
+                                        OnClick="@(() => ImportCommunityTemplate(template.Slug))" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </Card>
+    }
+</div>
+
+@code {
+    private string _activeTab = "import";
+
+    // Import tab state
+    private string? _fileContent;
+    private GameTemplateDto? _importPreview;
+    private GameTemplateValidationResult? _validationResult;
+    private bool _isImporting;
+
+    // Community tab state
+    private string _communityQuery = "";
+    private List<CommunityTemplateListItemDto> _communityTemplates = [];
+    private bool _communityLoading;
+    private string? _importingSlug;
+    private CancellationTokenSource? _searchCts;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            if (file.Size > 1024 * 1024) // 1MB limit
+            {
+                ToastService.ShowError("Template file is too large (max 1MB).");
+                return;
+            }
+
+            using var stream = file.OpenReadStream(maxAllowedSize: 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            _fileContent = await reader.ReadToEndAsync();
+
+            // Validate
+            _validationResult = await TemplateService.ValidateTemplateAsync(_fileContent);
+
+            // Try to parse for preview
+            try
+            {
+                var template = System.Text.Json.JsonSerializer.Deserialize<NebulaPanel.Domain.ValueObjects.GameTemplate>(
+                    _fileContent,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase });
+
+                if (template?.Definition is not null)
+                {
+                    _importPreview = new GameTemplateDto(
+                        template.Definition.Slug,
+                        template.Definition.Name,
+                        template.Definition.ExecutableType,
+                        template.Definition.SupportsDocker,
+                        template.Definition.SupportsMods,
+                        template.Author,
+                        template.Description,
+                        template.Tags,
+                        template.TemplateVersion,
+                        template.CreatedAt);
+                }
+            }
+            catch
+            {
+                _importPreview = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to read file: {ex.Message}");
+        }
+    }
+
+    private async Task ImportFile()
+    {
+        if (string.IsNullOrEmpty(_fileContent)) return;
+
+        _isImporting = true;
+        try
+        {
+            var result = await TemplateService.ImportTemplateAsync(_fileContent);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess($"Game '{result.Value!.Name}' imported successfully.");
+                Navigation.NavigateTo($"/games/{result.Value.Id}");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to import template.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Import failed: {ex.Message}");
+        }
+        finally
+        {
+            _isImporting = false;
+        }
+    }
+
+    private void ClearImport()
+    {
+        _fileContent = null;
+        _importPreview = null;
+        _validationResult = null;
+    }
+
+    private async Task LoadCommunityTemplatesAsync()
+    {
+        if (_communityLoading) return;
+        _communityLoading = true;
+        try
+        {
+            _communityTemplates = (await TemplateService.SearchCommunityTemplatesAsync(_communityQuery)).ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load community templates: {ex.Message}");
+        }
+        finally
+        {
+            _communityLoading = false;
+        }
+    }
+
+    private async Task SearchCommunityDebounced()
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadCommunityTemplatesAsync();
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Debounce cancelled, ignore
+        }
+    }
+
+    private async Task ImportCommunityTemplate(string slug)
+    {
+        _importingSlug = slug;
+        try
+        {
+            var result = await TemplateService.ImportCommunityTemplateAsync(slug);
+            if (result.IsSuccess)
+            {
+                ToastService.ShowSuccess($"Game '{result.Value!.Name}' imported successfully.");
+                Navigation.NavigateTo($"/games/{result.Value.Id}");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to import template.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Import failed: {ex.Message}");
+        }
+        finally
+        {
+            _importingSlug = null;
+        }
+    }
+}

@@ -31,6 +31,7 @@ using NebulaPanel.Infrastructure.OfficialGames.Terraria;
 using NebulaPanel.Infrastructure.Security;
 using NebulaPanel.Infrastructure.Health;
 using NebulaPanel.Infrastructure.Webhooks;
+using NebulaPanel.Infrastructure.Templates;
 
 namespace NebulaPanel.Infrastructure;
 
@@ -301,6 +302,14 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
         });
         services.AddScoped<IWebhookDispatcher, HttpWebhookDispatcher>();
+
+        // Community game templates
+        services.AddHttpClient("CommunityTemplates", client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NebulaPanel/1.0");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddSingleton<ICommunityTemplateRepository, GitHubCommunityTemplateRepository>();
 
         // RCON password migration (one-time startup)
         services.AddHostedService<RconPasswordMigrationService>();

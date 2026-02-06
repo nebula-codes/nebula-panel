@@ -14,10 +14,16 @@
             <h1 class="text-2xl font-semibold text-nebula-text-primary">Games</h1>
             <p class="text-nebula-text-muted mt-1">Manage game configurations for your servers.</p>
         </div>
-        <Button Variant="ButtonVariant.Primary"
-                Text="Add Game"
-                IconName="plus"
-                OnClick="@(() => Navigation.NavigateTo("/games/new"))" />
+        <div class="flex items-center gap-2">
+            <Button Variant="ButtonVariant.Secondary"
+                    Text="Templates"
+                    IconName="file-json"
+                    OnClick="@(() => Navigation.NavigateTo("/games/templates"))" />
+            <Button Variant="ButtonVariant.Primary"
+                    Text="Add Game"
+                    IconName="plus"
+                    OnClick="@(() => Navigation.NavigateTo("/games/new"))" />
+        </div>
     </div>
 
     <ErrorAlert Message="@_error" Class="mb-6" />

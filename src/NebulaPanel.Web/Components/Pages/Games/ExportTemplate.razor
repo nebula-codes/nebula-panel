@@ -1,0 +1,117 @@
+@inject IGameTemplateService TemplateService
+@inject IToastService ToastService
+@inject IJSRuntime JS
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+
+@if (_showModal)
+{
+    <Modal Title="Export as Template" @bind-IsOpen="_showModal">
+        <div class="space-y-4">
+            <p class="text-sm text-nebula-text-muted">
+                Export this game as a portable template that can be imported on another Nebula Panel instance.
+            </p>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Author (optional)</label>
+                <input type="text" @bind="_author"
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent"
+                       placeholder="Your name or organization" />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Description (optional)</label>
+                <textarea @bind="_description" rows="2"
+                          class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent resize-none"
+                          placeholder="Brief description of this game template"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-nebula-text-secondary mb-1">Tags (optional, comma-separated)</label>
+                <input type="text" @bind="_tagsInput"
+                       class="w-full px-3 py-2 rounded-nebula bg-nebula-bg-secondary border border-nebula-border text-nebula-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-nebula-accent"
+                       placeholder="e.g. survival, multiplayer, modded" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="text-sm text-nebula-danger">@_error</div>
+            }
+
+            <div class="flex justify-end gap-2 mt-6">
+                <Button Variant="ButtonVariant.Ghost" Text="Cancel" OnClick="Close" />
+                <Button Variant="ButtonVariant.Primary"
+                        Text="Download Template"
+                        IconName="download"
+                        Loading="_isExporting"
+                        OnClick="ExportAsync" />
+            </div>
+        </div>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid GameId { get; set; }
+
+    private bool _showModal;
+    private string _author = "";
+    private string _description = "";
+    private string _tagsInput = "";
+    private string? _error;
+    private bool _isExporting;
+
+    public void Show()
+    {
+        _author = "";
+        _description = "";
+        _tagsInput = "";
+        _error = null;
+        _showModal = true;
+    }
+
+    private void Close()
+    {
+        _showModal = false;
+    }
+
+    private async Task ExportAsync()
+    {
+        _isExporting = true;
+        _error = null;
+
+        try
+        {
+            var tags = string.IsNullOrWhiteSpace(_tagsInput)
+                ? null
+                : _tagsInput.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+            var request = new GameTemplateExportRequest(
+                string.IsNullOrWhiteSpace(_author) ? null : _author.Trim(),
+                string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+                tags);
+
+            var result = await TemplateService.ExportGameAsync(GameId, request);
+            if (result.IsFailure)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            // Trigger download via JS
+            var bytes = System.Text.Encoding.UTF8.GetBytes(result.Value!);
+            var base64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("eval", $"(function(){{var a=document.createElement('a');a.href='data:application/json;base64,{base64}';a.download='game-template.json';document.body.appendChild(a);a.click();document.body.removeChild(a);}})()");
+
+            ToastService.ShowSuccess("Template exported.");
+            _showModal = false;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isExporting = false;
+        }
+    }
+}

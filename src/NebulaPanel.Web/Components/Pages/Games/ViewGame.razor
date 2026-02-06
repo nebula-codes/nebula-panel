@@ -52,6 +52,10 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <Button Variant="ButtonVariant.Secondary"
+                            Text="Export"
+                            IconName="download"
+                            OnClick="@(() => _exportModal?.Show())" />
+                    <Button Variant="ButtonVariant.Secondary"
                             Text="Edit"
                             IconName="pencil"
                             OnClick="@(() => Navigation.NavigateTo($"/games/{Id}/edit"))" />
@@ -235,6 +239,8 @@
     }
 </div>
 
+<ExportTemplate @ref="_exportModal" GameId="Id" />
+
 @code {
     [Parameter]
     public Guid Id { get; set; }
@@ -242,6 +248,7 @@
     private GameDto? _game;
     private bool _loading = true;
     private bool _notFound;
+    private ExportTemplate? _exportModal;
 
     protected override async Task OnInitializedAsync()
     {
