@@ -1,0 +1,236 @@
+@page "/schedules"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@inject IScheduledTaskService TaskService
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Schedules - Nebula Panel</PageTitle>
+
+<div class="py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Scheduled Tasks</h1>
+            <p class="text-nebula-text-muted mt-1">View and manage scheduled tasks across all servers.</p>
+        </div>
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    <DataGrid TItem="ScheduledTaskListItemDto"
+              Items="_tasks"
+              Loading="_loading"
+              Searchable="true"
+              SearchPlaceholder="Search tasks..."
+              SearchFields="@(t => $"{t.Name} {t.ServerName}")"
+              Pageable="true"
+              PageSize="15"
+              EmptyMessage="No scheduled tasks configured yet.">
+        <Columns>
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Task"
+                           Field="@(t => t.Name)"
+                           Sortable="true">
+                <Template Context="task">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center @GetTaskTypeColor(task.TaskType)">
+                            <Icon Name="@GetTaskTypeIcon(task.TaskType)" Size="IconSize.Small" />
+                        </div>
+                        <div>
+                            <div class="font-medium text-nebula-text-primary">@task.Name</div>
+                            <div class="text-sm text-nebula-text-muted">@GetTaskTypeLabel(task.TaskType)</div>
+                        </div>
+                    </div>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Server"
+                           Field="@(t => t.ServerName)"
+                           Sortable="true"
+                           Width="200px">
+                <Template Context="task">
+                    <a href="/servers/@task.ServerId"
+                       class="text-sm text-nebula-accent hover:underline"
+                       @onclick:stopPropagation="true">
+                        @task.ServerName
+                    </a>
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Schedule"
+                           Field="@(t => t.CronExpression)"
+                           Width="180px">
+                <Template Context="task">
+                    @if (!string.IsNullOrEmpty(task.CronExpression))
+                    {
+                        <code class="text-sm bg-nebula-bg-tertiary px-2 py-0.5 rounded text-nebula-text-secondary">
+                            @task.CronExpression
+                        </code>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">Manual only</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Next Run"
+                           Field="@(t => t.NextRunAt)"
+                           Sortable="true"
+                           Width="140px">
+                <Template Context="task">
+                    @if (task.NextRunAt.HasValue)
+                    {
+                        <span class="text-sm text-nebula-text-secondary" title="@task.NextRunAt.Value.ToLocalTime().ToString("f")">
+                            @FormatRelativeTime(task.NextRunAt.Value)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">-</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Last Run"
+                           Field="@(t => t.LastRunAt)"
+                           Sortable="true"
+                           Width="140px">
+                <Template Context="task">
+                    @if (task.LastRunAt.HasValue)
+                    {
+                        <span class="text-sm text-nebula-text-muted" title="@task.LastRunAt.Value.ToLocalTime().ToString("f")">
+                            @FormatRelativeTime(task.LastRunAt.Value)
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="text-sm text-nebula-text-muted">Never</span>
+                    }
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title="Status"
+                           Width="100px">
+                <Template Context="task">
+                    <StatusBadge Status="@(task.IsEnabled ? StatusBadge.StatusType.Success : StatusBadge.StatusType.Neutral)"
+                                 Text="@(task.IsEnabled ? "Enabled" : "Disabled")"
+                                 ShowDot="true"
+                                 Size="StatusBadge.BadgeSize.Small" />
+                </Template>
+            </DataGridColumn>
+
+            <DataGridColumn TItem="ScheduledTaskListItemDto"
+                           Title=""
+                           Width="80px">
+                <Template Context="task">
+                    <div class="flex items-center justify-end gap-1" @onclick:stopPropagation="true">
+                        <Button Variant="ButtonVariant.Ghost"
+                                Size="ButtonSize.Small"
+                                IconName="external-link"
+                                IconOnly="true"
+                                OnClick="@(() => Navigation.NavigateTo($"/servers/{task.ServerId}/schedule"))"
+                                title="Manage server schedules" />
+                    </div>
+                </Template>
+            </DataGridColumn>
+        </Columns>
+
+        <EmptyAction>
+            <p class="text-sm text-nebula-text-muted">Create scheduled tasks from individual server pages.</p>
+        </EmptyAction>
+    </DataGrid>
+</div>
+
+@code {
+    private List<ScheduledTaskListItemDto> _tasks = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasksAsync();
+    }
+
+    private async Task LoadTasksAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            var tasks = await TaskService.GetAllTasksAsync();
+            _tasks = tasks.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string GetTaskTypeIcon(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "refresh-cw",
+        ScheduledTaskType.Stop => "square",
+        ScheduledTaskType.Start => "play",
+        ScheduledTaskType.Backup => "archive",
+        ScheduledTaskType.Command => "terminal",
+        ScheduledTaskType.Update => "download",
+        _ => "clock"
+    };
+
+    private static string GetTaskTypeColor(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "bg-nebula-warning/20 text-nebula-warning",
+        ScheduledTaskType.Stop => "bg-nebula-error/20 text-nebula-error",
+        ScheduledTaskType.Start => "bg-nebula-success/20 text-nebula-success",
+        ScheduledTaskType.Backup => "bg-nebula-accent/20 text-nebula-accent",
+        ScheduledTaskType.Command => "bg-nebula-text-muted/20 text-nebula-text-muted",
+        ScheduledTaskType.Update => "bg-nebula-info/20 text-nebula-info",
+        _ => "bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private static string GetTaskTypeLabel(ScheduledTaskType type) => type switch
+    {
+        ScheduledTaskType.Restart => "Restart Server",
+        ScheduledTaskType.Stop => "Stop Server",
+        ScheduledTaskType.Start => "Start Server",
+        ScheduledTaskType.Backup => "Create Backup",
+        ScheduledTaskType.Command => "Run Command",
+        ScheduledTaskType.Update => "Update Server",
+        _ => type.ToString()
+    };
+
+    private static string FormatRelativeTime(DateTime dateTime)
+    {
+        var diff = dateTime - DateTime.UtcNow;
+
+        if (diff.TotalSeconds < 0)
+        {
+            diff = -diff;
+            if (diff.TotalMinutes < 1) return "Just now";
+            if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+            if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+            if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+            return dateTime.ToLocalTime().ToString("MMM d");
+        }
+        else
+        {
+            if (diff.TotalMinutes < 1) return "< 1m";
+            if (diff.TotalMinutes < 60) return $"in {(int)diff.TotalMinutes}m";
+            if (diff.TotalHours < 24) return $"in {(int)diff.TotalHours}h";
+            if (diff.TotalDays < 7) return $"in {(int)diff.TotalDays}d";
+            return dateTime.ToLocalTime().ToString("MMM d");
+        }
+    }
+}
