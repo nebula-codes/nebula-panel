@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using NebulaPanel.Domain.Entities;
 
@@ -26,7 +27,11 @@ public class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
             .HasConversion(
                 v => JsonSerializer.Serialize(v, JsonOptions),
                 v => JsonSerializer.Deserialize<List<string>>(v, JsonOptions) ?? new List<string>())
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<List<string>>(
+                (a, b) => (a ?? new()).SequenceEqual(b ?? new()),
+                c => c.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
+                c => c.ToList()));
 
         builder.HasOne(k => k.User)
             .WithMany()
