@@ -20,10 +20,9 @@ COPY src/ src/
 # Build argument for version
 ARG VERSION=1.0.0
 
-# Publish Web application
+# Publish Web application (restore required for Blazor static web assets)
 RUN dotnet publish src/NebulaPanel.Web/NebulaPanel.Web.csproj \
     --configuration Release \
-    --no-restore \
     -p:Version=${VERSION} \
     --output /app/publish
 
