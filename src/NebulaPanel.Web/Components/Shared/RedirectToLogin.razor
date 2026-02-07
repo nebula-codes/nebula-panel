@@ -1,10 +1,20 @@
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@using NebulaPanel.Web.Services
 
 @code {
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            // JS interop is now available. Re-check auth before redirecting,
+            // because the initial check during prerender couldn't access localStorage.
+            if (AuthStateProvider is AuthStateProvider provider
+                && await provider.TryRefreshAuthStateAsync())
+            {
+                return;
+            }
+
             var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri);
             var returnUrl = string.IsNullOrEmpty(currentPath) ? "" : $"?returnUrl=/{Uri.EscapeDataString(currentPath)}";
             Navigation.NavigateTo($"/login{returnUrl}", forceLoad: true);

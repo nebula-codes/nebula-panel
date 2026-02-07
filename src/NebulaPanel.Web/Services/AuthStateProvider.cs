@@ -11,7 +11,6 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
     private ClaimsPrincipal _currentUser = new(new ClaimsIdentity());
     private Timer? _tokenExpirationTimer;
     private DateTime? _tokenExpiration;
-    private TaskCompletionSource<AuthenticationState>? _initialAuthTcs = new();
 
     /// <summary>
     /// Number of seconds before token expiration to trigger the OnTokenExpiring event.
@@ -33,34 +32,7 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
         _jsRuntime = jsRuntime;
     }
 
-    public override Task<AuthenticationState> GetAuthenticationStateAsync()
-    {
-        // If JS interop hasn't been confirmed ready yet, return a pending task.
-        // This keeps AuthorizeRouteView in the <Authorizing> state (spinner)
-        // instead of showing <NotAuthorized> (which triggers RedirectToLogin).
-        if (_initialAuthTcs != null)
-            return _initialAuthTcs.Task;
-
-        return ResolveAuthStateAsync();
-    }
-
-    /// <summary>
-    /// Called once JS interop is available (after first interactive render).
-    /// Resolves the initial auth state and unblocks AuthorizeRouteView.
-    /// </summary>
-    public async Task OnCircuitReadyAsync()
-    {
-        if (_initialAuthTcs == null)
-            return;
-
-        var tcs = _initialAuthTcs;
-        _initialAuthTcs = null;
-
-        var state = await ResolveAuthStateAsync();
-        tcs.TrySetResult(state);
-    }
-
-    private async Task<AuthenticationState> ResolveAuthStateAsync()
+    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
         try
         {
@@ -83,6 +55,21 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
         {
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
+    }
+
+    /// <summary>
+    /// Re-checks the auth state now that JS interop is available.
+    /// Returns true if user is authenticated (and notifies the auth system).
+    /// </summary>
+    public async Task<bool> TryRefreshAuthStateAsync()
+    {
+        var state = await GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            NotifyAuthenticationStateChanged(Task.FromResult(state));
+            return true;
+        }
+        return false;
     }
 
     public async Task<string?> GetTokenAsync()
