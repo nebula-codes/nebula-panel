@@ -39,7 +39,7 @@ public sealed partial class FtbModpackProvider : IModpackProvider
 
         var response = await _apiClient.SearchAsync(query.Query, fetchLimit, ct).ConfigureAwait(false);
 
-        if (response == null || response.Packs.Length == 0)
+        if (response?.Packs == null || response.Packs.Length == 0)
         {
             return new ModpackSearchResult
             {
@@ -87,7 +87,7 @@ public sealed partial class FtbModpackProvider : IModpackProvider
     {
         var response = await _apiClient.GetPopularAsync(count, ct).ConfigureAwait(false);
 
-        if (response == null || response.Packs.Length == 0)
+        if (response?.Packs == null || response.Packs.Length == 0)
         {
             return [];
         }

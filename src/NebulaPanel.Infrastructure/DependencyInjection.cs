@@ -172,6 +172,14 @@ public static class DependencyInjection
         // Minecraft version aggregator
         services.AddSingleton<MinecraftVersionAggregator>();
 
+        // Minecraft Java runtime manager (auto-downloads Adoptium JREs)
+        services.AddHttpClient("Adoptium", client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NebulaPanel/1.0 (game-server-panel)");
+            client.Timeout = TimeSpan.FromMinutes(10); // JRE downloads can be large
+        });
+        services.AddSingleton<JavaRuntimeManager>();
+
         // Minecraft Java detector
         services.AddSingleton<MinecraftJavaDetector>();
 

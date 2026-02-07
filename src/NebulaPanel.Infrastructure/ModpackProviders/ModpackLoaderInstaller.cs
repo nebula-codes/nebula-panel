@@ -76,6 +76,21 @@ public class ModpackLoaderInstaller(
             "Installing {Loader} {Version} for Minecraft {McVersion}",
             loader, effectiveLoaderVersion, minecraftVersion);
 
+        // Resolve Java (auto-downloads if needed)
+        var requiredJava = GetRequiredJavaVersion(minecraftVersion);
+        string javaPath;
+        try
+        {
+            javaPath = await _javaDetector.ResolveJavaPathAsync(
+                server.NativeConfig?.JavaPath, requiredJava, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resolve Java {Version}+ for modpack loader install", requiredJava);
+            return LoaderInstallResult.Failed(
+                $"Java {requiredJava}+ is required but could not be found or downloaded: {ex.Message}");
+        }
+
         // Create install context
         var context = new MinecraftInstallContext
         {
@@ -84,8 +99,8 @@ public class ModpackLoaderInstaller(
             LoaderType = mcLoader.Value,
             MinecraftVersion = minecraftVersion,
             LoaderVersion = effectiveLoaderVersion,
-            JavaPath = GetJavaPath(server),
-            RequiredJavaVersion = GetRequiredJavaVersion(minecraftVersion)
+            JavaPath = javaPath,
+            RequiredJavaVersion = requiredJava
         };
 
         // Create progress adapter
@@ -146,7 +161,7 @@ public class ModpackLoaderInstaller(
             LoaderType = mcLoader.Value,
             MinecraftVersion = minecraftVersion,
             LoaderVersion = effectiveLoaderVersion,
-            JavaPath = GetJavaPath(server),
+            JavaPath = _javaDetector.ResolveJavaPath(server.NativeConfig?.JavaPath),
             RequiredJavaVersion = GetRequiredJavaVersion(minecraftVersion)
         };
 
@@ -167,14 +182,6 @@ public class ModpackLoaderInstaller(
             ModLoaderType.None => null,
             _ => null
         };
-    }
-
-    /// <summary>
-    /// Gets the Java path configured for the server.
-    /// </summary>
-    private static string? GetJavaPath(GameServer server)
-    {
-        return server.NativeConfig?.JavaPath;
     }
 
     /// <summary>

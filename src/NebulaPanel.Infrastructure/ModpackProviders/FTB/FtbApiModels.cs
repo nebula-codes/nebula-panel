@@ -8,7 +8,7 @@ namespace NebulaPanel.Infrastructure.ModpackProviders.FTB;
 /// Response from FTB search and popular endpoints.
 /// </summary>
 public sealed record FtbSearchResponse(
-    [property: JsonPropertyName("packs")] FtbPackSummary[] Packs,
+    [property: JsonPropertyName("packs")] FtbPackSummary[]? Packs,
     [property: JsonPropertyName("total")] int Total,
     [property: JsonPropertyName("limit")] int Limit,
     [property: JsonPropertyName("refreshed")] long Refreshed

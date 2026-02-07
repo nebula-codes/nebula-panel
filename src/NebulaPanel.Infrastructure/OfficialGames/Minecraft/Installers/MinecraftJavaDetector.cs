@@ -7,9 +7,12 @@ namespace NebulaPanel.Infrastructure.OfficialGames.Minecraft.Installers;
 /// <summary>
 /// Detects and validates Java installations for Minecraft servers.
 /// </summary>
-public partial class MinecraftJavaDetector(ILogger<MinecraftJavaDetector> logger)
+public partial class MinecraftJavaDetector(
+    ILogger<MinecraftJavaDetector> logger,
+    JavaRuntimeManager? javaRuntimeManager = null)
 {
     private readonly ILogger<MinecraftJavaDetector> _logger = logger;
+    private readonly JavaRuntimeManager? _javaRuntimeManager = javaRuntimeManager;
 
     /// <summary>
     /// Gets the minimum required Java version for a Minecraft version.
@@ -145,6 +148,71 @@ public partial class MinecraftJavaDetector(ILogger<MinecraftJavaDetector> logger
 
         // Fall back to system PATH
         return GetDefaultJavaPath();
+    }
+
+    /// <summary>
+    /// Resolves a working Java executable, falling back to auto-downloading a portable JRE
+    /// from Adoptium if no suitable system Java is found.
+    /// </summary>
+    /// <param name="configuredPath">Java path from configuration, if any.</param>
+    /// <param name="requiredVersion">Minimum required Java major version.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>Path to a validated java executable.</returns>
+    public async Task<string> ResolveJavaPathAsync(
+        string? configuredPath,
+        int requiredVersion,
+        CancellationToken cancellationToken = default)
+    {
+        // 1. Try configured path
+        if (!string.IsNullOrWhiteSpace(configuredPath))
+        {
+            var validation = await ValidateJavaAsync(configuredPath, requiredVersion, cancellationToken)
+                .ConfigureAwait(false);
+            if (validation.IsValid)
+                return configuredPath;
+
+            _logger.LogWarning("Configured Java path '{Path}' is not valid: {Error}", configuredPath, validation.Error);
+        }
+
+        // 2. Try JAVA_HOME
+        var javaHome = Environment.GetEnvironmentVariable("JAVA_HOME");
+        if (!string.IsNullOrWhiteSpace(javaHome))
+        {
+            var javaExe = Path.Combine(javaHome, "bin", GetJavaExecutableName());
+            if (File.Exists(javaExe))
+            {
+                var validation = await ValidateJavaAsync(javaExe, requiredVersion, cancellationToken)
+                    .ConfigureAwait(false);
+                if (validation.IsValid)
+                    return javaExe;
+
+                _logger.LogDebug("JAVA_HOME Java at '{Path}' does not meet version requirement ({Required}+)",
+                    javaExe, requiredVersion);
+            }
+        }
+
+        // 3. Try system PATH
+        var systemJava = GetDefaultJavaPath();
+        var systemValidation = await ValidateJavaAsync(systemJava, requiredVersion, cancellationToken)
+            .ConfigureAwait(false);
+        if (systemValidation.IsValid)
+            return systemJava;
+
+        // 4. Auto-download from Adoptium
+        if (_javaRuntimeManager is not null)
+        {
+            _logger.LogInformation(
+                "No suitable Java {Version}+ found on system, auto-downloading portable JRE...",
+                requiredVersion);
+            return await _javaRuntimeManager.EnsureInstalledAsync(requiredVersion, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // No runtime manager available — fall back to the best path we have (will fail at runtime)
+        _logger.LogWarning(
+            "No Java {Version}+ found and auto-download is not available. Java-dependent operations will fail.",
+            requiredVersion);
+        return ResolveJavaPath(configuredPath);
     }
 
     private static string GetDefaultJavaPath() =>

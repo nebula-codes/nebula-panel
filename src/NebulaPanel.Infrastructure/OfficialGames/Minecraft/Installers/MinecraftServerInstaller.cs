@@ -57,28 +57,27 @@ public class MinecraftServerInstaller(
                 $"No installer available for loader type: {parsedVersion.LoaderType}");
         }
 
-        // 3. Determine Java requirements
+        // 3. Resolve Java (checks configured path, JAVA_HOME, PATH, then auto-downloads)
         var requiredJavaVersion = MinecraftJavaDetector.GetRequiredJavaVersion(parsedVersion.MinecraftVersion);
         var configuredJavaPath = server.NativeConfig?.JavaPath;
-        var javaPath = _javaDetector.ResolveJavaPath(configuredJavaPath);
 
-        _logger.LogDebug("Java requirements: Required={Required}, Path={Path}",
-            requiredJavaVersion, javaPath);
+        progress?.Report(OfficialInstallProgress.Progress("Preparing", "Resolving Java installation...", 1));
 
-        // 4. Validate Java version
-        progress?.Report(OfficialInstallProgress.Progress("Preparing", "Validating Java installation...", 1));
-
-        var javaValidation = await _javaDetector.ValidateJavaAsync(
-            javaPath, requiredJavaVersion, cancellationToken).ConfigureAwait(false);
-
-        if (!javaValidation.IsValid)
+        string javaPath;
+        try
         {
-            _logger.LogWarning("Java validation failed: {Error}", javaValidation.Error);
-            return ServerInstallationResult.Failed(javaValidation.Error!);
+            javaPath = await _javaDetector.ResolveJavaPathAsync(
+                configuredJavaPath, requiredJavaVersion, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resolve Java {Version}+", requiredJavaVersion);
+            return ServerInstallationResult.Failed(
+                $"Java {requiredJavaVersion}+ is required but could not be found or downloaded: {ex.Message}");
         }
 
-        _logger.LogInformation("Java validation passed: Version {Version} at {Path}",
-            javaValidation.DetectedVersion?.MajorVersion, javaValidation.DetectedVersion?.Path);
+        _logger.LogInformation("Using Java at {Path} (required {Required}+)",
+            javaPath, requiredJavaVersion);
 
         // 5. Create install directory
         if (!Directory.Exists(server.InstallPath))
