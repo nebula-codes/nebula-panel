@@ -271,29 +271,20 @@ if (!app.Environment.IsEnvironment("Testing"))
     await OfficialGameSeeder.SeedOfficialGamesAsync(app.Services);
 }
 
-Log.Information("NebulaPanel build identifier: 2026-02-06-static-fix");
-
-// Diagnostic endpoint to verify static file paths inside container
-app.MapGet("/api/debug/static-files", () =>
+Log.Information("NebulaPanel build identifier: 2026-02-06-static-fix-v2");
+Log.Information("WebRootPath: {WebRootPath}", app.Environment.WebRootPath);
+Log.Information("ContentRootPath: {ContentRootPath}", app.Environment.ContentRootPath);
 {
-    var webRoot = app.Environment.WebRootPath ?? "null";
-    var contentRoot = app.Environment.ContentRootPath;
-    var blazorPath = Path.Combine(webRoot, "_framework", "blazor.web.js");
-    var frameworkDir = Path.Combine(webRoot, "_framework");
-    var frameworkFiles = Directory.Exists(frameworkDir)
-        ? Directory.GetFiles(frameworkDir).Select(Path.GetFileName).ToArray()
-        : Array.Empty<string?>();
-
-    return Results.Ok(new
+    var blazorPath = Path.Combine(app.Environment.WebRootPath ?? "null", "_framework", "blazor.web.js");
+    Log.Information("blazor.web.js path: {Path}, exists: {Exists}", blazorPath, File.Exists(blazorPath));
+    var wwwrootPath = app.Environment.WebRootPath ?? "null";
+    Log.Information("wwwroot exists: {Exists}", Directory.Exists(wwwrootPath));
+    if (Directory.Exists(wwwrootPath))
     {
-        webRoot,
-        contentRoot,
-        wwwrootExists = Directory.Exists(webRoot),
-        frameworkDirExists = Directory.Exists(frameworkDir),
-        blazorFileExists = File.Exists(blazorPath),
-        frameworkFiles
-    });
-});
+        var topDirs = Directory.GetDirectories(wwwrootPath).Select(Path.GetFileName);
+        Log.Information("wwwroot subdirs: {Dirs}", string.Join(", ", topDirs));
+    }
+}
 
 // Configure the HTTP request pipeline.
 app.UseGlobalExceptionHandler();
