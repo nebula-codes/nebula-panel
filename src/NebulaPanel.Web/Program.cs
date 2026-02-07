@@ -154,12 +154,28 @@ builder.Services.AddAuthentication(options =>
 
             return Task.CompletedTask;
         },
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("JwtAuthFailed");
+            logger.LogError(context.Exception,
+                "[JwtAuthFailed] Token validation failed for path={Path}",
+                context.HttpContext.Request.Path);
+            return Task.CompletedTask;
+        },
         OnChallenge = context =>
         {
+            var path = context.Request.Path;
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("JwtOnChallenge");
+
+            logger.LogWarning("[OnChallenge] Fired for path={Path}, method={Method}, hasAuth={HasAuth}",
+                path, context.Request.Method,
+                context.Request.Headers.ContainsKey("Authorization"));
+
             // For non-API/non-hub requests (browser navigation), redirect to login
             // instead of returning 401. JWT Bearer defaults to 401 which blocks
             // browser access to Blazor pages that have [Authorize].
-            var path = context.Request.Path;
             if (!path.StartsWithSegments("/api")
                 && !path.StartsWithSegments("/hubs")
                 && !path.StartsWithSegments("/_blazor")
@@ -169,12 +185,18 @@ builder.Services.AddAuthentication(options =>
                 var returnUrl = context.Request.Path + context.Request.QueryString;
                 if (!string.IsNullOrEmpty(returnUrl) && returnUrl != "/")
                 {
+                    logger.LogWarning("[OnChallenge] Redirecting browser to /login (returnUrl={ReturnUrl})", returnUrl);
                     context.Response.Redirect($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
                 }
                 else
                 {
+                    logger.LogWarning("[OnChallenge] Redirecting browser to /login (no returnUrl)");
                     context.Response.Redirect("/login");
                 }
+            }
+            else
+            {
+                logger.LogDebug("[OnChallenge] Skipping redirect for excluded path: {Path}", path);
             }
 
             return Task.CompletedTask;

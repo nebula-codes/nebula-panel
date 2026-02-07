@@ -3,11 +3,13 @@ namespace NebulaPanel.Web.Services;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 
 public class AuthStateProvider : AuthenticationStateProvider, IDisposable
 {
     private readonly IJSRuntime _jsRuntime;
+    private readonly ILogger<AuthStateProvider> _logger;
     private ClaimsPrincipal _currentUser = new(new ClaimsIdentity());
     private Timer? _tokenExpirationTimer;
     private DateTime? _tokenExpiration;
@@ -27,32 +29,51 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
     /// </summary>
     public event EventHandler? OnSessionExpired;
 
-    public AuthStateProvider(IJSRuntime jsRuntime)
+    public AuthStateProvider(IJSRuntime jsRuntime, ILogger<AuthStateProvider> logger)
     {
         _jsRuntime = jsRuntime;
+        _logger = logger;
     }
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
+        _logger.LogDebug("[AuthState] GetAuthenticationStateAsync called. JSRuntime type: {JSRuntimeType}",
+            _jsRuntime.GetType().Name);
+
         try
         {
             var token = await GetTokenAsync();
             if (string.IsNullOrEmpty(token))
             {
+                _logger.LogWarning("[AuthState] GetAuthenticationStateAsync: token is null/empty — returning anonymous");
                 return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
             }
 
+            _logger.LogDebug("[AuthState] GetAuthenticationStateAsync: token retrieved (length={TokenLength})", token.Length);
+
             var claims = ParseClaimsFromJwt(token);
-            var identity = new ClaimsIdentity(claims, "jwt");
+            var claimsList = claims.ToList();
+            var identity = new ClaimsIdentity(claimsList, "jwt");
             _currentUser = new ClaimsPrincipal(identity);
+
+            var sub = claimsList.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier || c.Type == "sub")?.Value;
+            _logger.LogInformation("[AuthState] GetAuthenticationStateAsync: authenticated as sub={Sub}, claims={ClaimCount}",
+                sub, claimsList.Count);
 
             // Set up token expiration monitoring
             SetupTokenExpirationMonitoring(token);
 
             return new AuthenticationState(_currentUser);
         }
-        catch
+        catch (InvalidOperationException ex) when (ex.Message.Contains("prerender", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("JavaScript interop calls cannot be issued", StringComparison.OrdinalIgnoreCase))
         {
+            _logger.LogWarning("[AuthState] GetAuthenticationStateAsync: JS interop unavailable (prerender). Returning anonymous. Message: {Message}", ex.Message);
+            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AuthState] GetAuthenticationStateAsync: unexpected exception — returning anonymous");
             return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
         }
     }
@@ -63,12 +84,15 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
     /// </summary>
     public async Task<bool> TryRefreshAuthStateAsync()
     {
+        _logger.LogDebug("[AuthState] TryRefreshAuthStateAsync called");
         var state = await GetAuthenticationStateAsync();
         if (state.User.Identity?.IsAuthenticated == true)
         {
+            _logger.LogInformation("[AuthState] TryRefreshAuthStateAsync: user IS authenticated — notifying");
             NotifyAuthenticationStateChanged(Task.FromResult(state));
             return true;
         }
+        _logger.LogWarning("[AuthState] TryRefreshAuthStateAsync: user is NOT authenticated — will redirect");
         return false;
     }
 
@@ -76,10 +100,20 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
     {
         try
         {
-            return await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+            var token = await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+            _logger.LogDebug("[AuthState] GetTokenAsync: {Result}",
+                string.IsNullOrEmpty(token) ? "null/empty" : $"OK (length={token.Length})");
+            return token;
         }
-        catch
+        catch (InvalidOperationException ex) when (ex.Message.Contains("prerender", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("JavaScript interop calls cannot be issued", StringComparison.OrdinalIgnoreCase))
         {
+            _logger.LogWarning("[AuthState] GetTokenAsync: JS interop unavailable (prerender)");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AuthState] GetTokenAsync: exception reading localStorage");
             return null;
         }
     }
@@ -90,14 +124,16 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
         {
             return await _jsRuntime.InvokeAsync<string?>("localStorage.getItem", "refreshToken");
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "[AuthState] GetRefreshTokenAsync: exception");
             return null;
         }
     }
 
     public async Task SetTokenAsync(string token)
     {
+        _logger.LogInformation("[AuthState] SetTokenAsync: storing token (length={Length})", token.Length);
         await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "accessToken", token);
 
         // Set up token expiration monitoring
@@ -113,6 +149,7 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
 
     public async Task ClearTokenAsync()
     {
+        _logger.LogInformation("[AuthState] ClearTokenAsync: clearing all tokens");
         await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "accessToken");
         await _jsRuntime.InvokeVoidAsync("localStorage.removeItem", "refreshToken");
         _currentUser = new ClaimsPrincipal(new ClaimsIdentity());
@@ -194,16 +231,20 @@ public class AuthStateProvider : AuthenticationStateProvider, IDisposable
         var expiration = GetTokenExpirationFromJwt(token);
         if (!expiration.HasValue)
         {
+            _logger.LogWarning("[AuthState] SetupTokenExpirationMonitoring: could not read expiration from token");
             return;
         }
 
         _tokenExpiration = expiration.Value;
 
         var timeUntilExpiration = expiration.Value - DateTime.UtcNow;
+        _logger.LogDebug("[AuthState] Token expires at {Expiration} UTC ({SecondsLeft}s from now)",
+            expiration.Value.ToString("HH:mm:ss"), (int)timeUntilExpiration.TotalSeconds);
 
         // If token is already expired, notify immediately
         if (timeUntilExpiration <= TimeSpan.Zero)
         {
+            _logger.LogWarning("[AuthState] Token is ALREADY EXPIRED — firing OnSessionExpired");
             OnSessionExpired?.Invoke(this, EventArgs.Empty);
             return;
         }

@@ -1,22 +1,32 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@inject ILogger<RedirectToLogin> Logger
 @using NebulaPanel.Web.Services
 
 @code {
+    protected override void OnInitialized()
+    {
+        Logger.LogWarning("[RedirectToLogin] OnInitialized — component rendered for URI: {Uri}", Navigation.Uri);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            Logger.LogWarning("[RedirectToLogin] OnAfterRenderAsync(firstRender=true) — JS interop now available, re-checking auth");
+
             // JS interop is now available. Re-check auth before redirecting,
             // because the initial check during prerender couldn't access localStorage.
             if (AuthStateProvider is AuthStateProvider provider
                 && await provider.TryRefreshAuthStateAsync())
             {
+                Logger.LogInformation("[RedirectToLogin] TryRefreshAuthStateAsync returned TRUE — user IS authenticated, aborting redirect");
                 return;
             }
 
             var currentPath = Navigation.ToBaseRelativePath(Navigation.Uri);
             var returnUrl = string.IsNullOrEmpty(currentPath) ? "" : $"?returnUrl=/{Uri.EscapeDataString(currentPath)}";
+            Logger.LogWarning("[RedirectToLogin] User NOT authenticated after re-check — redirecting to /login{ReturnUrl}", returnUrl);
             Navigation.NavigateTo($"/login{returnUrl}", forceLoad: true);
         }
     }
