@@ -27,12 +27,12 @@ RUN dotnet publish src/NebulaPanel.Web/NebulaPanel.Web.csproj \
     -p:Version=${VERSION} \
     --output /app/publish
 
-# Publish Updater
+# Publish Updater to separate directory to avoid overwriting Web static assets
 RUN dotnet publish src/NebulaPanel.Updater/NebulaPanel.Updater.csproj \
     --configuration Release \
     --no-restore \
     -p:Version=${VERSION} \
-    --output /app/publish
+    --output /app/updater
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
@@ -54,8 +54,11 @@ RUN groupadd --gid 10000 nebula \
 RUN mkdir -p /app/data /app/servers /app/logs \
     && chown -R nebula:nebula /app
 
-# Copy published application
+# Copy published Web application
 COPY --from=build --chown=nebula:nebula /app/publish .
+
+# Copy Updater executable alongside the Web app
+COPY --from=build --chown=nebula:nebula /app/updater/NebulaPanel.Updater* ./
 
 # Switch to non-root user
 USER nebula

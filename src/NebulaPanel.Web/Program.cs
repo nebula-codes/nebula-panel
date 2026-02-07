@@ -271,26 +271,11 @@ if (!app.Environment.IsEnvironment("Testing"))
     await OfficialGameSeeder.SeedOfficialGamesAsync(app.Services);
 }
 
-Log.Information("NebulaPanel build identifier: 2026-02-06-static-fix-v2");
-Log.Information("WebRootPath: {WebRootPath}", app.Environment.WebRootPath);
-Log.Information("ContentRootPath: {ContentRootPath}", app.Environment.ContentRootPath);
-{
-    var blazorPath = Path.Combine(app.Environment.WebRootPath ?? "null", "_framework", "blazor.web.js");
-    Log.Information("blazor.web.js path: {Path}, exists: {Exists}", blazorPath, File.Exists(blazorPath));
-    var wwwrootPath = app.Environment.WebRootPath ?? "null";
-    Log.Information("wwwroot exists: {Exists}", Directory.Exists(wwwrootPath));
-    if (Directory.Exists(wwwrootPath))
-    {
-        var topDirs = Directory.GetDirectories(wwwrootPath).Select(Path.GetFileName);
-        Log.Information("wwwroot subdirs: {Dirs}", string.Join(", ", topDirs));
-    }
-}
-
 // Configure the HTTP request pipeline.
 app.UseGlobalExceptionHandler();
 app.UseSecurityHeaders();
 
-// Serve static files from wwwroot (primary handler for _framework, css, js, etc.)
+// Serve static files from wwwroot (handles _framework, css, js, etc.)
 app.UseStaticFiles();
 
 app.UseAuthentication();
