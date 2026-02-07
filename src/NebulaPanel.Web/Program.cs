@@ -178,40 +178,14 @@ builder.Services.AddAuthentication(options =>
         },
         OnChallenge = context =>
         {
-            var path = context.Request.Path;
+            // Blazor page routes are AllowAnonymous at the HTTP level (JWT lives in
+            // localStorage, not cookies, so initial GETs never carry a token).
+            // Auth is enforced by AuthorizeRouteView after the circuit connects.
+            // This handler only fires for API/hub routes — let JWT return the default 401.
             var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
                 .CreateLogger("JwtOnChallenge");
-
-            logger.LogWarning("[OnChallenge] Fired for path={Path}, method={Method}, hasAuth={HasAuth}",
-                path, context.Request.Method,
-                context.Request.Headers.ContainsKey("Authorization"));
-
-            // For non-API/non-hub requests (browser navigation), redirect to login
-            // instead of returning 401. JWT Bearer defaults to 401 which blocks
-            // browser access to Blazor pages that have [Authorize].
-            if (!path.StartsWithSegments("/api")
-                && !path.StartsWithSegments("/hubs")
-                && !path.StartsWithSegments("/_blazor")
-                && !path.StartsWithSegments("/_framework"))
-            {
-                context.HandleResponse();
-                var returnUrl = context.Request.Path + context.Request.QueryString;
-                if (!string.IsNullOrEmpty(returnUrl) && returnUrl != "/")
-                {
-                    logger.LogWarning("[OnChallenge] Redirecting browser to /login (returnUrl={ReturnUrl})", returnUrl);
-                    context.Response.Redirect($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
-                }
-                else
-                {
-                    logger.LogWarning("[OnChallenge] Redirecting browser to /login (no returnUrl)");
-                    context.Response.Redirect("/login");
-                }
-            }
-            else
-            {
-                logger.LogDebug("[OnChallenge] Skipping redirect for excluded path: {Path}", path);
-            }
-
+            logger.LogWarning("[OnChallenge] 401 for path={Path}, method={Method}",
+                context.Request.Path, context.Request.Method);
             return Task.CompletedTask;
         }
     };
@@ -323,8 +297,14 @@ app.UseAntiforgery();
 
 app.MapControllers();
 app.MapStaticAssets();
+// AllowAnonymous at the HTTP endpoint level so the initial GET serves the Blazor
+// HTML shell regardless of auth. The JWT lives in localStorage — it's NOT sent on
+// plain HTTP requests. Auth is enforced at the Blazor component level by
+// AuthorizeRouteView + [Authorize] attributes after the circuit connects and
+// JS interop can read the token.
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+    .AddInteractiveServerRenderMode()
+    .AllowAnonymous();
 
 // Map SignalR hubs
 app.MapHub<InstallProgressHub>("/hubs/install-progress");
