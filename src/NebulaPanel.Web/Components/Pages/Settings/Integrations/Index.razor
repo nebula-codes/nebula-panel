@@ -1,15 +1,16 @@
 @page "/settings/integrations"
 @attribute [Authorize]
 @using System.Security.Claims
-@using Microsoft.Extensions.Options
+@using NebulaPanel.Application.DTOs
 @using NebulaPanel.Application.Services
 @using NebulaPanel.Domain.Entities
-@using NebulaPanel.Domain.Settings
+@using NebulaPanel.Web.Services
 @inject NavigationManager Navigation
 @inject IHytaleAuthService HytaleAuthService
+@inject ISettingsService SettingsService
+@inject IApiKeyValidator ApiKeyValidator
 @inject AuthenticationStateProvider AuthStateProvider
-@inject IOptions<SteamApiSettings> SteamApiOptions
-@inject IConfiguration Configuration
+@inject IToastService ToastService
 @rendermode InteractiveServer
 
 <PageTitle>Integrations - Nebula Panel</PageTitle>
@@ -23,7 +24,7 @@
     </div>
 
     <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Integrations</h1>
-    <p class="text-nebula-text-muted mb-6">Connect external accounts to enable additional features.</p>
+    <p class="text-nebula-text-muted mb-6">Connect external services and configure API keys.</p>
 
     @if (_loading)
     {
@@ -68,15 +69,15 @@
             </Card>
 
             @* Steam Web API Card *@
-            <Card Interactive="false">
+            <Card>
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-nebula bg-[#1b2838] flex items-center justify-center">
                         <Icon Name="cloud" Size="IconSize.Medium" Class="text-white" />
                     </div>
                     <div class="flex-1">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 mb-1">
                             <h3 class="font-medium text-nebula-text-primary">Steam Web API</h3>
-                            @if (_steamApiConfigured)
+                            @if (_integrationSettings?.SteamConfigured == true)
                             {
                                 <StatusBadge Status="StatusType.Success" Text="Configured" Size="BadgeSize.Small" />
                             }
@@ -85,23 +86,45 @@
                                 <StatusBadge Status="StatusType.Warning" Text="Not Configured" Size="BadgeSize.Small" />
                             }
                         </div>
-                        <p class="text-sm text-nebula-text-muted mt-1">
-                            Required for Steam Workshop mod browsing. Configure in appsettings.json.
-                        </p>
+                        @if (_editingSteam)
+                        {
+                            @RenderApiKeyForm("steam", "Steam API Key", _steamKeyInput, v => _steamKeyInput = v,
+                                "Get your key at steamcommunity.com/dev/apikey",
+                                _integrationSettings?.SteamConfigured == true)
+                        }
+                        else
+                        {
+                            <p class="text-sm text-nebula-text-muted">
+                                @if (_integrationSettings?.SteamConfigured == true)
+                                {
+                                    <span>Key: @_integrationSettings.SteamApiKeyMasked</span>
+                                }
+                                else
+                                {
+                                    <span>Required for Steam Workshop mod browsing.</span>
+                                }
+                            </p>
+                            <div class="mt-2">
+                                <Button Variant="Button.ButtonVariant.Secondary"
+                                        Size="Button.ButtonSize.Small"
+                                        Text="@(_integrationSettings?.SteamConfigured == true ? "Edit" : "Configure")"
+                                        OnClick="@(() => { _editingSteam = true; _steamKeyInput = string.Empty; })" />
+                            </div>
+                        }
                     </div>
                 </div>
             </Card>
 
             @* CurseForge Card *@
-            <Card Interactive="false">
+            <Card>
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-nebula bg-[#F16436] flex items-center justify-center">
                         <Icon Name="package" Size="IconSize.Medium" Class="text-white" />
                     </div>
                     <div class="flex-1">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 mb-1">
                             <h3 class="font-medium text-nebula-text-primary">CurseForge</h3>
-                            @if (_curseforgeConfigured)
+                            @if (_integrationSettings?.CurseForgeConfigured == true)
                             {
                                 <StatusBadge Status="StatusType.Success" Text="Configured" Size="BadgeSize.Small" />
                             }
@@ -110,15 +133,84 @@
                                 <StatusBadge Status="StatusType.Warning" Text="Not Configured" Size="BadgeSize.Small" />
                             }
                         </div>
-                        <p class="text-sm text-nebula-text-muted mt-1">
-                            For downloading mods from CurseForge. Configure API key in appsettings.json.
-                        </p>
+                        @if (_editingCurseForge)
+                        {
+                            @RenderApiKeyForm("curseforge", "CurseForge API Key", _curseForgeKeyInput, v => _curseForgeKeyInput = v,
+                                "Get your key at console.curseforge.com",
+                                _integrationSettings?.CurseForgeConfigured == true)
+                        }
+                        else
+                        {
+                            <p class="text-sm text-nebula-text-muted">
+                                @if (_integrationSettings?.CurseForgeConfigured == true)
+                                {
+                                    <span>Key: @_integrationSettings.CurseForgeApiKeyMasked</span>
+                                }
+                                else
+                                {
+                                    <span>Required for downloading mods from CurseForge.</span>
+                                }
+                            </p>
+                            <div class="mt-2">
+                                <Button Variant="Button.ButtonVariant.Secondary"
+                                        Size="Button.ButtonSize.Small"
+                                        Text="@(_integrationSettings?.CurseForgeConfigured == true ? "Edit" : "Configure")"
+                                        OnClick="@(() => { _editingCurseForge = true; _curseForgeKeyInput = string.Empty; })" />
+                            </div>
+                        }
+                    </div>
+                </div>
+            </Card>
+
+            @* Modtale Card *@
+            <Card>
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-nebula bg-[#8B5CF6] flex items-center justify-center">
+                        <Icon Name="puzzle" Size="IconSize.Medium" Class="text-white" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-medium text-nebula-text-primary">Modtale</h3>
+                            @if (_integrationSettings?.ModtaleConfigured == true)
+                            {
+                                <StatusBadge Status="StatusType.Success" Text="Configured" Size="BadgeSize.Small" />
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusType.Neutral" Text="Optional" Size="BadgeSize.Small" />
+                            }
+                        </div>
+                        @if (_editingModtale)
+                        {
+                            @RenderApiKeyForm("modtale", "Modtale API Key", _modtaleKeyInput, v => _modtaleKeyInput = v,
+                                "Optional - increases rate limits for Hytale mods",
+                                _integrationSettings?.ModtaleConfigured == true)
+                        }
+                        else
+                        {
+                            <p class="text-sm text-nebula-text-muted">
+                                @if (_integrationSettings?.ModtaleConfigured == true)
+                                {
+                                    <span>Key: @_integrationSettings.ModtaleApiKeyMasked</span>
+                                }
+                                else
+                                {
+                                    <span>Optional API key for Hytale mod browsing.</span>
+                                }
+                            </p>
+                            <div class="mt-2">
+                                <Button Variant="Button.ButtonVariant.Secondary"
+                                        Size="Button.ButtonSize.Small"
+                                        Text="@(_integrationSettings?.ModtaleConfigured == true ? "Edit" : "Configure")"
+                                        OnClick="@(() => { _editingModtale = true; _modtaleKeyInput = string.Empty; })" />
+                            </div>
+                        }
                     </div>
                 </div>
             </Card>
 
             @* Modrinth Card *@
-            <Card Interactive="false">
+            <Card>
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-nebula bg-[#1bd96a] flex items-center justify-center">
                         <Icon Name="box" Size="IconSize.Medium" Class="text-white" />
@@ -141,8 +233,21 @@
 @code {
     private bool _loading = true;
     private HytaleUserCredentials? _hytaleCredentials;
-    private bool _steamApiConfigured;
-    private bool _curseforgeConfigured;
+    private IntegrationSettingsDto? _integrationSettings;
+
+    // Edit states
+    private bool _editingSteam;
+    private bool _editingCurseForge;
+    private bool _editingModtale;
+    private string _steamKeyInput = string.Empty;
+    private string _curseForgeKeyInput = string.Empty;
+    private string _modtaleKeyInput = string.Empty;
+
+    // Validation/saving states
+    private string? _validatingProvider;
+    private string? _savingProvider;
+    private string? _validationMessage;
+    private bool? _validationSuccess;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -157,13 +262,7 @@
     {
         try
         {
-            // Check Steam API configuration
-            var steamSettings = SteamApiOptions.Value;
-            _steamApiConfigured = !string.IsNullOrWhiteSpace(steamSettings.ApiKey);
-
-            // Check CurseForge configuration
-            var curseforgeKey = Configuration["CurseForge:ApiKey"];
-            _curseforgeConfigured = !string.IsNullOrWhiteSpace(curseforgeKey);
+            _integrationSettings = await SettingsService.GetIntegrationSettingsAsync();
 
             // Check Hytale credentials for current user
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
@@ -176,7 +275,6 @@
         }
         catch
         {
-            // Silently fail - credentials are optional
             _hytaleCredentials = null;
         }
         finally
@@ -184,6 +282,199 @@
             _loading = false;
         }
     }
+
+    private RenderFragment RenderApiKeyForm(string provider, string label, string inputValue,
+        Action<string> onInput, string helperText, bool hasExisting) => __builder =>
+    {
+        <div class="mt-1 space-y-2">
+            <div>
+                <input type="password"
+                       value="@inputValue"
+                       @oninput="@(e => onInput(e.Value?.ToString() ?? string.Empty))"
+                       placeholder="@(hasExisting ? "Enter new key to replace" : "Enter API key")"
+                       class="input w-full text-sm" />
+                <p class="text-xs text-nebula-text-muted mt-1">@helperText</p>
+            </div>
+            @if (_validatingProvider == provider || (_validationMessage != null && _savingProvider == provider))
+            {
+                <p class="text-xs @(_validationSuccess == true ? "text-nebula-success" : "text-nebula-error")">
+                    @(_validatingProvider == provider ? "Validating..." : _validationMessage)
+                </p>
+            }
+            <div class="flex items-center gap-2">
+                <Button Variant="Button.ButtonVariant.Primary"
+                        Size="Button.ButtonSize.Small"
+                        Text="Save"
+                        Loading="@(_savingProvider == provider)"
+                        Disabled="@(string.IsNullOrWhiteSpace(inputValue) && !hasExisting)"
+                        OnClick="@(() => SaveApiKeyAsync(provider))" />
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Small"
+                        Text="Test"
+                        Loading="@(_validatingProvider == provider)"
+                        Disabled="@string.IsNullOrWhiteSpace(inputValue)"
+                        OnClick="@(() => TestApiKeyAsync(provider, inputValue))" />
+                <Button Variant="Button.ButtonVariant.Ghost"
+                        Size="Button.ButtonSize.Small"
+                        Text="Cancel"
+                        OnClick="@(() => CancelEdit(provider))" />
+                @if (hasExisting)
+                {
+                    <Button Variant="Button.ButtonVariant.Danger"
+                            Size="Button.ButtonSize.Small"
+                            Text="Remove"
+                            OnClick="@(() => RemoveApiKeyAsync(provider))" />
+                }
+            </div>
+        </div>
+    };
+
+    private async Task TestApiKeyAsync(string provider, string apiKey)
+    {
+        _validatingProvider = provider;
+        _validationMessage = null;
+        _validationSuccess = null;
+        StateHasChanged();
+
+        try
+        {
+            var (success, message) = await ApiKeyValidator.ValidateAsync(provider, apiKey);
+            _validationSuccess = success;
+            _validationMessage = message;
+            _savingProvider = provider; // Show message under this provider
+        }
+        catch
+        {
+            _validationSuccess = false;
+            _validationMessage = "Validation failed";
+            _savingProvider = provider;
+        }
+        finally
+        {
+            _validatingProvider = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveApiKeyAsync(string provider)
+    {
+        _savingProvider = provider;
+        _validationMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var userId = GetUserId();
+            var request = provider switch
+            {
+                "steam" => new UpdateIntegrationSettingsRequest(null, _steamKeyInput, null),
+                "curseforge" => new UpdateIntegrationSettingsRequest(_curseForgeKeyInput, null, null),
+                "modtale" => new UpdateIntegrationSettingsRequest(null, null, _modtaleKeyInput),
+                _ => throw new ArgumentException($"Unknown provider: {provider}")
+            };
+
+            var result = await SettingsService.UpdateIntegrationSettingsAsync(request, userId);
+            if (result.IsSuccess)
+            {
+                _integrationSettings = result.Value;
+                CancelEdit(provider);
+                ToastService.ShowSuccess($"{GetProviderName(provider)} API key saved successfully.");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to save API key.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save: {ex.Message}");
+        }
+        finally
+        {
+            _savingProvider = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RemoveApiKeyAsync(string provider)
+    {
+        _savingProvider = provider;
+        StateHasChanged();
+
+        try
+        {
+            var userId = GetUserId();
+            var request = provider switch
+            {
+                "steam" => new UpdateIntegrationSettingsRequest(null, null, null, ClearSteam: true),
+                "curseforge" => new UpdateIntegrationSettingsRequest(null, null, null, ClearCurseForge: true),
+                "modtale" => new UpdateIntegrationSettingsRequest(null, null, null, ClearModtale: true),
+                _ => throw new ArgumentException($"Unknown provider: {provider}")
+            };
+
+            var result = await SettingsService.UpdateIntegrationSettingsAsync(request, userId);
+            if (result.IsSuccess)
+            {
+                _integrationSettings = result.Value;
+                CancelEdit(provider);
+                ToastService.ShowSuccess($"{GetProviderName(provider)} API key removed.");
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Failed to remove API key.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to remove: {ex.Message}");
+        }
+        finally
+        {
+            _savingProvider = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelEdit(string provider)
+    {
+        _validationMessage = null;
+        _validationSuccess = null;
+        _savingProvider = null;
+
+        switch (provider)
+        {
+            case "steam":
+                _editingSteam = false;
+                _steamKeyInput = string.Empty;
+                break;
+            case "curseforge":
+                _editingCurseForge = false;
+                _curseForgeKeyInput = string.Empty;
+                break;
+            case "modtale":
+                _editingModtale = false;
+                _modtaleKeyInput = string.Empty;
+                break;
+        }
+    }
+
+    private Guid GetUserId()
+    {
+        var authState = AuthStateProvider.GetAuthenticationStateAsync().Result;
+        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)
+            ?? authState.User.FindFirst("sub");
+        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
+            ? userId
+            : Guid.Empty;
+    }
+
+    private static string GetProviderName(string provider) => provider switch
+    {
+        "steam" => "Steam",
+        "curseforge" => "CurseForge",
+        "modtale" => "Modtale",
+        _ => provider
+    };
 
     private void NavigateTo(string path)
     {

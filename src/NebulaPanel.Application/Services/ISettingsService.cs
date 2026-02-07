@@ -31,6 +31,11 @@ public interface ISettingsService
     Task<Result<Stream>> CreateDatabaseBackupAsync(CancellationToken cancellationToken = default);
     string GetBackupFileName();
 
+    // Integration Settings
+    Task<IntegrationSettingsDto> GetIntegrationSettingsAsync(CancellationToken cancellationToken = default);
+    Task<Result<IntegrationSettingsDto>> UpdateIntegrationSettingsAsync(
+        UpdateIntegrationSettingsRequest request, Guid userId, CancellationToken cancellationToken = default);
+
     // Import/Export
     Task<Result<SettingsExportDto>> ExportSettingsAsync(CancellationToken cancellationToken = default);
     Task<Result<SettingsImportPreviewDto>> PreviewImportAsync(string jsonContent, CancellationToken cancellationToken = default);

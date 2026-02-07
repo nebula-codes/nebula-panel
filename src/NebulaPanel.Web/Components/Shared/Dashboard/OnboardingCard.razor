@@ -1,6 +1,7 @@
 @inject NavigationManager Navigation
 @inject IGameService GameService
 @inject IGameServerService ServerService
+@inject ISettingsService SettingsService
 @using NebulaPanel.Application.Services
 
 <Card Variant="Card.CardVariant.Elevated">
@@ -53,7 +54,36 @@
                 }
             </div>
 
-            @* Step 2: Server *@
+            @* Step 2: Integrations (optional) *@
+            <div class="@GetStepClass(_hasIntegrations)">
+                <div class="@GetStepIconClass(_hasIntegrations)">
+                    @if (_hasIntegrations)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" Class="text-white" />
+                    }
+                    else
+                    {
+                        <span class="text-sm font-bold">2</span>
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium text-nebula-text-primary">
+                        @(_hasIntegrations ? "Integrations configured" : "Configure integrations")
+                    </div>
+                    <div class="text-xs text-nebula-text-muted">
+                        @(_hasIntegrations ? "API keys are set up for mod browsing" : "Optional — add API keys for mod downloads")
+                    </div>
+                </div>
+                @if (!_hasIntegrations)
+                {
+                    <Button Variant="Button.ButtonVariant.Secondary"
+                            Size="Button.ButtonSize.Small"
+                            Text="Configure"
+                            OnClick="@(() => Navigation.NavigateTo("/settings/integrations"))" />
+                }
+            </div>
+
+            @* Step 3: Server *@
             <div class="@GetStepClass(_hasServers)">
                 <div class="@GetStepIconClass(_hasServers)">
                     @if (_hasServers)
@@ -62,7 +92,7 @@
                     }
                     else
                     {
-                        <span class="text-sm font-bold">2</span>
+                        <span class="text-sm font-bold">3</span>
                     }
                 </div>
                 <div class="flex-1 min-w-0">
@@ -82,10 +112,10 @@
                 }
             </div>
 
-            @* Step 3: Configure *@
+            @* Step 4: Configure *@
             <div class="@GetStepClass(false)">
                 <div class="@GetStepIconClass(false)">
-                    <span class="text-sm font-bold">3</span>
+                    <span class="text-sm font-bold">4</span>
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="font-medium text-nebula-text-primary">Configure & launch</div>
@@ -102,6 +132,7 @@
 
     private bool _hasGames;
     private bool _hasServers;
+    private bool _hasIntegrations;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,11 +140,17 @@
         {
             var gamesTask = GameService.GetAllGamesAsync();
             var serversTask = ServerService.GetAllServersAsync();
+            var integrationsTask = SettingsService.GetIntegrationSettingsAsync();
 
-            await Task.WhenAll(gamesTask, serversTask);
+            await Task.WhenAll(gamesTask, serversTask, integrationsTask);
 
             _hasGames = (await gamesTask).Any();
             _hasServers = (await serversTask).Any();
+
+            var integrations = await integrationsTask;
+            _hasIntegrations = integrations.CurseForgeConfigured
+                            || integrations.SteamConfigured
+                            || integrations.ModtaleConfigured;
         }
         catch
         {

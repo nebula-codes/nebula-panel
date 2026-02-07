@@ -52,6 +52,7 @@ public sealed partial class CurseForgeModpackProvider : IModpackProvider
 
     private readonly HttpClient _httpClient;
     private readonly CurseForgeSettings _settings;
+    private readonly IIntegrationSettingsProvider _keyProvider;
     private readonly CurseForgeApiClient _apiClient;
     private readonly ILogger<CurseForgeModpackProvider> _logger;
     private readonly SemaphoreSlim _rateLimitSemaphore = new(1, 1);
@@ -63,11 +64,13 @@ public sealed partial class CurseForgeModpackProvider : IModpackProvider
     public CurseForgeModpackProvider(
         IHttpClientFactory httpClientFactory,
         IOptions<CurseForgeSettings> settings,
+        IIntegrationSettingsProvider keyProvider,
         CurseForgeApiClient apiClient,
         ILogger<CurseForgeModpackProvider> logger)
     {
         _httpClient = httpClientFactory.CreateClient("CurseForge");
         _settings = settings.Value;
+        _keyProvider = keyProvider;
         _apiClient = apiClient;
         _logger = logger;
 
@@ -1458,7 +1461,8 @@ public sealed partial class CurseForgeModpackProvider : IModpackProvider
 
     private async Task<T?> GetWithRetryAsync<T>(string url, CancellationToken cancellationToken) where T : class
     {
-        if (string.IsNullOrWhiteSpace(_settings.ApiKey))
+        var apiKey = _keyProvider.GetCurseForgeApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning("CurseForge API key is not configured");
             return null;
@@ -1471,7 +1475,7 @@ public sealed partial class CurseForgeModpackProvider : IModpackProvider
                 await WaitForRateLimitAsync(cancellationToken).ConfigureAwait(false);
 
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("x-api-key", _settings.ApiKey);
+                request.Headers.Add("x-api-key", apiKey);
 
                 using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 

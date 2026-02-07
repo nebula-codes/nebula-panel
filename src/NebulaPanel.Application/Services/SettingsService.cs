@@ -14,6 +14,8 @@ namespace NebulaPanel.Application.Services;
 public class SettingsService(
     ISystemSettingsRepository settingsRepository,
     IDatabaseInfoService databaseInfoService,
+    IEncryptionService encryptionService,
+    IIntegrationSettingsProvider integrationSettingsProvider,
     ILogger<SettingsService> logger) : ISettingsService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -207,6 +209,102 @@ public class SettingsService(
             appearance.AccentColor,
             AvailableThemes,
             AvailableAccentColors);
+    }
+
+    #endregion
+
+    #region Integration Settings
+
+    public async Task<IntegrationSettingsDto> GetIntegrationSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        var settings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);
+        var integration = DeserializeOrDefault<IntegrationSettingsData>(settings.IntegrationSettingsJson);
+
+        return new IntegrationSettingsDto(
+            CurseForgeConfigured: !string.IsNullOrWhiteSpace(integration.CurseForgeApiKey),
+            SteamConfigured: !string.IsNullOrWhiteSpace(integration.SteamApiKey),
+            ModtaleConfigured: !string.IsNullOrWhiteSpace(integration.ModtaleApiKey),
+            CurseForgeApiKeyMasked: MaskApiKey(TryDecrypt(integration.CurseForgeApiKey)),
+            SteamApiKeyMasked: MaskApiKey(TryDecrypt(integration.SteamApiKey)),
+            ModtaleApiKeyMasked: MaskApiKey(TryDecrypt(integration.ModtaleApiKey)));
+    }
+
+    public async Task<Result<IntegrationSettingsDto>> UpdateIntegrationSettingsAsync(
+        UpdateIntegrationSettingsRequest request,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var settings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);
+        var existing = DeserializeOrDefault<IntegrationSettingsData>(settings.IntegrationSettingsJson);
+
+        var updated = new IntegrationSettingsData
+        {
+            CurseForgeApiKey = request.ClearCurseForge
+                ? null
+                : request.CurseForgeApiKey != null
+                    ? encryptionService.Encrypt(request.CurseForgeApiKey)
+                    : existing.CurseForgeApiKey,
+            SteamApiKey = request.ClearSteam
+                ? null
+                : request.SteamApiKey != null
+                    ? encryptionService.Encrypt(request.SteamApiKey)
+                    : existing.SteamApiKey,
+            ModtaleApiKey = request.ClearModtale
+                ? null
+                : request.ModtaleApiKey != null
+                    ? encryptionService.Encrypt(request.ModtaleApiKey)
+                    : existing.ModtaleApiKey
+        };
+
+        settings.IntegrationSettingsJson = JsonSerializer.Serialize(updated, JsonOptions);
+        settings.LastModifiedByUserId = userId;
+
+        await settingsRepository.UpdateAsync(settings, cancellationToken).ConfigureAwait(false);
+
+        integrationSettingsProvider.InvalidateCache();
+
+        logger.LogInformation("Integration settings updated by user {UserId}", userId);
+
+        return new IntegrationSettingsDto(
+            CurseForgeConfigured: !string.IsNullOrWhiteSpace(updated.CurseForgeApiKey),
+            SteamConfigured: !string.IsNullOrWhiteSpace(updated.SteamApiKey),
+            ModtaleConfigured: !string.IsNullOrWhiteSpace(updated.ModtaleApiKey),
+            CurseForgeApiKeyMasked: MaskApiKey(TryDecrypt(updated.CurseForgeApiKey)),
+            SteamApiKeyMasked: MaskApiKey(TryDecrypt(updated.SteamApiKey)),
+            ModtaleApiKeyMasked: MaskApiKey(TryDecrypt(updated.ModtaleApiKey)));
+    }
+
+    private string? TryDecrypt(string? encrypted)
+    {
+        if (string.IsNullOrWhiteSpace(encrypted))
+            return null;
+
+        try
+        {
+            return encryptionService.Decrypt(encrypted);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? MaskApiKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            return null;
+
+        if (key.Length <= 8)
+            return new string('*', key.Length);
+
+        return $"{key[..4]}{"".PadRight(key.Length - 8, '*')}{key[^4..]}";
+    }
+
+    private class IntegrationSettingsData
+    {
+        public string? CurseForgeApiKey { get; set; }
+        public string? SteamApiKey { get; set; }
+        public string? ModtaleApiKey { get; set; }
     }
 
     #endregion

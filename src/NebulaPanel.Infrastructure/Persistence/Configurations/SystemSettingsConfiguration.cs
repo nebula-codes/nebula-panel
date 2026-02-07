@@ -29,6 +29,10 @@ public class SystemSettingsConfiguration : IEntityTypeConfiguration<SystemSettin
             .IsRequired()
             .HasDefaultValue("{}");
 
+        builder.Property(s => s.IntegrationSettingsJson)
+            .IsRequired()
+            .HasDefaultValue("{}");
+
         builder.Property(s => s.CreatedAt)
             .IsRequired();
 

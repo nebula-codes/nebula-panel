@@ -78,3 +78,20 @@ public record SettingsImportPreviewDto(
     UpdateSettingsDto? Update,
     AppearanceSettingsDto? Appearance,
     IReadOnlyList<string> Warnings);
+
+// Integration Settings
+public record IntegrationSettingsDto(
+    bool CurseForgeConfigured,
+    bool SteamConfigured,
+    bool ModtaleConfigured,
+    string? CurseForgeApiKeyMasked,
+    string? SteamApiKeyMasked,
+    string? ModtaleApiKeyMasked);
+
+public record UpdateIntegrationSettingsRequest(
+    string? CurseForgeApiKey,
+    string? SteamApiKey,
+    string? ModtaleApiKey,
+    bool ClearCurseForge = false,
+    bool ClearSteam = false,
+    bool ClearModtale = false);

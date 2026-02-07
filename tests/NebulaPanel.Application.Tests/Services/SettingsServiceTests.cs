@@ -22,6 +22,8 @@ public class SettingsServiceTests
         _sut = new SettingsService(
             _mockSettingsRepo.Object,
             _mockDbInfoService.Object,
+            Mock.Of<IEncryptionService>(),
+            Mock.Of<IIntegrationSettingsProvider>(),
             Mock.Of<ILogger<SettingsService>>());
     }
 

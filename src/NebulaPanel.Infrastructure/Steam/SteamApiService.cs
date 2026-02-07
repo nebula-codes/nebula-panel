@@ -15,6 +15,7 @@ public class SteamApiService : ISteamApiService
 {
     private readonly HttpClient _httpClient;
     private readonly SteamApiSettings _settings;
+    private readonly IIntegrationSettingsProvider _keyProvider;
     private readonly ILogger<SteamApiService> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -26,10 +27,12 @@ public class SteamApiService : ISteamApiService
     public SteamApiService(
         IHttpClientFactory httpClientFactory,
         IOptions<SteamApiSettings> settings,
+        IIntegrationSettingsProvider keyProvider,
         ILogger<SteamApiService> logger)
     {
         _httpClient = httpClientFactory.CreateClient("SteamApi");
         _settings = settings.Value;
+        _keyProvider = keyProvider;
         _logger = logger;
 
         _httpClient.Timeout = TimeSpan.FromSeconds(_settings.TimeoutSeconds);
@@ -106,7 +109,8 @@ public class SteamApiService : ISteamApiService
         int pageSize = 20,
         CancellationToken cancellationToken = default)
     {
-        if (!_settings.HasApiKey)
+        var steamApiKey = _keyProvider.GetSteamApiKey();
+        if (string.IsNullOrWhiteSpace(steamApiKey))
         {
             _logger.LogWarning("Steam API key not configured, cannot search Workshop");
             return new SteamWorkshopSearchResult { Page = page, PageSize = pageSize };
@@ -114,7 +118,7 @@ public class SteamApiService : ISteamApiService
 
         try
         {
-            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/QueryFiles/v1/?key={_settings.ApiKey}" +
+            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/QueryFiles/v1/?key={steamApiKey}" +
                       $"&appid={appId}" +
                       $"&numperpage={pageSize}" +
                       $"&page={page}" +
@@ -173,7 +177,8 @@ public class SteamApiService : ISteamApiService
     /// <inheritdoc />
     public async Task<SteamWorkshopItem?> GetWorkshopItemAsync(string workshopItemId, CancellationToken cancellationToken = default)
     {
-        if (!_settings.HasApiKey)
+        var steamApiKey = _keyProvider.GetSteamApiKey();
+        if (string.IsNullOrWhiteSpace(steamApiKey))
         {
             _logger.LogWarning("Steam API key not configured, cannot get Workshop item");
             return null;
@@ -181,7 +186,7 @@ public class SteamApiService : ISteamApiService
 
         try
         {
-            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/GetDetails/v1/?key={_settings.ApiKey}" +
+            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/GetDetails/v1/?key={steamApiKey}" +
                       $"&publishedfileids[0]={workshopItemId}" +
                       "&includetags=true" +
                       "&includeadditionalpreviews=true" +
@@ -347,7 +352,8 @@ public class SteamApiService : ISteamApiService
     /// <inheritdoc />
     public async Task<SteamWorkshopCollection?> GetCollectionAsync(string collectionId, CancellationToken cancellationToken = default)
     {
-        if (!_settings.HasApiKey)
+        var steamApiKey = _keyProvider.GetSteamApiKey();
+        if (string.IsNullOrWhiteSpace(steamApiKey))
         {
             _logger.LogWarning("Steam API key not configured, cannot get Workshop collection");
             return null;
@@ -356,7 +362,7 @@ public class SteamApiService : ISteamApiService
         try
         {
             // First, get the collection details with children IDs
-            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/GetDetails/v1/?key={_settings.ApiKey}" +
+            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/GetDetails/v1/?key={steamApiKey}" +
                       $"&publishedfileids[0]={collectionId}" +
                       "&includechildren=true" +
                       "&includetags=true";
@@ -447,7 +453,8 @@ public class SteamApiService : ISteamApiService
         IEnumerable<string> workshopItemIds,
         CancellationToken cancellationToken = default)
     {
-        if (!_settings.HasApiKey)
+        var steamApiKey = _keyProvider.GetSteamApiKey();
+        if (string.IsNullOrWhiteSpace(steamApiKey))
         {
             _logger.LogWarning("Steam API key not configured, cannot get Workshop items");
             return [];
@@ -462,7 +469,7 @@ public class SteamApiService : ISteamApiService
         try
         {
             // Build the URL with multiple IDs
-            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/GetDetails/v1/?key={_settings.ApiKey}" +
+            var url = $"{_settings.WebApiBaseUrl}IPublishedFileService/GetDetails/v1/?key={steamApiKey}" +
                       "&includetags=true" +
                       "&includeadditionalpreviews=true" +
                       "&includevotes=true";

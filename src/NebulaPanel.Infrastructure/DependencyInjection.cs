@@ -126,6 +126,11 @@ public static class DependencyInjection
         // Encryption service (uses ASP.NET Core Data Protection)
         services.AddSingleton<IEncryptionService, DataProtectionEncryptionService>();
 
+        // Integration settings provider (API keys from DB)
+        services.AddSingleton<IIntegrationSettingsProvider, IntegrationSettingsProvider>();
+        services.AddScoped<IApiKeyValidator, ApiKeyValidator>();
+        services.AddHostedService<IntegrationSettingsMigrationService>();
+
         // Monitoring
         services.AddSingleton<ProcessResourceMonitor>();
         services.AddSingleton<IHostMonitorService, HostResourceMonitor>();

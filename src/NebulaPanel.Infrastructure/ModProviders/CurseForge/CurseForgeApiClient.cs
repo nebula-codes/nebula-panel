@@ -18,31 +18,33 @@ public sealed class CurseForgeApiClient
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<CurseForgeApiClient> _logger;
-    private readonly CurseForgeSettings _settings;
+    private readonly IIntegrationSettingsProvider _keyProvider;
 
     public CurseForgeApiClient(
         IHttpClientFactory httpClientFactory,
         IOptions<CurseForgeSettings> settings,
+        IIntegrationSettingsProvider keyProvider,
         ILogger<CurseForgeApiClient> logger)
     {
         _httpClient = httpClientFactory.CreateClient("CurseForge");
-        _settings = settings.Value;
+        _keyProvider = keyProvider;
         _logger = logger;
 
         // Set base address from settings
-        _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
+        _httpClient.BaseAddress = new Uri(settings.Value.BaseUrl);
 
         // Debug: Log API key info (masked for security)
-        var keyPreview = string.IsNullOrEmpty(_settings.ApiKey)
+        var apiKey = _keyProvider.GetCurseForgeApiKey();
+        var keyPreview = string.IsNullOrEmpty(apiKey)
             ? "(empty)"
-            : $"{_settings.ApiKey[..Math.Min(10, _settings.ApiKey.Length)]}... (length: {_settings.ApiKey.Length})";
+            : $"{apiKey[..Math.Min(10, apiKey.Length)]}... (length: {apiKey.Length})";
         _logger.LogInformation("CurseForge API client initialized with key: {KeyPreview}", keyPreview);
     }
 
     /// <summary>
     /// Checks if the API key is configured.
     /// </summary>
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.ApiKey);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_keyProvider.GetCurseForgeApiKey());
 
     /// <summary>
     /// Searches for mods on CurseForge.
@@ -224,7 +226,7 @@ public sealed class CurseForgeApiClient
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Add("x-api-key", _settings.ApiKey);
+            request.Headers.Add("x-api-key", _keyProvider.GetCurseForgeApiKey());
 
             using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -338,7 +340,7 @@ public sealed class CurseForgeApiClient
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                request.Headers.Add("x-api-key", _settings.ApiKey);
+                request.Headers.Add("x-api-key", _keyProvider.GetCurseForgeApiKey());
 
                 using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
@@ -417,7 +419,7 @@ public sealed class CurseForgeApiClient
             try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, url);
-                request.Headers.Add("x-api-key", _settings.ApiKey);
+                request.Headers.Add("x-api-key", _keyProvider.GetCurseForgeApiKey());
                 request.Content = JsonContent.Create(body);
 
                 using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);

@@ -18,25 +18,26 @@ public sealed class ModtaleApiClient
 
     private readonly HttpClient _httpClient;
     private readonly ILogger<ModtaleApiClient> _logger;
-    private readonly ModtaleSettings _settings;
+    private readonly IIntegrationSettingsProvider _keyProvider;
 
     public ModtaleApiClient(
         IHttpClientFactory httpClientFactory,
         IOptions<ModtaleSettings> settings,
+        IIntegrationSettingsProvider keyProvider,
         ILogger<ModtaleApiClient> logger)
     {
         _httpClient = httpClientFactory.CreateClient("Modtale");
-        _settings = settings.Value;
+        _keyProvider = keyProvider;
         _logger = logger;
 
         // Set base address from settings
-        _httpClient.BaseAddress = new Uri(_settings.BaseUrl);
+        _httpClient.BaseAddress = new Uri(settings.Value.BaseUrl);
     }
 
     /// <summary>
     /// Checks if an API key is configured (optional for Modtale).
     /// </summary>
-    public bool HasApiKey => !string.IsNullOrWhiteSpace(_settings.ApiKey);
+    public bool HasApiKey => !string.IsNullOrWhiteSpace(_keyProvider.GetModtaleApiKey());
 
     /// <summary>
     /// Searches for projects on Modtale.
@@ -127,7 +128,7 @@ public sealed class ModtaleApiClient
             // Add API key if configured
             if (HasApiKey)
             {
-                request.Headers.Add("X-MODTALE-KEY", _settings.ApiKey);
+                request.Headers.Add("X-MODTALE-KEY", _keyProvider.GetModtaleApiKey());
             }
 
             using var response = await _httpClient.SendAsync(
@@ -198,7 +199,7 @@ public sealed class ModtaleApiClient
                 // Add API key if configured (optional for Modtale)
                 if (HasApiKey)
                 {
-                    request.Headers.Add("X-MODTALE-KEY", _settings.ApiKey);
+                    request.Headers.Add("X-MODTALE-KEY", _keyProvider.GetModtaleApiKey());
                 }
 
                 using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);

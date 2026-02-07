@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using NebulaPanel.Infrastructure.Configuration;
+using NebulaPanel.Domain.Interfaces;
 
 namespace NebulaPanel.Infrastructure.Health;
 
@@ -16,7 +15,7 @@ public class ExternalApiHealthCheck : IHealthCheck
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMemoryCache _cache;
     private readonly ILogger<ExternalApiHealthCheck> _logger;
-    private readonly CurseForgeSettings _curseForgeSettings;
+    private readonly IIntegrationSettingsProvider _keyProvider;
 
     private const string CacheKey = "ExternalApiHealthCheck_Result";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
@@ -26,12 +25,12 @@ public class ExternalApiHealthCheck : IHealthCheck
         IHttpClientFactory httpClientFactory,
         IMemoryCache cache,
         ILogger<ExternalApiHealthCheck> logger,
-        IOptions<CurseForgeSettings> curseForgeSettings)
+        IIntegrationSettingsProvider keyProvider)
     {
         _httpClientFactory = httpClientFactory;
         _cache = cache;
         _logger = logger;
-        _curseForgeSettings = curseForgeSettings.Value;
+        _keyProvider = keyProvider;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(
@@ -53,7 +52,8 @@ public class ExternalApiHealthCheck : IHealthCheck
         data["modrinth_message"] = modrinthStatus.Message;
 
         // Check CurseForge only if API key is configured
-        if (!string.IsNullOrEmpty(_curseForgeSettings.ApiKey))
+        var curseForgeApiKey = _keyProvider.GetCurseForgeApiKey();
+        if (!string.IsNullOrEmpty(curseForgeApiKey))
         {
             var curseForgeStatus = await CheckCurseForgeAsync(cancellationToken).ConfigureAwait(false);
             data["curseforge"] = curseForgeStatus.IsHealthy ? "healthy" : "unhealthy";
@@ -128,7 +128,7 @@ public class ExternalApiHealthCheck : IHealthCheck
 
             // CurseForge requires the API key header
             using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.curseforge.com/v1/games");
-            request.Headers.Add("x-api-key", _curseForgeSettings.ApiKey);
+            request.Headers.Add("x-api-key", _keyProvider.GetCurseForgeApiKey());
 
             using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
 

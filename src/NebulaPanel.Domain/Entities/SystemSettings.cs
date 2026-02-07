@@ -9,6 +9,7 @@ public class SystemSettings
     public string UpdateSettingsJson { get; set; } = "{}";
     public string AppearanceSettingsJson { get; set; } = "{}";
     public string ModCacheSettingsJson { get; set; } = "{}";
+    public string IntegrationSettingsJson { get; set; } = "{}";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastModifiedAt { get; set; } = DateTime.UtcNow;
     public Guid? LastModifiedByUserId { get; set; }
