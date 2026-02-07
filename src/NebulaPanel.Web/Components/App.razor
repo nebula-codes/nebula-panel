@@ -41,7 +41,7 @@
 </head>
 
 <body class="bg-nebula-bg-primary text-nebula-text-primary antialiased">
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <ReconnectModal />
     <script src="_framework/blazor.web.js"></script>
     <script src="js/monaco-loader.js"></script>

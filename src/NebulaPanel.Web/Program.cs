@@ -160,7 +160,10 @@ builder.Services.AddAuthentication(options =>
             // instead of returning 401. JWT Bearer defaults to 401 which blocks
             // browser access to Blazor pages that have [Authorize].
             var path = context.Request.Path;
-            if (!path.StartsWithSegments("/api") && !path.StartsWithSegments("/hubs"))
+            if (!path.StartsWithSegments("/api")
+                && !path.StartsWithSegments("/hubs")
+                && !path.StartsWithSegments("/_blazor")
+                && !path.StartsWithSegments("/_framework"))
             {
                 context.HandleResponse();
                 var returnUrl = context.Request.Path + context.Request.QueryString;
