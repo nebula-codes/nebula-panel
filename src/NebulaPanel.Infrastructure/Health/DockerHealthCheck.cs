@@ -46,7 +46,7 @@ public class DockerHealthCheck : IHealthCheck, IDisposable
     {
         if (_docker is null)
         {
-            return HealthCheckResult.Degraded(
+            return HealthCheckResult.Healthy(
                 "Docker is not available (optional)",
                 data: new Dictionary<string, object> { ["available"] = false });
         }
@@ -72,14 +72,14 @@ public class DockerHealthCheck : IHealthCheck, IDisposable
         catch (OperationCanceledException)
         {
             _logger.LogDebug("Docker health check timed out");
-            return HealthCheckResult.Degraded(
+            return HealthCheckResult.Healthy(
                 "Docker daemon connection timed out (optional)",
                 data: new Dictionary<string, object> { ["available"] = false });
         }
         catch (Exception ex)
         {
             _logger.LogDebug(ex, "Docker not available");
-            return HealthCheckResult.Degraded(
+            return HealthCheckResult.Healthy(
                 "Docker is not available (optional)",
                 data: new Dictionary<string, object> { ["available"] = false });
         }

@@ -47,14 +47,10 @@ public class ExternalApiHealthCheck : IHealthCheck
         var data = new Dictionary<string, object>();
         var failedApis = new List<string>();
 
-        // Check Modrinth
+        // Check Modrinth (public API, no config gate — failures are informational only)
         var modrinthStatus = await CheckModrinthAsync(cancellationToken).ConfigureAwait(false);
-        data["modrinth"] = modrinthStatus.IsHealthy ? "healthy" : "unhealthy";
+        data["modrinth"] = modrinthStatus.IsHealthy ? "healthy" : "unavailable";
         data["modrinth_message"] = modrinthStatus.Message;
-        if (!modrinthStatus.IsHealthy)
-        {
-            failedApis.Add("Modrinth");
-        }
 
         // Check CurseForge only if API key is configured
         if (!string.IsNullOrEmpty(_curseForgeSettings.ApiKey))
