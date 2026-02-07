@@ -43,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     tar \
     procps \
+    gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security (use high UID/GID to avoid conflicts)
@@ -59,8 +60,9 @@ COPY --from=build --chown=nebula:nebula /app/publish .
 # Copy Updater executable alongside the Web app
 COPY --from=build --chown=nebula:nebula /app/updater/NebulaPanel.Updater* ./
 
-# Switch to non-root user
-USER nebula
+# Copy entrypoint script (runs as root to fix Docker socket permissions, then drops to nebula)
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Environment variables
 ENV ASPNETCORE_URLS=http://+:5000
@@ -74,5 +76,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Entry point
-ENTRYPOINT ["dotnet", "NebulaPanel.Web.dll"]
+# Entry point (entrypoint script handles privilege drop via gosu)
+ENTRYPOINT ["/app/docker-entrypoint.sh", "dotnet", "NebulaPanel.Web.dll"]

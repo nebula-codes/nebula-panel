@@ -267,6 +267,17 @@ public class DockerServerExecutor : IServerExecutor
                 server.DockerContainerId = null;
             }
 
+            // Verify Docker daemon is reachable before proceeding
+            if (!await IsDockerAvailableAsync(ct).ConfigureAwait(false))
+            {
+                _logger.LogError(
+                    "Docker daemon is not reachable. Ensure the Docker socket is mounted " +
+                    "(-v /var/run/docker.sock:/var/run/docker.sock) and the container user " +
+                    "has permission to access it.");
+                server.Status = ServerStatus.Stopped;
+                return false;
+            }
+
             // Create new container
             var containerName = GenerateContainerName(server);
 
@@ -1718,6 +1729,19 @@ public class DockerServerExecutor : IServerExecutor
         {
             _logger.LogWarning(ex, "Failed to get container info for {ContainerId}", containerId);
             return null;
+        }
+    }
+
+    private async Task<bool> IsDockerAvailableAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _docker.System.PingAsync(ct).ConfigureAwait(false);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
