@@ -28,6 +28,7 @@ using NebulaPanel.Web.Services;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NebulaPanel.Infrastructure.Health;
+using Microsoft.AspNetCore.DataProtection;
 using Serilog;
 using System.Text.Json;
 
@@ -59,6 +60,18 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+// Persist DataProtection keys so antiforgery tokens and encrypted settings
+// survive container restarts. Without this, every restart generates new keys
+// and all existing tokens/cookies become invalid.
+var dataDir = builder.Configuration["Database:ConnectionString"]?.Contains("/app/data/") == true
+    ? "/app/data"
+    : "data";
+var keysDir = Path.Combine(dataDir, "keys");
+Directory.CreateDirectory(keysDir);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
+    .SetApplicationName("NebulaPanel");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
