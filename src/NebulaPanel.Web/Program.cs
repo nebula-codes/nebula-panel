@@ -271,11 +271,35 @@ if (!app.Environment.IsEnvironment("Testing"))
     await OfficialGameSeeder.SeedOfficialGamesAsync(app.Services);
 }
 
+Log.Information("NebulaPanel build identifier: 2026-02-06-static-fix");
+
+// Diagnostic endpoint to verify static file paths inside container
+app.MapGet("/api/debug/static-files", () =>
+{
+    var webRoot = app.Environment.WebRootPath ?? "null";
+    var contentRoot = app.Environment.ContentRootPath;
+    var blazorPath = Path.Combine(webRoot, "_framework", "blazor.web.js");
+    var frameworkDir = Path.Combine(webRoot, "_framework");
+    var frameworkFiles = Directory.Exists(frameworkDir)
+        ? Directory.GetFiles(frameworkDir).Select(Path.GetFileName).ToArray()
+        : Array.Empty<string?>();
+
+    return Results.Ok(new
+    {
+        webRoot,
+        contentRoot,
+        wwwrootExists = Directory.Exists(webRoot),
+        frameworkDirExists = Directory.Exists(frameworkDir),
+        blazorFileExists = File.Exists(blazorPath),
+        frameworkFiles
+    });
+});
+
 // Configure the HTTP request pipeline.
 app.UseGlobalExceptionHandler();
 app.UseSecurityHeaders();
 
-// Serve static files from wwwroot as fallback (covers _framework files not in MapStaticAssets manifest)
+// Serve static files from wwwroot (primary handler for _framework, css, js, etc.)
 app.UseStaticFiles();
 
 app.UseAuthentication();
