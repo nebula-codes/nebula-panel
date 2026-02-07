@@ -88,13 +88,39 @@
                         </div>
                         @if (_editingSteam)
                         {
-                            @RenderApiKeyForm("steam", "Steam API Key", _steamKeyInput, v => _steamKeyInput = v,
-                                "Get your key at steamcommunity.com/dev/apikey",
-                                _integrationSettings?.SteamConfigured == true)
+                            <div class="mt-1 space-y-2">
+                                <div>
+                                    <input type="password"
+                                           @bind="_steamKeyInput"
+                                           @bind:event="oninput"
+                                           placeholder="@(_integrationSettings?.SteamConfigured == true ? "Enter new key to replace" : "Enter API key")"
+                                           class="input w-full text-sm" />
+                                    <p class="text-xs text-nebula-text-muted mt-1">Get your key at steamcommunity.com/dev/apikey</p>
+                                </div>
+                                @if (_activeProvider == "steam" && _statusMessage != null)
+                                {
+                                    <p class="text-xs @(_statusIsError ? "text-nebula-error" : "text-nebula-success")">@_statusMessage</p>
+                                }
+                                <div class="flex items-center gap-2">
+                                    <Button Variant="Button.ButtonVariant.Primary" Size="Button.ButtonSize.Small" Text="Save"
+                                            Loading="@(_savingProvider == "steam")" Disabled="@(string.IsNullOrWhiteSpace(_steamKeyInput))"
+                                            OnClick="@(() => SaveApiKeyAsync("steam"))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Test"
+                                            Loading="@(_validatingProvider == "steam")" Disabled="@(string.IsNullOrWhiteSpace(_steamKeyInput))"
+                                            OnClick="@(() => TestApiKeyAsync("steam", _steamKeyInput))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Cancel"
+                                            OnClick="@(() => CancelEdit("steam"))" />
+                                    @if (_integrationSettings?.SteamConfigured == true)
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Danger" Size="Button.ButtonSize.Small" Text="Remove"
+                                                OnClick="@(() => RemoveApiKeyAsync("steam"))" />
+                                    }
+                                </div>
+                            </div>
                         }
                         else
                         {
-                            <p class="text-sm text-nebula-text-muted">
+                            <p class="text-sm text-nebula-text-muted truncate">
                                 @if (_integrationSettings?.SteamConfigured == true)
                                 {
                                     <span>Key: @_integrationSettings.SteamApiKeyMasked</span>
@@ -135,13 +161,39 @@
                         </div>
                         @if (_editingCurseForge)
                         {
-                            @RenderApiKeyForm("curseforge", "CurseForge API Key", _curseForgeKeyInput, v => _curseForgeKeyInput = v,
-                                "Get your key at console.curseforge.com",
-                                _integrationSettings?.CurseForgeConfigured == true)
+                            <div class="mt-1 space-y-2">
+                                <div>
+                                    <input type="password"
+                                           @bind="_curseForgeKeyInput"
+                                           @bind:event="oninput"
+                                           placeholder="@(_integrationSettings?.CurseForgeConfigured == true ? "Enter new key to replace" : "Enter API key")"
+                                           class="input w-full text-sm" />
+                                    <p class="text-xs text-nebula-text-muted mt-1">Get your key at console.curseforge.com</p>
+                                </div>
+                                @if (_activeProvider == "curseforge" && _statusMessage != null)
+                                {
+                                    <p class="text-xs @(_statusIsError ? "text-nebula-error" : "text-nebula-success")">@_statusMessage</p>
+                                }
+                                <div class="flex items-center gap-2">
+                                    <Button Variant="Button.ButtonVariant.Primary" Size="Button.ButtonSize.Small" Text="Save"
+                                            Loading="@(_savingProvider == "curseforge")" Disabled="@(string.IsNullOrWhiteSpace(_curseForgeKeyInput))"
+                                            OnClick="@(() => SaveApiKeyAsync("curseforge"))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Test"
+                                            Loading="@(_validatingProvider == "curseforge")" Disabled="@(string.IsNullOrWhiteSpace(_curseForgeKeyInput))"
+                                            OnClick="@(() => TestApiKeyAsync("curseforge", _curseForgeKeyInput))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Cancel"
+                                            OnClick="@(() => CancelEdit("curseforge"))" />
+                                    @if (_integrationSettings?.CurseForgeConfigured == true)
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Danger" Size="Button.ButtonSize.Small" Text="Remove"
+                                                OnClick="@(() => RemoveApiKeyAsync("curseforge"))" />
+                                    }
+                                </div>
+                            </div>
                         }
                         else
                         {
-                            <p class="text-sm text-nebula-text-muted">
+                            <p class="text-sm text-nebula-text-muted truncate">
                                 @if (_integrationSettings?.CurseForgeConfigured == true)
                                 {
                                     <span>Key: @_integrationSettings.CurseForgeApiKeyMasked</span>
@@ -182,13 +234,39 @@
                         </div>
                         @if (_editingModtale)
                         {
-                            @RenderApiKeyForm("modtale", "Modtale API Key", _modtaleKeyInput, v => _modtaleKeyInput = v,
-                                "Optional - increases rate limits for Hytale mods",
-                                _integrationSettings?.ModtaleConfigured == true)
+                            <div class="mt-1 space-y-2">
+                                <div>
+                                    <input type="password"
+                                           @bind="_modtaleKeyInput"
+                                           @bind:event="oninput"
+                                           placeholder="@(_integrationSettings?.ModtaleConfigured == true ? "Enter new key to replace" : "Enter API key")"
+                                           class="input w-full text-sm" />
+                                    <p class="text-xs text-nebula-text-muted mt-1">Optional — increases rate limits for Hytale mods</p>
+                                </div>
+                                @if (_activeProvider == "modtale" && _statusMessage != null)
+                                {
+                                    <p class="text-xs @(_statusIsError ? "text-nebula-error" : "text-nebula-success")">@_statusMessage</p>
+                                }
+                                <div class="flex items-center gap-2">
+                                    <Button Variant="Button.ButtonVariant.Primary" Size="Button.ButtonSize.Small" Text="Save"
+                                            Loading="@(_savingProvider == "modtale")" Disabled="@(string.IsNullOrWhiteSpace(_modtaleKeyInput))"
+                                            OnClick="@(() => SaveApiKeyAsync("modtale"))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Test"
+                                            Loading="@(_validatingProvider == "modtale")" Disabled="@(string.IsNullOrWhiteSpace(_modtaleKeyInput))"
+                                            OnClick="@(() => TestApiKeyAsync("modtale", _modtaleKeyInput))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Cancel"
+                                            OnClick="@(() => CancelEdit("modtale"))" />
+                                    @if (_integrationSettings?.ModtaleConfigured == true)
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Danger" Size="Button.ButtonSize.Small" Text="Remove"
+                                                OnClick="@(() => RemoveApiKeyAsync("modtale"))" />
+                                    }
+                                </div>
+                            </div>
                         }
                         else
                         {
-                            <p class="text-sm text-nebula-text-muted">
+                            <p class="text-sm text-nebula-text-muted truncate">
                                 @if (_integrationSettings?.ModtaleConfigured == true)
                                 {
                                     <span>Key: @_integrationSettings.ModtaleApiKeyMasked</span>
@@ -243,11 +321,15 @@
     private string _curseForgeKeyInput = string.Empty;
     private string _modtaleKeyInput = string.Empty;
 
+    // Cached user ID (resolved async on init)
+    private Guid _userId;
+
     // Validation/saving states
     private string? _validatingProvider;
     private string? _savingProvider;
-    private string? _validationMessage;
-    private bool? _validationSuccess;
+    private string? _activeProvider;
+    private string? _statusMessage;
+    private bool _statusIsError;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -264,12 +346,12 @@
         {
             _integrationSettings = await SettingsService.GetIntegrationSettingsAsync();
 
-            // Check Hytale credentials for current user
             var authState = await AuthStateProvider.GetAuthenticationStateAsync();
             var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier);
 
             if (userIdClaim != null && Guid.TryParse(userIdClaim.Value, out var userId))
             {
+                _userId = userId;
                 _hytaleCredentials = await HytaleAuthService.GetCredentialsAsync(userId);
             }
         }
@@ -283,71 +365,23 @@
         }
     }
 
-    private RenderFragment RenderApiKeyForm(string provider, string label, string inputValue,
-        Action<string> onInput, string helperText, bool hasExisting) => __builder =>
-    {
-        <div class="mt-1 space-y-2">
-            <div>
-                <input type="password"
-                       value="@inputValue"
-                       @oninput="@(e => onInput(e.Value?.ToString() ?? string.Empty))"
-                       placeholder="@(hasExisting ? "Enter new key to replace" : "Enter API key")"
-                       class="input w-full text-sm" />
-                <p class="text-xs text-nebula-text-muted mt-1">@helperText</p>
-            </div>
-            @if (_validatingProvider == provider || (_validationMessage != null && _savingProvider == provider))
-            {
-                <p class="text-xs @(_validationSuccess == true ? "text-nebula-success" : "text-nebula-error")">
-                    @(_validatingProvider == provider ? "Validating..." : _validationMessage)
-                </p>
-            }
-            <div class="flex items-center gap-2">
-                <Button Variant="Button.ButtonVariant.Primary"
-                        Size="Button.ButtonSize.Small"
-                        Text="Save"
-                        Loading="@(_savingProvider == provider)"
-                        Disabled="@(string.IsNullOrWhiteSpace(inputValue) && !hasExisting)"
-                        OnClick="@(() => SaveApiKeyAsync(provider))" />
-                <Button Variant="Button.ButtonVariant.Ghost"
-                        Size="Button.ButtonSize.Small"
-                        Text="Test"
-                        Loading="@(_validatingProvider == provider)"
-                        Disabled="@string.IsNullOrWhiteSpace(inputValue)"
-                        OnClick="@(() => TestApiKeyAsync(provider, inputValue))" />
-                <Button Variant="Button.ButtonVariant.Ghost"
-                        Size="Button.ButtonSize.Small"
-                        Text="Cancel"
-                        OnClick="@(() => CancelEdit(provider))" />
-                @if (hasExisting)
-                {
-                    <Button Variant="Button.ButtonVariant.Danger"
-                            Size="Button.ButtonSize.Small"
-                            Text="Remove"
-                            OnClick="@(() => RemoveApiKeyAsync(provider))" />
-                }
-            </div>
-        </div>
-    };
-
     private async Task TestApiKeyAsync(string provider, string apiKey)
     {
         _validatingProvider = provider;
-        _validationMessage = null;
-        _validationSuccess = null;
+        _activeProvider = provider;
+        _statusMessage = null;
         StateHasChanged();
 
         try
         {
             var (success, message) = await ApiKeyValidator.ValidateAsync(provider, apiKey);
-            _validationSuccess = success;
-            _validationMessage = message;
-            _savingProvider = provider; // Show message under this provider
+            _statusIsError = !success;
+            _statusMessage = message;
         }
         catch
         {
-            _validationSuccess = false;
-            _validationMessage = "Validation failed";
-            _savingProvider = provider;
+            _statusIsError = true;
+            _statusMessage = "Validation failed";
         }
         finally
         {
@@ -359,12 +393,12 @@
     private async Task SaveApiKeyAsync(string provider)
     {
         _savingProvider = provider;
-        _validationMessage = null;
+        _activeProvider = provider;
+        _statusMessage = null;
         StateHasChanged();
 
         try
         {
-            var userId = GetUserId();
             var request = provider switch
             {
                 "steam" => new UpdateIntegrationSettingsRequest(null, _steamKeyInput, null),
@@ -373,7 +407,7 @@
                 _ => throw new ArgumentException($"Unknown provider: {provider}")
             };
 
-            var result = await SettingsService.UpdateIntegrationSettingsAsync(request, userId);
+            var result = await SettingsService.UpdateIntegrationSettingsAsync(request, _userId);
             if (result.IsSuccess)
             {
                 _integrationSettings = result.Value;
@@ -382,12 +416,14 @@
             }
             else
             {
-                ToastService.ShowError(result.Error ?? "Failed to save API key.");
+                _statusIsError = true;
+                _statusMessage = result.Error ?? "Failed to save API key.";
             }
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to save: {ex.Message}");
+            _statusIsError = true;
+            _statusMessage = $"Failed to save: {ex.Message}";
         }
         finally
         {
@@ -403,7 +439,6 @@
 
         try
         {
-            var userId = GetUserId();
             var request = provider switch
             {
                 "steam" => new UpdateIntegrationSettingsRequest(null, null, null, ClearSteam: true),
@@ -412,7 +447,7 @@
                 _ => throw new ArgumentException($"Unknown provider: {provider}")
             };
 
-            var result = await SettingsService.UpdateIntegrationSettingsAsync(request, userId);
+            var result = await SettingsService.UpdateIntegrationSettingsAsync(request, _userId);
             if (result.IsSuccess)
             {
                 _integrationSettings = result.Value;
@@ -437,8 +472,8 @@
 
     private void CancelEdit(string provider)
     {
-        _validationMessage = null;
-        _validationSuccess = null;
+        _activeProvider = null;
+        _statusMessage = null;
         _savingProvider = null;
 
         switch (provider)
@@ -456,16 +491,6 @@
                 _modtaleKeyInput = string.Empty;
                 break;
         }
-    }
-
-    private Guid GetUserId()
-    {
-        var authState = AuthStateProvider.GetAuthenticationStateAsync().Result;
-        var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)
-            ?? authState.User.FindFirst("sub");
-        return userIdClaim is not null && Guid.TryParse(userIdClaim.Value, out var userId)
-            ? userId
-            : Guid.Empty;
     }
 
     private static string GetProviderName(string provider) => provider switch
