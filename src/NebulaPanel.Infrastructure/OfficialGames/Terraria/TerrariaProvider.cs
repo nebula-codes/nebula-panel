@@ -13,10 +13,12 @@ namespace NebulaPanel.Infrastructure.OfficialGames.Terraria;
 public partial class TerrariaProvider(
     TerrariaVersionFetcher versionFetcher,
     TerrariaServerInstaller serverInstaller,
+    IServerPathResolver pathResolver,
     ILogger<TerrariaProvider> logger) : IOfficialGameProvider
 {
     private readonly TerrariaVersionFetcher _versionFetcher = versionFetcher;
     private readonly TerrariaServerInstaller _serverInstaller = serverInstaller;
+    private readonly IServerPathResolver _pathResolver = pathResolver;
     private readonly ILogger<TerrariaProvider> _logger = logger;
 
     /// <summary>
@@ -102,7 +104,7 @@ public partial class TerrariaProvider(
     public string GetDefaultInstallPath(string serverName)
     {
         var sanitized = SanitizeForPath(serverName);
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = _pathResolver.GetServerBasePath();
 
         return OperatingSystem.IsWindows()
             ? Path.Combine(basePath, "TerrariaServers", sanitized)

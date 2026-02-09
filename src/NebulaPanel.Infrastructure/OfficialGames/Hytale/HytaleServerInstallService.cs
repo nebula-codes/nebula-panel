@@ -19,6 +19,7 @@ public class HytaleServerInstallService : IHytaleServerInstallService
     private readonly IGameRepository _gameRepository;
     private readonly IGameServerRepository _serverRepository;
     private readonly IHytaleInstallNotifier _installNotifier;
+    private readonly IServerPathResolver _pathResolver;
     private readonly ILogger<HytaleServerInstallService> _logger;
 
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _activeInstallations = new();
@@ -44,6 +45,7 @@ public class HytaleServerInstallService : IHytaleServerInstallService
         IGameRepository gameRepository,
         IGameServerRepository serverRepository,
         IHytaleInstallNotifier installNotifier,
+        IServerPathResolver pathResolver,
         ILogger<HytaleServerInstallService> logger)
     {
         _downloaderService = downloaderService;
@@ -51,6 +53,7 @@ public class HytaleServerInstallService : IHytaleServerInstallService
         _gameRepository = gameRepository;
         _serverRepository = serverRepository;
         _installNotifier = installNotifier;
+        _pathResolver = pathResolver;
         _logger = logger;
     }
 
@@ -477,7 +480,7 @@ public class HytaleServerInstallService : IHytaleServerInstallService
     public string GetDefaultInstallPath(string serverName)
     {
         var sanitized = SanitizeFileName(serverName);
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = _pathResolver.GetServerBasePath();
 
         return OperatingSystem.IsWindows()
             ? Path.Combine(basePath, "HytaleServers", sanitized)

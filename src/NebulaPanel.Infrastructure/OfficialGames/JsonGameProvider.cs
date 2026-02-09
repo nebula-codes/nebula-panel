@@ -16,6 +16,7 @@ public class JsonGameProvider : IJsonGameDefinitionProvider
     private readonly IConfigurationSchemaLoader _schemaLoader;
     private readonly ISteamCmdService? _steamCmd;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IServerPathResolver _pathResolver;
     private readonly ILogger<JsonGameProvider> _logger;
     private Dictionary<string, ConfigurationSchema>? _loadedSchemas;
 
@@ -30,6 +31,7 @@ public class JsonGameProvider : IJsonGameDefinitionProvider
         IConfigurationSchemaLoader schemaLoader,
         ISteamCmdService? steamCmd,
         IHttpClientFactory httpClientFactory,
+        IServerPathResolver pathResolver,
         ILogger<JsonGameProvider> logger)
     {
         _definition = definition;
@@ -38,13 +40,14 @@ public class JsonGameProvider : IJsonGameDefinitionProvider
         _schemaLoader = schemaLoader;
         _steamCmd = steamCmd;
         _httpClientFactory = httpClientFactory;
+        _pathResolver = pathResolver;
         _logger = logger;
     }
 
     public string GetDefaultInstallPath(string serverName)
     {
         var sanitized = SanitizeForPath(serverName);
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = _pathResolver.GetServerBasePath();
         var folderName = OperatingSystem.IsWindows()
             ? $"{_definition.Name.Replace(" ", "")}Servers"
             : $"{_definition.Slug}-servers";

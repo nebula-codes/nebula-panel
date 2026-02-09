@@ -155,6 +155,7 @@ public class OfficialGameDiscoveryService : IHostedService
         var schemaLoader = services.GetRequiredService<IConfigurationSchemaLoader>();
         var steamCmd = services.GetService<ISteamCmdService>();
         var httpClientFactory = services.GetRequiredService<IHttpClientFactory>();
+        var pathResolver = services.GetRequiredService<IServerPathResolver>();
         var loggerFactory = services.GetRequiredService<ILoggerFactory>();
 
         return new JsonGameProvider(
@@ -164,6 +165,7 @@ public class OfficialGameDiscoveryService : IHostedService
             schemaLoader,
             steamCmd,
             httpClientFactory,
+            pathResolver,
             loggerFactory.CreateLogger<JsonGameProvider>());
     }
 

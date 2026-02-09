@@ -20,6 +20,7 @@ public class MinecraftInstallService : IMinecraftInstallService
     private readonly IMinecraftInstallNotifier _installNotifier;
     private readonly IUnifiedModpackService _modpackService;
     private readonly IMinecraftConfigWriter _configWriter;
+    private readonly IServerPathResolver _pathResolver;
     private readonly ILogger<MinecraftInstallService> _logger;
 
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _activeInstallations = new();
@@ -101,6 +102,7 @@ public class MinecraftInstallService : IMinecraftInstallService
         IMinecraftInstallNotifier installNotifier,
         IUnifiedModpackService modpackService,
         IMinecraftConfigWriter configWriter,
+        IServerPathResolver pathResolver,
         ILogger<MinecraftInstallService> logger)
     {
         _gameRegistry = gameRegistry;
@@ -109,6 +111,7 @@ public class MinecraftInstallService : IMinecraftInstallService
         _installNotifier = installNotifier;
         _modpackService = modpackService;
         _configWriter = configWriter;
+        _pathResolver = pathResolver;
         _logger = logger;
     }
 
@@ -520,7 +523,7 @@ public class MinecraftInstallService : IMinecraftInstallService
     public string GetDefaultInstallPath(string serverName)
     {
         var sanitizedName = SanitizeFileName(serverName);
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = _pathResolver.GetServerBasePath();
 
         return OperatingSystem.IsWindows()
             ? Path.Combine(basePath, "MinecraftServers", sanitizedName)

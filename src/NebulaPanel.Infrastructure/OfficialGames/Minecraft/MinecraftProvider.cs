@@ -14,10 +14,12 @@ namespace NebulaPanel.Infrastructure.OfficialGames.Minecraft;
 public partial class MinecraftProvider(
     MinecraftVersionAggregator versionAggregator,
     MinecraftServerInstaller serverInstaller,
+    IServerPathResolver pathResolver,
     ILogger<MinecraftProvider> logger) : IOfficialGameProvider
 {
     private readonly MinecraftVersionAggregator _versionAggregator = versionAggregator;
     private readonly MinecraftServerInstaller _serverInstaller = serverInstaller;
+    private readonly IServerPathResolver _pathResolver = pathResolver;
     private readonly ILogger<MinecraftProvider> _logger = logger;
 
     public string GameSlug => "minecraft-java";
@@ -127,7 +129,7 @@ public partial class MinecraftProvider(
     public string GetDefaultInstallPath(string serverName)
     {
         var sanitized = SanitizeForPath(serverName);
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = _pathResolver.GetServerBasePath();
 
         return OperatingSystem.IsWindows()
             ? Path.Combine(basePath, "MinecraftServers", sanitized)

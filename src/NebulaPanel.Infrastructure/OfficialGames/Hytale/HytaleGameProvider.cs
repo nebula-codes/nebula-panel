@@ -11,6 +11,7 @@ namespace NebulaPanel.Infrastructure.OfficialGames.Hytale;
 public class HytaleGameProvider(
     IHytaleDownloaderService downloader,
     IServiceScopeFactory scopeFactory,
+    IServerPathResolver pathResolver,
     ILogger<HytaleGameProvider> logger) : IOfficialGameProvider
 {
     public string GameSlug => "hytale";
@@ -50,7 +51,7 @@ public class HytaleGameProvider(
     public string GetDefaultInstallPath(string serverName)
     {
         var sanitized = SanitizeForPath(serverName);
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = pathResolver.GetServerBasePath();
 
         return OperatingSystem.IsWindows()
             ? Path.Combine(basePath, "HytaleServers", sanitized)

@@ -78,6 +78,9 @@ public static class DependencyInjection
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
 
+        // Server path resolver (auto-detects Docker mount mappings)
+        services.AddSingleton<IServerPathResolver, ServerPathResolver>();
+
         // Server executors
         services.AddSingleton<IServerExecutor, NativeProcessExecutor>();
         services.AddSingleton<IServerExecutor, DockerServerExecutor>();

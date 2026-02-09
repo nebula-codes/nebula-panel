@@ -11,6 +11,7 @@
 @inject IOfficialGameRegistry GameRegistry
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@inject IServerPathResolver PathResolver
 @inject IJSRuntime JS
 
 <PageTitle>Create Server - Nebula Panel</PageTitle>
@@ -652,9 +653,9 @@
         _lastSuggestedPath = suggestedPath;
     }
 
-    private static string GetFallbackInstallPath(string sanitizedName)
+    private string GetFallbackInstallPath(string sanitizedName)
     {
-        var basePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var basePath = PathResolver.GetServerBasePath();
 
         return OperatingSystem.IsWindows()
             ? Path.Combine(basePath, "GameServers", sanitizedName)
