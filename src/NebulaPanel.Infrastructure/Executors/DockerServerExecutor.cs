@@ -248,6 +248,14 @@ public class DockerServerExecutor : IServerExecutor
 
                     server.Status = ServerStatus.Starting;
 
+                    // Clean up any stale managed container from a previous run
+                    StopLogStreaming(server.Id);
+
+                    // Attach stdin BEFORE starting to avoid race condition
+                    var existingMc = new ManagedContainer(server.Id, server.DockerContainerId, _docker, _logger, effectiveTty);
+                    await existingMc.AttachStdinAsync(ct).ConfigureAwait(false);
+                    _managedContainers[server.Id] = existingMc;
+
                     await _docker.Containers.StartContainerAsync(
                         server.DockerContainerId,
                         new ContainerStartParameters(),
@@ -256,8 +264,8 @@ public class DockerServerExecutor : IServerExecutor
                     server.Status = ServerStatus.Running;
                     server.LastStarted = DateTime.UtcNow;
 
-                    // Start log streaming
-                    StartLogStreaming(server);
+                    // Start log capture after container is running
+                    existingMc.StartLogCapture();
 
                     return true;
                 }
@@ -423,6 +431,35 @@ public class DockerServerExecutor : IServerExecutor
             // Start log streaming (separate from stdin)
             managedContainer.StartLogCapture();
 
+            // Debug: Inspect container after start for troubleshooting
+            try
+            {
+                var inspection = await _docker.Containers.InspectContainerAsync(response.ID, ct).ConfigureAwait(false);
+                _logger.LogInformation(
+                    "Container inspection after start: State={State}, Pid={Pid}, WorkingDir={WorkingDir}, " +
+                    "User={User}, Entrypoint=[{Entrypoint}], Cmd=[{Cmd}]",
+                    inspection.State?.Status,
+                    inspection.State?.Pid,
+                    inspection.Config?.WorkingDir,
+                    inspection.Config?.User ?? "(default)",
+                    string.Join(", ", inspection.Config?.Entrypoint ?? []),
+                    string.Join(", ", inspection.Config?.Cmd ?? []));
+
+                if (inspection.Mounts?.Count > 0)
+                {
+                    foreach (var mount in inspection.Mounts)
+                    {
+                        _logger.LogInformation(
+                            "  Mount: {Source} -> {Destination} (Type={Type}, RW={RW})",
+                            mount.Source, mount.Destination, mount.Type, mount.RW);
+                    }
+                }
+            }
+            catch (Exception inspectEx)
+            {
+                _logger.LogWarning(inspectEx, "Failed to inspect container after start");
+            }
+
             // Start exit code monitoring for Hytale servers (handles exit code 8 for update restart)
             if (IsHytaleServer(server))
             {
@@ -534,8 +571,12 @@ public class DockerServerExecutor : IServerExecutor
             server.Status = ServerStatus.Running;
             server.LastStarted = DateTime.UtcNow;
 
-            // Restart log streaming
-            StartLogStreaming(server);
+            // Reattach stdin and start log capture (RestartContainerAsync waits for running state)
+            var tty = GetEffectiveTty(server, server.DockerConfig?.Tty ?? false);
+            var managedContainer = new ManagedContainer(server.Id, server.DockerContainerId!, _docker, _logger, tty);
+            await managedContainer.AttachStdinAsync(ct).ConfigureAwait(false);
+            _managedContainers[server.Id] = managedContainer;
+            managedContainer.StartLogCapture();
 
             _logger.LogInformation("Restarted container {ContainerId} for server {ServerId}",
                 server.DockerContainerId, server.Id);
@@ -1156,6 +1197,57 @@ public class DockerServerExecutor : IServerExecutor
 
         _logger.LogInformation("Modpack startup command: {Command}", string.Join(" ", startupCommand));
 
+        // Debug: Log install path details for troubleshooting container startup issues
+        _logger.LogInformation("Server InstallPath: {InstallPath}, Exists: {Exists}",
+            server.InstallPath, Directory.Exists(server.InstallPath));
+
+        if (Directory.Exists(server.InstallPath))
+        {
+            // Log files referenced by @args in the command
+            foreach (var arg in startupCommand.Where(a => a.StartsWith('@')))
+            {
+                var referencedFile = arg[1..];
+                var fullPath = Path.Combine(server.InstallPath, referencedFile);
+                var fileExists = File.Exists(fullPath);
+                _logger.LogInformation("Startup @arg file '{ReferencedFile}': HostPath='{FullPath}', Exists={Exists}",
+                    referencedFile, fullPath, fileExists);
+
+                if (fileExists)
+                {
+                    try
+                    {
+                        var fileInfo = new FileInfo(fullPath);
+                        _logger.LogInformation("  File details: Size={Size}bytes, LastWrite={LastWrite}, ReadOnly={ReadOnly}",
+                            fileInfo.Length, fileInfo.LastWriteTimeUtc, fileInfo.IsReadOnly);
+                        if (OperatingSystem.IsLinux())
+                        {
+                            var unixInfo = fileInfo.UnixFileMode;
+                            _logger.LogInformation("  Unix permissions: {Permissions}", unixInfo);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "  Could not read file info for {FullPath}", fullPath);
+                    }
+                }
+            }
+
+            // Log top-level directory contents
+            try
+            {
+                var entries = Directory.GetFileSystemEntries(server.InstallPath)
+                    .Select(Path.GetFileName)
+                    .OrderBy(n => n)
+                    .ToList();
+                _logger.LogInformation("InstallPath top-level entries ({Count}): {Entries}",
+                    entries.Count, string.Join(", ", entries.Take(50)));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not list InstallPath contents");
+            }
+        }
+
         // Build environment variables
         var envVars = new List<string>
         {
@@ -1210,12 +1302,25 @@ public class DockerServerExecutor : IServerExecutor
         if (!string.IsNullOrEmpty(containerUser))
         {
             createParams.User = containerUser;
-            _logger.LogDebug("Modpack container will run as user {User}", containerUser);
+            _logger.LogInformation("Modpack container will run as user {User}", containerUser);
+        }
+        else
+        {
+            _logger.LogInformation("Modpack container will run as default image user (no override)");
         }
 
         _logger.LogInformation("Port bindings for modpack container: {Ports} (RconConfig.Port={RconPort})",
             string.Join(", ", createParams.HostConfig.PortBindings.Keys),
             server.RconConfig?.Port ?? 0);
+
+        // Debug: Log full container config summary
+        _logger.LogInformation(
+            "Container config summary: Image={Image}, WorkingDir={WorkingDir}, User={User}, Cmd=[{Cmd}], Binds=[{Binds}]",
+            createParams.Image,
+            createParams.WorkingDir,
+            createParams.User ?? "(default)",
+            string.Join(", ", createParams.Cmd ?? []),
+            string.Join(", ", binds));
 
         // Apply resource limits
         ApplyResourceLimits(createParams.HostConfig, config.Limits ?? server.ResourceLimits);
@@ -1994,39 +2099,7 @@ public class DockerServerExecutor : IServerExecutor
         }
     }
 
-    private void StartLogStreaming(GameServer server)
-    {
-        if (string.IsNullOrEmpty(server.DockerContainerId))
-        {
-            return;
-        }
 
-        // Check if we already have a managed container (happens with new container startup)
-        if (_managedContainers.TryGetValue(server.Id, out var existingContainer))
-        {
-            // Just ensure log capture is started
-            existingContainer.StartLogCapture();
-            return;
-        }
-
-        // For existing containers (e.g., restarting a stopped container), create new managed container
-        var tty = GetEffectiveTty(server, server.DockerConfig?.Tty ?? false);
-        var managedContainer = new ManagedContainer(server.Id, server.DockerContainerId, _docker, _logger, tty);
-        _managedContainers[server.Id] = managedContainer;
-
-        // Start async - attach stdin and start log capture for existing container
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await managedContainer.StartAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to start managed container for server {ServerId}", server.Id);
-            }
-        });
-    }
 
     private void StopLogStreaming(Guid serverId)
     {
