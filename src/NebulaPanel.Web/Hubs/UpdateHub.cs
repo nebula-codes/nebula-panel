@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using NebulaPanel.Application.Services;
 using NebulaPanel.Domain.Enums;
@@ -69,6 +70,7 @@ public interface IUpdateHubClient
 /// <summary>
 /// SignalR hub for real-time update notifications.
 /// </summary>
+[Authorize]
 public class UpdateHub(
     IUpdateService updateService,
     ILogger<UpdateHub> logger) : Hub<IUpdateHubClient>

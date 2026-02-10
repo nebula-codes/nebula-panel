@@ -1,6 +1,5 @@
 using NebulaPanel.Domain.Entities;
 using NebulaPanel.Domain.Enums;
-using NebulaPanel.Domain.Interfaces;
 
 namespace NebulaPanel.Domain.Repositories;
 

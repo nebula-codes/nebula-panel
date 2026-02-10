@@ -209,15 +209,20 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
     private string? _activeFilterColumn;
     private ElementReference _gridRef;
     private bool _isInitialized;
+    private IReadOnlyList<TItem>? _cachedFilteredItems;
+    private IEnumerable<TItem>? _previousItems;
 
     #endregion
 
     #region Computed Properties
 
-    private IEnumerable<TItem> FilteredItems
+    private IReadOnlyList<TItem> FilteredItems
     {
         get
         {
+            if (_cachedFilteredItems is not null)
+                return _cachedFilteredItems;
+
             var items = Items ?? Enumerable.Empty<TItem>();
 
             // Apply search filter
@@ -250,15 +255,21 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
                     : items.OrderBy(i => _sortColumn.EffectiveSortField(i));
             }
 
-            return items;
+            _cachedFilteredItems = items.ToList();
+            return _cachedFilteredItems;
         }
+    }
+
+    private void InvalidateFilterCache()
+    {
+        _cachedFilteredItems = null;
     }
 
     private IEnumerable<TItem> PagedItems
     {
         get
         {
-            var items = FilteredItems;
+            IEnumerable<TItem> items = FilteredItems;
 
             if (Pageable)
             {
@@ -305,6 +316,13 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
 
     protected override void OnParametersSet()
     {
+        // Invalidate cache when items reference changes
+        if (!ReferenceEquals(Items, _previousItems))
+        {
+            _previousItems = Items;
+            InvalidateFilterCache();
+        }
+
         // Sync selected items from parameter
         if (SelectedItems != null && ItemKey != null)
         {
@@ -373,6 +391,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
     {
         _searchTerm = e.Value?.ToString() ?? "";
         _currentPage = 1;
+        InvalidateFilterCache();
         ClearSelection();
     }
 
@@ -380,6 +399,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
     {
         _searchTerm = "";
         _currentPage = 1;
+        InvalidateFilterCache();
     }
 
     #endregion
@@ -410,6 +430,8 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
             _sortColumn = column;
             _sortDirection = SortDirection.Ascending;
         }
+
+        InvalidateFilterCache();
     }
 
     #endregion
@@ -535,7 +557,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
         }
 
         _lastSelectedIndex = index;
-        NotifySelectionChanged();
+        _ = NotifySelectionChangedAsync();
     }
 
     private void ToggleRowSelection(TItem item, int index)
@@ -556,7 +578,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
         }
 
         _lastSelectedIndex = index;
-        NotifySelectionChanged();
+        _ = NotifySelectionChangedAsync();
     }
 
     private void ToggleSelectAll()
@@ -578,7 +600,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
             }
         }
 
-        NotifySelectionChanged();
+        _ = NotifySelectionChangedAsync();
     }
 
     private void SelectAll()
@@ -587,22 +609,29 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
         {
             _selectedKeys.Add(GetItemKey(item));
         }
-        NotifySelectionChanged();
+        _ = NotifySelectionChangedAsync();
     }
 
     private void ClearSelection()
     {
         _selectedKeys.Clear();
         _lastSelectedIndex = null;
-        NotifySelectionChanged();
+        _ = NotifySelectionChangedAsync();
     }
 
-    private async void NotifySelectionChanged()
+    private async Task NotifySelectionChangedAsync()
     {
-        if (SelectedItemsChanged.HasDelegate)
+        try
         {
-            var selectedItems = FilteredItems.Where(IsItemSelected).ToList();
-            await SelectedItemsChanged.InvokeAsync(selectedItems);
+            if (SelectedItemsChanged.HasDelegate)
+            {
+                var selectedItems = FilteredItems.Where(IsItemSelected).ToList();
+                await SelectedItemsChanged.InvokeAsync(selectedItems);
+            }
+        }
+        catch (Exception)
+        {
+            // Swallow exceptions during selection notification to prevent crash
         }
     }
 
@@ -654,6 +683,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
 
         _currentPage = 1;
         _activeFilterColumn = null;
+        InvalidateFilterCache();
         ClearSelection();
     }
 
@@ -661,6 +691,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
     {
         _columnFilters.Remove(columnId);
         _currentPage = 1;
+        InvalidateFilterCache();
     }
 
     private void ClearAllFilters()
@@ -668,6 +699,7 @@ public partial class DataGrid<TItem> : ComponentBase, IDisposable
         _columnFilters.Clear();
         _searchTerm = "";
         _currentPage = 1;
+        InvalidateFilterCache();
     }
 
     private void ToggleFilterPopover(string columnId)

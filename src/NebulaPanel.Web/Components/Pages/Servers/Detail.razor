@@ -22,7 +22,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IToastService ToastService
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>@(_server?.Name ?? "Server") - Nebula Panel</PageTitle>
 
@@ -1527,6 +1527,7 @@
     private ResourceUsage? _resourceUsage;
     private Timer? _resourceTimer;
     private bool _resourceMonitoringInProgress;
+    private bool _disposed;
 
     // Resource History
     private IReadOnlyList<ResourceDataPointDto> _serverResourceHistory = [];
@@ -2565,6 +2566,7 @@
         _resourceTimer?.Dispose();
         _resourceTimer = new Timer(async _ =>
         {
+            if (_disposed) return;
             // Prevent concurrent DbContext access
             if (_resourceMonitoringInProgress) return;
             _resourceMonitoringInProgress = true;
@@ -3096,9 +3098,15 @@
         return $"{baseClass} text-nebula-text-muted hover:bg-nebula-bg-tertiary";
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        StopConsoleStream();
+        _disposed = true;
+        _consoleCts?.Cancel();
+        if (_consoleCts is not null)
+        {
+            _consoleCts.Dispose();
+            _consoleCts = null;
+        }
         StopResourceMonitoring();
     }
 }

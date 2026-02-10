@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
-using NebulaPanel.Application.Services;
 using NebulaPanel.Domain.Enums;
+using NebulaPanel.Domain.Interfaces;
 using NebulaPanel.Domain.ValueObjects;
 
 namespace NebulaPanel.Infrastructure.Rcon;

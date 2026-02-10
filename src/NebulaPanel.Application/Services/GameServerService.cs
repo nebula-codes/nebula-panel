@@ -1,23 +1,14 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NebulaPanel.Application.Common;
 using NebulaPanel.Application.DTOs;
 using NebulaPanel.Domain.Entities;
 using NebulaPanel.Domain.Enums;
+using NebulaPanel.Domain.Exceptions;
 using NebulaPanel.Domain.Interfaces;
 using NebulaPanel.Domain.Repositories;
 using NebulaPanel.Domain.ValueObjects;
 
 namespace NebulaPanel.Application.Services;
-
-/// <summary>
-/// Interface for RCON service to send commands to game servers.
-/// </summary>
-public interface IRconService
-{
-    Task<string?> SendCommandAsync(RconConfiguration config, string command, CancellationToken cancellationToken = default);
-    Task<bool> TestConnectionAsync(RconConfiguration config, CancellationToken cancellationToken = default);
-}
 
 public class GameServerService(
     IGameServerRepository serverRepository,
@@ -395,7 +386,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when starting server {ServerId}", serverId);
                 return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
@@ -411,7 +402,7 @@ public class GameServerService(
                 {
                     await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
                 }
-                catch (DbUpdateConcurrencyException)
+                catch (ConcurrencyException)
                 {
                     _logger.LogWarning("Concurrent modification detected when updating server {ServerId} after start", serverId);
                 }
@@ -443,7 +434,7 @@ public class GameServerService(
                 {
                     await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
                 }
-                catch (DbUpdateConcurrencyException)
+                catch (ConcurrencyException)
                 {
                     _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after failed start", serverId);
                 }
@@ -459,7 +450,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, CancellationToken.None).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after error", serverId);
             }
@@ -496,7 +487,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when stopping server {ServerId}", serverId);
                 return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
@@ -511,7 +502,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when updating server {ServerId} after stop", serverId);
             }
@@ -552,7 +543,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, CancellationToken.None).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after error", serverId);
             }
@@ -584,7 +575,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when restarting server {ServerId}", serverId);
                 return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
@@ -600,7 +591,7 @@ public class GameServerService(
                 {
                     await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
                 }
-                catch (DbUpdateConcurrencyException)
+                catch (ConcurrencyException)
                 {
                     _logger.LogWarning("Concurrent modification detected when updating server {ServerId} after restart", serverId);
                 }
@@ -626,7 +617,7 @@ public class GameServerService(
                 {
                     await _serverRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
                 }
-                catch (DbUpdateConcurrencyException)
+                catch (ConcurrencyException)
                 {
                     _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after failed restart", serverId);
                 }
@@ -642,7 +633,7 @@ public class GameServerService(
             {
                 await _serverRepository.UpdateAsync(server, CancellationToken.None).ConfigureAwait(false);
             }
-            catch (DbUpdateConcurrencyException)
+            catch (ConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after error", serverId);
             }

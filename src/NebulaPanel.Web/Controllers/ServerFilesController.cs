@@ -205,15 +205,25 @@ public class ServerFilesController(
             return Forbid();
         }
 
-        var fileData = files.Select(f => (f.FileName, f.OpenReadStream(), f.Length));
-        var result = await _fileService.UploadFilesAsync(serverId, path, fileData, ct);
-
-        if (result.IsFailure)
+        var fileData = files.Select(f => (f.FileName, Stream: f.OpenReadStream(), f.Length)).ToList();
+        try
         {
-            return BadRequest(new { error = result.Error });
-        }
+            var result = await _fileService.UploadFilesAsync(serverId, path, fileData.Select(f => (f.FileName, f.Stream, f.Length)), ct);
 
-        return Ok(result.Value);
+            if (result.IsFailure)
+            {
+                return BadRequest(new { error = result.Error });
+            }
+
+            return Ok(result.Value);
+        }
+        finally
+        {
+            foreach (var (_, stream, _) in fileData)
+            {
+                await stream.DisposeAsync();
+            }
+        }
     }
 
     /// <summary>

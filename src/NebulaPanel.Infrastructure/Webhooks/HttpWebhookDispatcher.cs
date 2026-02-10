@@ -38,8 +38,11 @@ public class HttpWebhookDispatcher(
                 Content = new StringContent(payload, Encoding.UTF8, "application/json")
             };
 
-            var signature = ComputeHmacSha256(payload, endpoint.Secret);
-            request.Headers.Add("X-Nebula-Signature", signature);
+            if (!string.IsNullOrEmpty(endpoint.Secret))
+            {
+                var signature = ComputeHmacSha256(payload, endpoint.Secret);
+                request.Headers.Add("X-Nebula-Signature", signature);
+            }
             request.Headers.Add("X-Nebula-Event", eventType.ToString());
 
             var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);

@@ -13,7 +13,12 @@ public class ApiKey
     public DateTime? LastUsedAt { get; set; }
     public DateTime? RevokedAt { get; set; }
 
-    public User User { get; set; } = null!;
+    private User? _user;
+    public User User
+    {
+        get => _user ?? throw new InvalidOperationException("User navigation property not loaded. Use .Include(x => x.User) in your query.");
+        set => _user = value;
+    }
 
     public bool IsRevoked => RevokedAt.HasValue;
     public bool IsExpired => ExpiresAt.HasValue && ExpiresAt.Value < DateTime.UtcNow;

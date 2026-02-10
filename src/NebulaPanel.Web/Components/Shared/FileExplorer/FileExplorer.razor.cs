@@ -508,15 +508,16 @@ public partial class FileExplorer : ComponentBase
         }
     }
 
-    private async Task DeleteSelectedAsync()
+    private Task DeleteSelectedAsync()
     {
         _itemsToDelete = _selectedItems.ToList();
         _showDeleteModal = true;
+        return Task.CompletedTask;
     }
 
-    private async Task DeleteContextItemAsync()
+    private Task DeleteContextItemAsync()
     {
-        if (_contextMenuEntry is null) return;
+        if (_contextMenuEntry is null) return Task.CompletedTask;
 
         _itemsToDelete = _selectedItems.Count > 0 && _selectedItems.Contains(_contextMenuEntry.Path)
             ? _selectedItems.ToList()
@@ -524,6 +525,7 @@ public partial class FileExplorer : ComponentBase
 
         _showDeleteModal = true;
         _contextMenu?.Hide();
+        return Task.CompletedTask;
     }
 
     private async Task ConfirmDeleteAsync()
@@ -610,16 +612,7 @@ public partial class FileExplorer : ComponentBase
             var base64 = Convert.ToBase64String(bytes);
             var dataUrl = $"data:{download.MimeType};base64,{base64}";
 
-            await JS.InvokeVoidAsync("eval", $@"
-                (function() {{
-                    var a = document.createElement('a');
-                    a.href = '{dataUrl}';
-                    a.download = '{download.FileName.Replace("'", "\\'")}';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                }})();
-            ");
+            await JS.InvokeVoidAsync("nebulaInterop.downloadFile", dataUrl, download.FileName);
         }
         catch (Exception ex)
         {

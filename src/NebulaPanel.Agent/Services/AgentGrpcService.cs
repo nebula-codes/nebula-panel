@@ -123,18 +123,30 @@ public class AgentGrpcService(
 
     public override async Task<GetServerStatusResponse> GetServerStatus(GetServerStatusRequest request, ServerCallContext context)
     {
-        var server = BuildMinimalServer(request.ServerId,
-            ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType),
-            request.DockerContainerId,
-            request.ProcessId);
-
-        var executor = executorFactory.GetExecutor(server.DeploymentType);
-        var status = await executor.GetStatusAsync(server, context.CancellationToken).ConfigureAwait(false);
-
-        return new GetServerStatusResponse
+        try
         {
-            Status = ServerConfigMapper.ToProtoStatus(status),
-        };
+            var server = BuildMinimalServer(request.ServerId,
+                ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType),
+                request.DockerContainerId,
+                request.ProcessId);
+
+            var executor = executorFactory.GetExecutor(server.DeploymentType);
+            var status = await executor.GetStatusAsync(server, context.CancellationToken).ConfigureAwait(false);
+
+            return new GetServerStatusResponse
+            {
+                Status = ServerConfigMapper.ToProtoStatus(status),
+            };
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to get status for server {ServerId}", request.ServerId);
+            throw new RpcException(new Status(StatusCode.Internal, $"Failed to get server status: {ex.Message}"));
+        }
     }
 
     // ─── SendCommand ──────────────────────────────────────────
@@ -187,18 +199,30 @@ public class AgentGrpcService(
         IServerStreamWriter<ConsoleOutputLine> responseStream,
         ServerCallContext context)
     {
-        var deploymentType = ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType);
-        var server = BuildMinimalServer(request.ServerId, deploymentType);
-
-        var executor = executorFactory.GetExecutor(deploymentType);
-
-        await foreach (var line in executor.StreamConsoleAsync(server, context.CancellationToken).ConfigureAwait(false))
+        try
         {
-            await responseStream.WriteAsync(new ConsoleOutputLine
+            var deploymentType = ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType);
+            var server = BuildMinimalServer(request.ServerId, deploymentType);
+
+            var executor = executorFactory.GetExecutor(deploymentType);
+
+            await foreach (var line in executor.StreamConsoleAsync(server, context.CancellationToken).ConfigureAwait(false))
             {
-                Line = line,
-                Timestamp = Timestamp.FromDateTime(DateTime.UtcNow),
-            }, context.CancellationToken).ConfigureAwait(false);
+                await responseStream.WriteAsync(new ConsoleOutputLine
+                {
+                    Line = line,
+                    Timestamp = Timestamp.FromDateTime(DateTime.UtcNow),
+                }, context.CancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (RpcException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to stream console for server {ServerId}", request.ServerId);
+            throw new RpcException(new Status(StatusCode.Internal, $"Failed to stream console: {ex.Message}"));
         }
     }
 
@@ -312,9 +336,12 @@ public class AgentGrpcService(
         string? dockerContainerId = null,
         int? processId = null)
     {
+        if (!Guid.TryParse(serverId, out var parsedId))
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"Invalid server ID: {serverId}"));
+
         return new Domain.Entities.GameServer
         {
-            Id = Guid.Parse(serverId),
+            Id = parsedId,
             Name = string.Empty,
             DeploymentType = deploymentType,
             DockerContainerId = dockerContainerId,

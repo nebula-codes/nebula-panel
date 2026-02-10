@@ -350,6 +350,9 @@ public class HytaleServerInstallService : IHytaleServerInstallService
                 HytaleInstallProgressDto.StartingDownload(installationId),
                 cts.Token).ConfigureAwait(false);
 
+            // Note: Progress<T> callbacks are invoked synchronously (Action<T>), so we cannot
+            // await the async notifier call. Task.Run prevents deadlocks if a SynchronizationContext
+            // is present, and the try/catch ensures a notification failure doesn't crash the download.
             var downloadProgress = new Progress<HytaleDownloadProgress>(p =>
             {
                 // Only process forward progress phases - ignore Starting/Authenticating/FetchingVersion
@@ -367,8 +370,15 @@ public class HytaleServerInstallService : IHytaleServerInstallService
 
                 if (progressDto is not null)
                 {
-                    _installNotifier.NotifyProgressAsync(installationId, progressDto, CancellationToken.None)
-                        .ConfigureAwait(false).GetAwaiter().GetResult();
+                    try
+                    {
+                        Task.Run(() => _installNotifier.NotifyProgressAsync(installationId, progressDto, CancellationToken.None))
+                            .GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to notify install progress for installation {InstallationId}", installationId);
+                    }
                 }
             });
 

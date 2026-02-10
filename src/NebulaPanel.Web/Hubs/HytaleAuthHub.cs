@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using NebulaPanel.Application.Services;
 
@@ -63,6 +64,7 @@ public interface IHytaleAuthHubClient
 /// <summary>
 /// SignalR hub for real-time Hytale authentication status updates.
 /// </summary>
+[Authorize]
 public class HytaleAuthHub : Hub<IHytaleAuthHubClient>
 {
     private readonly IHytaleAuthService _authService;

@@ -14,5 +14,10 @@ public class WebhookDelivery
     public int DurationMs { get; set; }
     public int AttemptNumber { get; set; } = 1;
 
-    public WebhookEndpoint Endpoint { get; set; } = null!;
+    private WebhookEndpoint? _endpoint;
+    public WebhookEndpoint Endpoint
+    {
+        get => _endpoint ?? throw new InvalidOperationException("Endpoint navigation property not loaded. Use .Include(x => x.Endpoint) in your query.");
+        set => _endpoint = value;
+    }
 }

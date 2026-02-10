@@ -169,7 +169,7 @@ public static class DependencyInjection
         services.AddScoped<IBackupFileManager, BackupFileManager>();
 
         // RCON service
-        services.AddSingleton<Application.Services.IRconService, RconService>();
+        services.AddSingleton<Domain.Interfaces.IRconService, RconService>();
 
         // Minecraft version fetching
         services.AddHttpClient("Minecraft", client =>

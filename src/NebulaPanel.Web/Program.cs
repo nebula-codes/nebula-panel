@@ -20,7 +20,6 @@ using NebulaPanel.Infrastructure.Services;
 using NebulaPanel.Infrastructure.OfficialGames.Hytale;
 using NebulaPanel.Infrastructure.FileManagement;
 using NebulaPanel.Domain.Settings;
-using NebulaPanel.Web.Authorization;
 using NebulaPanel.Web.Components;
 using NebulaPanel.Web.Hubs;
 using NebulaPanel.Web.Middleware;

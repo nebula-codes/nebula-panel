@@ -36,14 +36,20 @@ public class MinecraftRconClient : IRconClient
             return;
         }
 
-        _logger.LogInformation("Connecting to RCON server at {Host}:{Port} with password length {PasswordLength}, first 4 chars: {PasswordStart}",
-            host, port, password?.Length ?? 0, password?.Length >= 4 ? password[..4] + "..." : password);
+        _logger.LogInformation("Connecting to RCON server at {Host}:{Port} with password length {PasswordLength}",
+            host, port, password?.Length ?? 0);
 
-        _client = new TcpClient();
+        _client = new TcpClient
+        {
+            ReceiveTimeout = 10_000,
+            SendTimeout = 10_000
+        };
 
         try
         {
-            await _client.ConnectAsync(host, port, cancellationToken).ConfigureAwait(false);
+            using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            connectCts.CancelAfter(TimeSpan.FromSeconds(10));
+            await _client.ConnectAsync(host, port, connectCts.Token).ConfigureAwait(false);
             _stream = _client.GetStream();
 
             _logger.LogInformation("TCP connection established, sending authentication packet");

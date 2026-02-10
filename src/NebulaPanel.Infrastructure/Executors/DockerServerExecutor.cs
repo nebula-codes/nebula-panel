@@ -23,6 +23,7 @@ namespace NebulaPanel.Infrastructure.Executors;
 /// </summary>
 public class DockerServerExecutor : IServerExecutor, IDisposable
 {
+    private readonly DockerClientConfiguration _dockerConfig;
     private readonly DockerClient _docker;
     private readonly ILogger<DockerServerExecutor> _logger;
     private readonly IServiceScopeFactory? _serviceScopeFactory;
@@ -45,7 +46,8 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
         // Create Docker client based on platform
         var dockerUri = GetDockerUri();
         _logger.LogInformation("Connecting to Docker daemon at {DockerUri}", dockerUri);
-        _docker = new DockerClientConfiguration(dockerUri).CreateClient();
+        _dockerConfig = new DockerClientConfiguration(dockerUri);
+        _docker = _dockerConfig.CreateClient();
     }
 
     private static Uri GetDockerUri()
@@ -2189,6 +2191,7 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
     public void Dispose()
     {
         _docker.Dispose();
+        _dockerConfig.Dispose();
     }
 }
 

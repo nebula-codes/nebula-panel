@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using NebulaPanel.Application.Services;
+using NebulaPanel.Domain.Repositories;
 
 namespace NebulaPanel.Web.Authorization;
 
@@ -10,7 +11,8 @@ public class ApiKeyAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory loggerFactory,
     UrlEncoder encoder,
-    IApiKeyService apiKeyService)
+    IApiKeyService apiKeyService,
+    IUserRepository userRepository)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
     public const string SchemeName = "ApiKey";
@@ -32,11 +34,23 @@ public class ApiKeyAuthenticationHandler(
             return AuthenticateResult.Fail(result.Error ?? "Invalid API key");
 
         var userId = result.Value;
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-            new Claim("auth_method", "api_key")
+            new(ClaimTypes.NameIdentifier, userId.ToString()),
+            new("auth_method", "api_key")
         };
+
+        // Look up the user's roles and add role claims
+        var user = await userRepository.GetWithRolesAndPermissionsAsync(userId, Context.RequestAborted)
+            .ConfigureAwait(false);
+
+        if (user is not null)
+        {
+            foreach (var userRole in user.Roles)
+            {
+                claims.Add(new Claim(ClaimTypes.Role, userRole.Role.Name));
+            }
+        }
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);

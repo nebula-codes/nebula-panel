@@ -18,5 +18,10 @@ public class AlertRule
     public DateTime? LastTriggeredAt { get; set; }
 
     public GameServer? Server { get; set; }
-    public User Owner { get; set; } = null!;
+    private User? _owner;
+    public User Owner
+    {
+        get => _owner ?? throw new InvalidOperationException("Owner navigation property not loaded. Use .Include(x => x.Owner) in your query.");
+        set => _owner = value;
+    }
 }

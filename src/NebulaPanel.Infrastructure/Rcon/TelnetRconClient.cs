@@ -184,24 +184,22 @@ public class TelnetRconClient : IRconClient
     private async Task<string> ReadUntilAsync(string delimiter, CancellationToken cancellationToken)
     {
         var buffer = new StringBuilder();
+        var charBuffer = new char[1];
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var ch = _reader!.Read();
-            if (ch == -1)
+            var charsRead = await _reader!.ReadAsync(charBuffer.AsMemory(0, 1), cancellationToken).ConfigureAwait(false);
+            if (charsRead == 0)
             {
                 throw new InvalidOperationException("Connection closed by server");
             }
 
-            buffer.Append((char)ch);
+            buffer.Append(charBuffer[0]);
 
             if (buffer.ToString().EndsWith(delimiter))
             {
                 break;
             }
-
-            // Yield to prevent blocking
-            await Task.Yield();
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -214,37 +212,34 @@ public class TelnetRconClient : IRconClient
     private async Task<string?> ReadLineWithTimeoutAsync(CancellationToken cancellationToken)
     {
         var buffer = new StringBuilder();
-        var readTask = Task.Run(() =>
+        var charBuffer = new char[1];
+
+        while (!cancellationToken.IsCancellationRequested)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            if (_stream?.DataAvailable != true)
             {
-                if (_stream?.DataAvailable != true)
-                {
-                    Thread.Sleep(50);
-                    continue;
-                }
-
-                var ch = _reader!.Read();
-                if (ch == -1)
-                {
-                    break;
-                }
-
-                if (ch == '\n')
-                {
-                    break;
-                }
-
-                if (ch != '\r')
-                {
-                    buffer.Append((char)ch);
-                }
+                await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+                continue;
             }
 
-            return buffer.ToString();
-        }, cancellationToken);
+            var charsRead = await _reader!.ReadAsync(charBuffer.AsMemory(0, 1), cancellationToken).ConfigureAwait(false);
+            if (charsRead == 0)
+            {
+                break;
+            }
 
-        return await readTask.ConfigureAwait(false);
+            if (charBuffer[0] == '\n')
+            {
+                break;
+            }
+
+            if (charBuffer[0] != '\r')
+            {
+                buffer.Append(charBuffer[0]);
+            }
+        }
+
+        return buffer.ToString();
     }
 
     /// <summary>

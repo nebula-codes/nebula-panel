@@ -75,7 +75,7 @@
         if (_isEditing)
         {
             await Task.Delay(50); // Wait for render
-            await JS.InvokeVoidAsync("eval", $"document.querySelector('.file-breadcrumb-input')?.focus()");
+            await JS.InvokeVoidAsync("nebulaInterop.focusElement", ".file-breadcrumb-input");
         }
     }
 

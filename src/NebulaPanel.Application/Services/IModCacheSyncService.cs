@@ -1,6 +1,5 @@
 using NebulaPanel.Application.Common;
 using NebulaPanel.Domain.Enums;
-using NebulaPanel.Domain.Interfaces;
 
 namespace NebulaPanel.Application.Services;
 

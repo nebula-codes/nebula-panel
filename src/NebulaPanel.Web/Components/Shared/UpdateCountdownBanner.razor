@@ -1,5 +1,7 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @using NebulaPanel.Web.Hubs
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
 @implements IAsyncDisposable
 
 @if (_isVisible && _secondsRemaining > 0)
@@ -37,9 +39,6 @@
 }
 
 @code {
-    [Inject]
-    private NavigationManager Navigation { get; set; } = null!;
-
     [Parameter]
     public bool CanCancel { get; set; } = true;
 
@@ -53,11 +52,17 @@
     private bool _canCancel = true;
     private bool _isCancelling;
     private System.Timers.Timer? _countdownTimer;
+    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
+        var token = await GetAccessTokenAsync();
+
         _hubConnection = new HubConnectionBuilder()
-            .WithUrl(Navigation.ToAbsoluteUri("/hubs/update"))
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/update"), options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
             .WithAutomaticReconnect()
             .Build();
 
@@ -87,6 +92,7 @@
         _countdownTimer = new System.Timers.Timer(1000);
         _countdownTimer.Elapsed += (_, _) =>
         {
+            if (_disposed) return;
             if (_secondsRemaining > 0)
             {
                 _secondsRemaining--;
@@ -128,8 +134,21 @@
         return $"0:{seconds:D2}";
     }
 
+    private async Task<string?> GetAccessTokenAsync()
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "accessToken");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         _countdownTimer?.Stop();
         _countdownTimer?.Dispose();
 

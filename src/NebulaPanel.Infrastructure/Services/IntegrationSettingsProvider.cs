@@ -48,6 +48,12 @@ public sealed class IntegrationSettingsProvider : IIntegrationSettingsProvider
         _cacheExpiry = DateTime.MinValue;
     }
 
+    /// <summary>
+    /// Returns cached settings, refreshing from database if the cache has expired.
+    /// Note: This intentionally uses synchronous semaphore Wait() and synchronous EF Core
+    /// (FirstOrDefault) because the callers are sync properties (GetCurseForgeApiKey, etc.).
+    /// The 60-second cache ensures the blocking DB call is rare.
+    /// </summary>
     private IntegrationSettings GetCachedSettings()
     {
         if (_cached != null && DateTime.UtcNow < _cacheExpiry)

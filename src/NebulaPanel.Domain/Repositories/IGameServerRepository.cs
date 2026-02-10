@@ -1,4 +1,5 @@
 using NebulaPanel.Domain.Entities;
+using NebulaPanel.Domain.Enums;
 
 namespace NebulaPanel.Domain.Repositories;
 
@@ -6,6 +7,8 @@ public interface IGameServerRepository
 {
     Task<IReadOnlyList<GameServer>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<GameServer>> GetByOwnerIdAsync(Guid ownerId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GameServer>> GetByStatusAsync(ServerStatus status, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<GameServer>> GetByNodeIdAndStatusAsync(Guid nodeId, ServerStatus status, CancellationToken cancellationToken = default);
     Task<GameServer?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<GameServer?> GetByIdWithGameAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);

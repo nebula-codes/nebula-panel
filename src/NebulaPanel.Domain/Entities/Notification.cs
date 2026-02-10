@@ -67,5 +67,10 @@ public class Notification
     /// <summary>
     /// The user this notification belongs to.
     /// </summary>
-    public User User { get; set; } = null!;
+    private User? _user;
+    public User User
+    {
+        get => _user ?? throw new InvalidOperationException("User navigation property not loaded. Use .Include(x => x.User) in your query.");
+        set => _user = value;
+    }
 }

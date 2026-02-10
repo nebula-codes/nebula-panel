@@ -30,6 +30,7 @@ public class ServerActivityRepository(NebulaPanelDbContext context) : IServerAct
     public async Task<IReadOnlyList<ServerActivity>> GetByServerIdAsync(Guid serverId, int count, CancellationToken cancellationToken = default)
     {
         return await context.ServerActivities
+            .Include(a => a.Server)
             .Include(a => a.User)
             .Where(a => a.ServerId == serverId)
             .OrderByDescending(a => a.Timestamp)

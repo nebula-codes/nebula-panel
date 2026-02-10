@@ -65,19 +65,31 @@ public class GameServerConfiguration : IEntityTypeConfiguration<GameServer>
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<DockerConfiguration>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<DockerConfiguration?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOptions) == JsonSerializer.Serialize(b, JsonOptions),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? default! : JsonSerializer.Deserialize<DockerConfiguration>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)!));
 
         builder.Property(s => s.NativeConfig)
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<NativeConfiguration>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<NativeConfiguration?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOptions) == JsonSerializer.Serialize(b, JsonOptions),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? default! : JsonSerializer.Deserialize<NativeConfiguration>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)!));
 
         builder.Property(s => s.RconConfig)
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<RconConfiguration>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<RconConfiguration?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOptions) == JsonSerializer.Serialize(b, JsonOptions),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? default! : JsonSerializer.Deserialize<RconConfiguration>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)!));
 
         builder.Property(s => s.AdditionalPorts)
             .HasConversion(
@@ -93,19 +105,31 @@ public class GameServerConfiguration : IEntityTypeConfiguration<GameServer>
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<ResourceLimits>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<ResourceLimits?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOptions) == JsonSerializer.Serialize(b, JsonOptions),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? default! : JsonSerializer.Deserialize<ResourceLimits>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)!));
 
         builder.Property(s => s.InstalledModpack)
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<InstalledModpackInfo>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<InstalledModpackInfo?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOptions) == JsonSerializer.Serialize(b, JsonOptions),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? default! : JsonSerializer.Deserialize<InstalledModpackInfo>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)!));
 
         builder.Property(s => s.HytaleInfo)
             .HasConversion(
                 v => v == null ? null : JsonSerializer.Serialize(v, JsonOptions),
                 v => v == null ? null : JsonSerializer.Deserialize<HytaleServerInfo>(v, JsonOptions))
-            .HasColumnType("TEXT");
+            .HasColumnType("TEXT")
+            .Metadata.SetValueComparer(new ValueComparer<HytaleServerInfo?>(
+                (a, b) => JsonSerializer.Serialize(a, JsonOptions) == JsonSerializer.Serialize(b, JsonOptions),
+                v => v == null ? 0 : JsonSerializer.Serialize(v, JsonOptions).GetHashCode(),
+                v => v == null ? default! : JsonSerializer.Deserialize<HytaleServerInfo>(JsonSerializer.Serialize(v, JsonOptions), JsonOptions)!));
 
         // Concurrency token for optimistic locking
         // Note: SQLite doesn't support auto-generated row versions like SQL Server

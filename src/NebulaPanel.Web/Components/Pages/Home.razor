@@ -8,6 +8,7 @@
 @inject AuthStateProvider AuthStateProvider
 @inject HealthCheckService HealthCheckService
 @inject HttpClient Http
+@inject ILogger<Home> Logger
 @using NebulaPanel.Application.DTOs
 @using NebulaPanel.Application.Services
 @using NebulaPanel.Domain.Enums
@@ -503,6 +504,7 @@
     private TimeSpan _selectedTimeRange = TimeSpan.FromHours(1);
     private HubConnection? _hubConnection;
     private bool _isHubConnected = false;
+    private bool _disposed;
     private string _healthCheckStatus = "Loading...";
     private bool _showBulkConfirm;
     private string? _pendingBulkAction;
@@ -560,6 +562,7 @@
             // Subscribe to system health updates
             _hubConnection.On<SystemHealthDto>("SystemHealthUpdated", health =>
             {
+                if (_disposed) return;
                 _systemHealth = health;
                 InvokeAsync(StateHasChanged);
             });
@@ -567,6 +570,7 @@
             // Subscribe to summary updates
             _hubConnection.On<DashboardSummaryDto>("SummaryUpdated", summary =>
             {
+                if (_disposed) return;
                 _summary = summary;
                 InvokeAsync(StateHasChanged);
             });
@@ -574,6 +578,7 @@
             // Subscribe to new activity
             _hubConnection.On<ActivityFeedItemDto>("NewActivity", activity =>
             {
+                if (_disposed) return;
                 var updatedList = new List<ActivityFeedItemDto> { activity };
                 updatedList.AddRange(_recentActivity.Take(9));
                 _recentActivity = updatedList;
@@ -583,6 +588,7 @@
             // Subscribe to server status changes - update local state directly
             _hubConnection.On<Guid, string, string>("ServerStatusChanged", (serverId, serverName, newStatus) =>
             {
+                if (_disposed) return;
                 if (Enum.TryParse<ServerStatus>(newStatus, out var status))
                 {
                     UpdateServerStatus(serverId, status);
@@ -592,6 +598,7 @@
 
             _hubConnection.Reconnecting += _ =>
             {
+                if (_disposed) return Task.CompletedTask;
                 _isHubConnected = false;
                 InvokeAsync(StateHasChanged);
                 return Task.CompletedTask;
@@ -599,6 +606,7 @@
 
             _hubConnection.Reconnected += _ =>
             {
+                if (_disposed) return Task.CompletedTask;
                 _isHubConnected = true;
                 InvokeAsync(StateHasChanged);
                 return Task.CompletedTask;
@@ -606,6 +614,7 @@
 
             _hubConnection.Closed += _ =>
             {
+                if (_disposed) return Task.CompletedTask;
                 _isHubConnected = false;
                 InvokeAsync(StateHasChanged);
                 return Task.CompletedTask;
@@ -627,9 +636,9 @@
         {
             _servers = await GameServerService.GetAllServersAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore errors during refresh
+            Logger.LogWarning(ex, "Failed to refresh servers");
         }
     }
 
@@ -1009,8 +1018,9 @@
             var report = await HealthCheckService.CheckHealthAsync();
             _healthCheckStatus = report.Status.ToString();
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "Failed to load health check status");
             _healthCheckStatus = "Unknown";
         }
     }
@@ -1045,7 +1055,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load nodes: {ex.Message}");
+            Logger.LogWarning(ex, "Failed to load nodes");
             _nodes = [];
         }
     }
@@ -1060,6 +1070,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         if (_hubConnection is not null)
         {
             await _hubConnection.DisposeAsync();

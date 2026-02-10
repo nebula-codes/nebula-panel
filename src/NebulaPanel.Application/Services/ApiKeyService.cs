@@ -116,10 +116,9 @@ public class ApiKeyService(
     {
         const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         var result = new char[length];
-        var bytes = RandomNumberGenerator.GetBytes(length);
         for (var i = 0; i < length; i++)
         {
-            result[i] = chars[bytes[i] % chars.Length];
+            result[i] = chars[RandomNumberGenerator.GetInt32(chars.Length)];
         }
         return new string(result);
     }

@@ -29,8 +29,9 @@ service AgentService {
 // ─────────────────────────────────────────────────────────────
 
 enum ServerDeploymentType {
-  SERVER_DEPLOYMENT_TYPE_DOCKER = 0;
-  SERVER_DEPLOYMENT_TYPE_NATIVE = 1;
+  SERVER_DEPLOYMENT_TYPE_UNSPECIFIED = 0;
+  SERVER_DEPLOYMENT_TYPE_DOCKER = 1;
+  SERVER_DEPLOYMENT_TYPE_NATIVE = 2;
 }
 
 enum ServerStatus {

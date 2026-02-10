@@ -80,13 +80,19 @@ public class JsonGameProvider : IJsonGameDefinitionProvider
         return _definition.ToGameDefinition(_loadedSchemas);
     }
 
+    /// <summary>
+    /// Loads schemas synchronously. GetGameDefinition() is defined as sync in IOfficialGameProvider
+    /// and is called from many sync contexts, so we cannot make it async without a large refactor.
+    /// Task.Run avoids potential deadlocks by ensuring the async work runs on the thread pool
+    /// rather than blocking on the caller's synchronization context.
+    /// </summary>
     private Dictionary<string, ConfigurationSchema> LoadSchemasSync()
     {
         var schemas = new Dictionary<string, ConfigurationSchema>();
 
         foreach (var (configFile, schemaFile) in _definition.ConfigSchemaFiles)
         {
-            var schema = _schemaLoader.LoadSchemaAsync(_definition.Slug, schemaFile)
+            var schema = Task.Run(() => _schemaLoader.LoadSchemaAsync(_definition.Slug, schemaFile))
                 .GetAwaiter().GetResult();
 
             if (schema is not null)

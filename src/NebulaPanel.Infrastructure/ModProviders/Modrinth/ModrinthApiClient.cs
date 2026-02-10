@@ -19,8 +19,8 @@ public sealed class ModrinthApiClient
     private readonly ILogger<ModrinthApiClient> _logger;
     private readonly SemaphoreSlim _rateLimitSemaphore = new(1, 1);
 
-    private int _rateLimitRemaining = 300;
-    private DateTime _rateLimitResetTime = DateTime.UtcNow;
+    private volatile int _rateLimitRemaining = 300;
+    private long _rateLimitResetTicks = DateTime.UtcNow.Ticks;
 
     public ModrinthApiClient(IHttpClientFactory httpClientFactory, ILogger<ModrinthApiClient> logger)
     {
@@ -254,7 +254,7 @@ public sealed class ModrinthApiClient
         {
             if (_rateLimitRemaining < RateLimitBuffer)
             {
-                var waitTime = _rateLimitResetTime - DateTime.UtcNow;
+                var waitTime = new DateTime(Interlocked.Read(ref _rateLimitResetTicks), DateTimeKind.Utc) - DateTime.UtcNow;
                 if (waitTime > TimeSpan.Zero)
                 {
                     _logger.LogDebug(
@@ -277,7 +277,7 @@ public sealed class ModrinthApiClient
         {
             if (int.TryParse(remainingValues.FirstOrDefault(), out var remaining))
             {
-                _rateLimitRemaining = remaining;
+                Volatile.Write(ref _rateLimitRemaining, remaining);
             }
         }
 
@@ -285,7 +285,7 @@ public sealed class ModrinthApiClient
         {
             if (int.TryParse(resetValues.FirstOrDefault(), out var resetSeconds))
             {
-                _rateLimitResetTime = DateTime.UtcNow.AddSeconds(resetSeconds);
+                Interlocked.Exchange(ref _rateLimitResetTicks, DateTime.UtcNow.AddSeconds(resetSeconds).Ticks);
             }
         }
     }

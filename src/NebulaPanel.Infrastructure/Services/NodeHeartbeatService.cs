@@ -219,8 +219,7 @@ public class NodeHeartbeatService : BackgroundService
         Guid nodeId,
         CancellationToken cancellationToken)
     {
-        var allServers = await serverRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var nodeServers = allServers.Where(s => s.NodeId == nodeId && s.Status == ServerStatus.Running);
+        var nodeServers = await serverRepository.GetByNodeIdAndStatusAsync(nodeId, ServerStatus.Running, cancellationToken).ConfigureAwait(false);
 
         foreach (var server in nodeServers)
         {

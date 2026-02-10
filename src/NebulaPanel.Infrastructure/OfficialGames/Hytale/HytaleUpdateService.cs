@@ -312,6 +312,9 @@ public class HytaleUpdateService : IHytaleUpdateService
             }
 
             // Download new version
+            // Note: Progress<T> callbacks are invoked synchronously (Action<T>), so we cannot
+            // await the async notifier call. Task.Run prevents deadlocks if a SynchronizationContext
+            // is present, and the try/catch ensures a notification failure doesn't crash the download.
             var downloadProgress = new Progress<HytaleDownloadProgress>(p =>
             {
                 var downloadDto = HytaleUpdateProgressDto.Downloading(
@@ -321,8 +324,15 @@ public class HytaleUpdateService : IHytaleUpdateService
                     p.TotalBytes);
                 TrackProgress(server.Id, downloadDto);
                 progress?.Report(downloadDto);
-                _updateNotifier.NotifyProgressAsync(server.Id, downloadDto, CancellationToken.None)
-                    .ConfigureAwait(false).GetAwaiter().GetResult();
+                try
+                {
+                    Task.Run(() => _updateNotifier.NotifyProgressAsync(server.Id, downloadDto, CancellationToken.None))
+                        .GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to notify download progress for server {ServerId}", server.Id);
+                }
             });
 
             var downloadResult = await _downloaderService.DownloadServerAsync(

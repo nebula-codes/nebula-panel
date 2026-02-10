@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NebulaPanel.Application.DTOs;
@@ -54,6 +55,7 @@ public interface IDashboardHubClient
 /// <summary>
 /// SignalR hub for real-time dashboard updates.
 /// </summary>
+[Authorize]
 public class DashboardHub(
     IDashboardService dashboardService,
     HealthCheckService healthCheckService,

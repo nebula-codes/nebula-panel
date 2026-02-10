@@ -21,9 +21,15 @@ public static class ServerConfigMapper
     /// </summary>
     public static GameServer ToGameServer(ServerConfig config)
     {
+        if (!Guid.TryParse(config.ServerId, out var serverId))
+            throw new ArgumentException($"Invalid ServerId: '{config.ServerId}'", nameof(config));
+
+        if (!Guid.TryParse(config.OwnerId, out var ownerId))
+            throw new ArgumentException($"Invalid OwnerId: '{config.OwnerId}'", nameof(config));
+
         var server = new GameServer
         {
-            Id = Guid.Parse(config.ServerId),
+            Id = serverId,
             Name = config.Name,
             DeploymentType = ToDomainDeploymentType(config.DeploymentType),
             InstallPath = config.InstallPath,
@@ -31,7 +37,7 @@ public static class ServerConfigMapper
             BindAddress = config.BindAddress,
             Status = ToDomainStatus(config.Status),
             ProcessId = config.ProcessId,
-            OwnerId = Guid.Parse(config.OwnerId),
+            OwnerId = ownerId,
             DockerContainerId = config.DockerContainerId,
             InstalledVersion = config.InstalledVersion,
         };
@@ -461,6 +467,7 @@ public static class ServerConfigMapper
     {
         ProtoEnums.ServerDeploymentType.Docker => DomainEnums.ServerDeploymentType.Docker,
         ProtoEnums.ServerDeploymentType.Native => DomainEnums.ServerDeploymentType.Native,
+        ProtoEnums.ServerDeploymentType.Unspecified => DomainEnums.ServerDeploymentType.Native, // Safe default
         _ => DomainEnums.ServerDeploymentType.Native,
     };
 

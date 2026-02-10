@@ -80,6 +80,7 @@ public sealed class AgentChannelManager : IDisposable
         var channel = GrpcChannel.ForAddress(address, new GrpcChannelOptions
         {
             HttpHandler = handler,
+            DisposeHttpClient = true,
             Credentials = ChannelCredentials.Insecure
         });
 

@@ -98,10 +98,8 @@ public class ResourceUsageCollector : BackgroundService
         var historyRepository = scope.ServiceProvider.GetRequiredService<IResourceUsageHistoryRepository>();
 
         // Get all running servers (local with ProcessId/ContainerId, or remote with NodeId)
-        var servers = await serverRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var runningServers = servers.Where(s =>
-            s.Status == ServerStatus.Running &&
-            (s.ProcessId.HasValue || !string.IsNullOrEmpty(s.DockerContainerId) || s.NodeId.HasValue));
+        var runningServers = (await serverRepository.GetByStatusAsync(ServerStatus.Running, cancellationToken).ConfigureAwait(false))
+            .Where(s => s.ProcessId.HasValue || !string.IsNullOrEmpty(s.DockerContainerId) || s.NodeId.HasValue);
 
         var usageRecords = new List<ResourceUsageHistory>();
         var timestamp = DateTime.UtcNow;

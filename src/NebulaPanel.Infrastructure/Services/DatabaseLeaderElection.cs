@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -60,6 +61,7 @@ public class DatabaseLeaderElection : ILeaderElection
             {
                 // We already hold this lock, renew it
                 existingLock.ExpiresAt = now + _lockDuration;
+                existingLock.RowVersion = RandomNumberGenerator.GetBytes(8);
                 await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
                 return true;
             }
@@ -70,6 +72,7 @@ public class DatabaseLeaderElection : ILeaderElection
                 existingLock.HolderNodeId = _nodeId;
                 existingLock.AcquiredAt = now;
                 existingLock.ExpiresAt = now + _lockDuration;
+                existingLock.RowVersion = RandomNumberGenerator.GetBytes(8);
                 await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Took over expired leader lock '{LockName}' from previous holder, now node {NodeId}",
                     lockName, _nodeId);

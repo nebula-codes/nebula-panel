@@ -267,10 +267,11 @@ public class ModCacheService(
         var oldestEntry = await cachedModRepository.GetOldestCacheEntryAsync(cancellationToken).ConfigureAwait(false);
 
         var syncStatuses = await syncStatusRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
-        var lastSync = syncStatuses
+        var syncDates = syncStatuses
             .Select(s => s.LastFullSyncCompletedAt ?? s.LastIncrementalSyncAt)
             .Where(d => d.HasValue)
-            .Max();
+            .ToList();
+        var lastSync = syncDates.Count > 0 ? syncDates.Max() : null;
 
         return new ModCacheStatsDto(
             modrinthModCount + curseForgeModCount,
@@ -329,17 +330,17 @@ public class ModCacheService(
     {
         if (request.RequestDelayMs < 0 || request.RequestDelayMs > 10000)
         {
-            return Result.Failure<ModCacheSettingsDto>("Request delay must be between 0 and 10000 milliseconds.");
+            return Result.Failure<ModCacheSettingsDto>(Error.Validation("Request delay must be between 0 and 10000 milliseconds."));
         }
 
         if (!IncrementalIntervals.Any(i => i.CronExpression == request.IncrementalSyncCron))
         {
-            return Result.Failure<ModCacheSettingsDto>("Invalid incremental sync interval.");
+            return Result.Failure<ModCacheSettingsDto>(Error.Validation("Invalid incremental sync interval."));
         }
 
         if (!FullSyncIntervals.Any(i => i.CronExpression == request.FullSyncCron))
         {
-            return Result.Failure<ModCacheSettingsDto>("Invalid full sync interval.");
+            return Result.Failure<ModCacheSettingsDto>(Error.Validation("Invalid full sync interval."));
         }
 
         var systemSettings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);

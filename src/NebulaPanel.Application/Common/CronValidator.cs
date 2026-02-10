@@ -11,7 +11,7 @@ public static class CronValidator
     {
         if (string.IsNullOrWhiteSpace(cronExpression))
         {
-            return Result.Failure("Cron expression is required for recurring tasks.");
+            return Result.Failure(Error.Validation("Cron expression is required for recurring tasks."));
         }
 
         try
@@ -22,7 +22,7 @@ public static class CronValidator
         }
         catch (CronFormatException ex)
         {
-            return Result.Failure($"Invalid cron expression: {ex.Message}");
+            return Result.Failure(Error.Validation($"Invalid cron expression: {ex.Message}"));
         }
     }
 

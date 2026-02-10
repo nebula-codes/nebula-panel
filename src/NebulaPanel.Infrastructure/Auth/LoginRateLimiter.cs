@@ -27,8 +27,8 @@ public class LoginRateLimiter(
         var attempts = GetAttempts(key);
         var now = DateTime.UtcNow;
 
-        // Add the new attempt
-        attempts.Add(now);
+        // Create a new list to avoid mutating a list that may be iterated concurrently
+        var updated = new List<DateTime>(attempts) { now };
 
         // Store with expiration based on window size
         var cacheOptions = new MemoryCacheEntryOptions
@@ -36,7 +36,7 @@ public class LoginRateLimiter(
             AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(_settings.WindowSeconds * 2)
         };
 
-        cache.Set(key, attempts, cacheOptions);
+        cache.Set(key, updated, cacheOptions);
     }
 
     public int GetRetryAfterSeconds(string? ipAddress, string? username)

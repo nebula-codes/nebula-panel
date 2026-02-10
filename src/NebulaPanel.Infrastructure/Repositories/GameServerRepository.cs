@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NebulaPanel.Domain.Entities;
+using NebulaPanel.Domain.Enums;
+using NebulaPanel.Domain.Exceptions;
 using NebulaPanel.Domain.Repositories;
 using NebulaPanel.Infrastructure.Persistence;
 
@@ -29,6 +31,24 @@ public class GameServerRepository(NebulaPanelDbContext context) : IGameServerRep
             .Where(s => s.OwnerId == ownerId)
             .OrderByDescending(s => s.IsPinned)
             .ThenBy(s => s.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<GameServer>> GetByStatusAsync(ServerStatus status, CancellationToken cancellationToken = default)
+    {
+        return await _context.GameServers
+            .Include(s => s.Game)
+            .Include(s => s.Node)
+            .Where(s => s.Status == status)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<GameServer>> GetByNodeIdAndStatusAsync(Guid nodeId, ServerStatus status, CancellationToken cancellationToken = default)
+    {
+        return await _context.GameServers
+            .Where(s => s.NodeId == nodeId && s.Status == status)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
     }
@@ -110,7 +130,14 @@ public class GameServerRepository(NebulaPanelDbContext context) : IGameServerRep
             }
         }
         // If already tracked (not detached), EF Core will save the changes automatically
-        await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            throw new ConcurrencyException("A concurrency conflict occurred while updating the game server.", ex);
+        }
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)

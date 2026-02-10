@@ -157,43 +157,50 @@ public class NativeProcessExecutor : IServerExecutor
             // Monitor for process exit
             process.Exited += async (_, _) =>
             {
-                _logger.LogInformation(
-                    "Server {ServerId} process exited with code {ExitCode}",
-                    server.Id, process.ExitCode);
-
-                // Exit code 8 = Hytale update restart request (from official start scripts)
-                if (process.ExitCode == 8 && IsHytaleServer(server))
+                try
                 {
                     _logger.LogInformation(
-                        "Server {ServerId} requested update restart (exit code 8), restarting automatically",
-                        server.Id);
+                        "Server {ServerId} process exited with code {ExitCode}",
+                        server.Id, process.ExitCode);
 
-                    server.Status = ServerStatus.Restarting;
-                    server.ProcessId = null;
-                    _processStore.TryRemove(server.Id, out _);
-
-                    // Brief delay before restart to allow resources to be released
-                    await Task.Delay(2000).ConfigureAwait(false);
-
-                    // Restart the server
-                    _ = Task.Run(async () =>
+                    // Exit code 8 = Hytale update restart request (from official start scripts)
+                    if (process.ExitCode == 8 && IsHytaleServer(server))
                     {
-                        try
-                        {
-                            await StartAsync(server, CancellationToken.None).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to restart server {ServerId} after exit code 8", server.Id);
-                            server.Status = ServerStatus.Crashed;
-                        }
-                    });
-                    return;
-                }
+                        _logger.LogInformation(
+                            "Server {ServerId} requested update restart (exit code 8), restarting automatically",
+                            server.Id);
 
-                server.Status = process.ExitCode == 0 ? ServerStatus.Stopped : ServerStatus.Crashed;
-                server.LastStopped = DateTime.UtcNow;
-                server.ProcessId = null;
+                        server.Status = ServerStatus.Restarting;
+                        server.ProcessId = null;
+                        _processStore.TryRemove(server.Id, out _);
+
+                        // Brief delay before restart to allow resources to be released
+                        await Task.Delay(2000).ConfigureAwait(false);
+
+                        // Restart the server
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await StartAsync(server, CancellationToken.None).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Failed to restart server {ServerId} after exit code 8", server.Id);
+                                server.Status = ServerStatus.Crashed;
+                            }
+                        });
+                        return;
+                    }
+
+                    server.Status = process.ExitCode == 0 ? ServerStatus.Stopped : ServerStatus.Crashed;
+                    server.LastStopped = DateTime.UtcNow;
+                    server.ProcessId = null;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unhandled error in process Exited handler for server {ServerId}", server.Id);
+                }
             };
 
             _logger.LogInformation(
@@ -220,7 +227,7 @@ public class NativeProcessExecutor : IServerExecutor
             {
                 try
                 {
-                    var process = Process.GetProcessById(server.ProcessId.Value);
+                    using var process = Process.GetProcessById(server.ProcessId.Value);
                     return await KillProcessAsync(process, force, ct).ConfigureAwait(false);
                 }
                 catch (ArgumentException)
@@ -300,7 +307,7 @@ public class NativeProcessExecutor : IServerExecutor
         {
             try
             {
-                var process = Process.GetProcessById(server.ProcessId.Value);
+                using var process = Process.GetProcessById(server.ProcessId.Value);
                 return Task.FromResult(process.HasExited ? ServerStatus.Stopped : ServerStatus.Running);
             }
             catch (ArgumentException)
@@ -354,7 +361,7 @@ public class NativeProcessExecutor : IServerExecutor
             {
                 try
                 {
-                    var process = Process.GetProcessById(server.ProcessId.Value);
+                    using var process = Process.GetProcessById(server.ProcessId.Value);
                     return Task.FromResult(GetProcessResourceUsage(process));
                 }
                 catch (ArgumentException)
