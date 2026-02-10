@@ -14,6 +14,7 @@ public class GameServerRepository(NebulaPanelDbContext context) : IGameServerRep
         return await _context.GameServers
             .Include(s => s.Game)
             .Include(s => s.Owner)
+            .Include(s => s.Node)
             .OrderByDescending(s => s.IsPinned)
             .ThenBy(s => s.Name)
             .ToListAsync(cancellationToken)
@@ -24,6 +25,7 @@ public class GameServerRepository(NebulaPanelDbContext context) : IGameServerRep
     {
         return await _context.GameServers
             .Include(s => s.Game)
+            .Include(s => s.Node)
             .Where(s => s.OwnerId == ownerId)
             .OrderByDescending(s => s.IsPinned)
             .ThenBy(s => s.Name)
@@ -43,6 +45,7 @@ public class GameServerRepository(NebulaPanelDbContext context) : IGameServerRep
         return await _context.GameServers
             .Include(s => s.Game)
             .Include(s => s.Owner)
+            .Include(s => s.Node)
             .FirstOrDefaultAsync(s => s.Id == id, cancellationToken)
             .ConfigureAwait(false);
     }

@@ -17,9 +17,12 @@ namespace NebulaPanel.Infrastructure.Monitoring;
 /// </summary>
 public class ResourceUsageCollector : BackgroundService
 {
+    private const string LeaderLockName = "resource-usage-collector";
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ProcessResourceMonitor _processMonitor;
-    private readonly IServerExecutorFactory _executorFactory;
+    private readonly INodeAwareExecutorFactory _nodeExecutorFactory;
+    private readonly ILeaderElection _leaderElection;
     private readonly ILogger<ResourceUsageCollector> _logger;
     private readonly TimeSpan _sampleInterval = TimeSpan.FromMinutes(1);
     private readonly TimeSpan _cleanupInterval = TimeSpan.FromHours(1);
@@ -29,12 +32,14 @@ public class ResourceUsageCollector : BackgroundService
     public ResourceUsageCollector(
         IServiceScopeFactory scopeFactory,
         ProcessResourceMonitor processMonitor,
-        IServerExecutorFactory executorFactory,
+        INodeAwareExecutorFactory nodeExecutorFactory,
+        ILeaderElection leaderElection,
         ILogger<ResourceUsageCollector> logger)
     {
         _scopeFactory = scopeFactory;
         _processMonitor = processMonitor;
-        _executorFactory = executorFactory;
+        _nodeExecutorFactory = nodeExecutorFactory;
+        _leaderElection = leaderElection;
         _logger = logger;
     }
 
@@ -46,6 +51,14 @@ public class ResourceUsageCollector : BackgroundService
         {
             try
             {
+                // Only run on the leader node (single-node always wins)
+                if (!await _leaderElection.TryAcquireLeadershipAsync(LeaderLockName, stoppingToken).ConfigureAwait(false))
+                {
+                    _logger.LogDebug("Not the leader for {LockName}, skipping collection cycle", LeaderLockName);
+                    await Task.Delay(_sampleInterval, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 await CollectResourceUsageAsync(stoppingToken).ConfigureAwait(false);
 
                 // Periodic cleanup
@@ -74,6 +87,7 @@ public class ResourceUsageCollector : BackgroundService
             }
         }
 
+        await _leaderElection.ReleaseLeadershipAsync(LeaderLockName).ConfigureAwait(false);
         _logger.LogInformation("ResourceUsageCollector stopped");
     }
 
@@ -83,11 +97,11 @@ public class ResourceUsageCollector : BackgroundService
         var serverRepository = scope.ServiceProvider.GetRequiredService<IGameServerRepository>();
         var historyRepository = scope.ServiceProvider.GetRequiredService<IResourceUsageHistoryRepository>();
 
-        // Get all running servers (native with ProcessId OR Docker with ContainerId)
+        // Get all running servers (local with ProcessId/ContainerId, or remote with NodeId)
         var servers = await serverRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
         var runningServers = servers.Where(s =>
             s.Status == ServerStatus.Running &&
-            (s.ProcessId.HasValue || !string.IsNullOrEmpty(s.DockerContainerId)));
+            (s.ProcessId.HasValue || !string.IsNullOrEmpty(s.DockerContainerId) || s.NodeId.HasValue));
 
         var usageRecords = new List<ResourceUsageHistory>();
         var timestamp = DateTime.UtcNow;
@@ -98,17 +112,18 @@ public class ResourceUsageCollector : BackgroundService
             {
                 ResourceUsage? usage = null;
 
-                if (server.DeploymentType == ServerDeploymentType.Docker &&
-                    !string.IsNullOrEmpty(server.DockerContainerId))
+                if (server.NodeId is null &&
+                    server.DeploymentType == ServerDeploymentType.Native &&
+                    server.ProcessId.HasValue)
                 {
-                    // Use Docker stats API via executor
-                    var dockerExecutor = _executorFactory.GetExecutor(ServerDeploymentType.Docker);
-                    usage = await dockerExecutor.GetResourceUsageAsync(server, cancellationToken).ConfigureAwait(false);
-                }
-                else if (server.ProcessId.HasValue)
-                {
-                    // Use process-based monitoring for native servers
+                    // Local native server — use direct process monitoring (avoids unnecessary overhead)
                     usage = ProcessResourceMonitor.GetUsageByPid(server.ProcessId.Value);
+                }
+                else
+                {
+                    // Remote servers or local Docker — use node-aware executor (routes via gRPC for remote)
+                    var executor = _nodeExecutorFactory.GetExecutor(server);
+                    usage = await executor.GetResourceUsageAsync(server, cancellationToken).ConfigureAwait(false);
                 }
 
                 if (usage is not null && (usage.CpuPercent > 0 || usage.MemoryBytes > 0))

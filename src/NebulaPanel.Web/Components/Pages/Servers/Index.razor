@@ -265,6 +265,18 @@
                 </DataGridColumn>
 
                 <DataGridColumn TItem="GameServerListItemDto"
+                                Title="Node"
+                                Id="node"
+                                Field="@(s => s.NodeName)"
+                                Sortable="true"
+                                Width="120px"
+                                ResponsivePriority="3">
+                    <Template Context="server">
+                        <span class="text-sm text-nebula-text-secondary">@(server.NodeName ?? "Local")</span>
+                    </Template>
+                </DataGridColumn>
+
+                <DataGridColumn TItem="GameServerListItemDto"
                                 Title="Address"
                                 Id="address"
                                 Field="@(s => s.PrimaryPort)"

@@ -27,6 +27,9 @@ public static class DependencyInjection
         services.AddScoped<IWebhookService, WebhookService>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
 
+        // Node management
+        services.AddScoped<INodeService, NodeService>();
+
         // Game templates
         services.AddScoped<IGameTemplateService, GameTemplateService>();
 

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NebulaPanel.Application.Services;
+using NebulaPanel.Domain.Interfaces;
 
 namespace NebulaPanel.Infrastructure.Monitoring;
 
@@ -11,15 +12,20 @@ namespace NebulaPanel.Infrastructure.Monitoring;
 /// </summary>
 public class SystemHealthBroadcaster : BackgroundService
 {
+    private const string LeaderLockName = "system-health-broadcaster";
+
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILeaderElection _leaderElection;
     private readonly ILogger<SystemHealthBroadcaster> _logger;
     private readonly TimeSpan _broadcastInterval = TimeSpan.FromSeconds(5);
 
     public SystemHealthBroadcaster(
         IServiceScopeFactory scopeFactory,
+        ILeaderElection leaderElection,
         ILogger<SystemHealthBroadcaster> logger)
     {
         _scopeFactory = scopeFactory;
+        _leaderElection = leaderElection;
         _logger = logger;
     }
 
@@ -31,6 +37,13 @@ public class SystemHealthBroadcaster : BackgroundService
         {
             try
             {
+                // Only run on the leader node
+                if (!await _leaderElection.TryAcquireLeadershipAsync(LeaderLockName, stoppingToken).ConfigureAwait(false))
+                {
+                    await Task.Delay(_broadcastInterval, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
+
                 await BroadcastHealthAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -52,6 +65,7 @@ public class SystemHealthBroadcaster : BackgroundService
             }
         }
 
+        await _leaderElection.ReleaseLeadershipAsync(LeaderLockName).ConfigureAwait(false);
         _logger.LogInformation("SystemHealthBroadcaster stopped");
     }
 

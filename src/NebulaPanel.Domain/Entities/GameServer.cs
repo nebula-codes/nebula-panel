@@ -59,6 +59,10 @@ public class GameServer
     // Resource Limits
     public ResourceLimits? ResourceLimits { get; set; }
 
+    // Node assignment (null = local/manager node)
+    public Guid? NodeId { get; set; }
+    public Node? Node { get; set; }
+
     // Relationships
     public Guid OwnerId { get; set; }
     private User? _owner;

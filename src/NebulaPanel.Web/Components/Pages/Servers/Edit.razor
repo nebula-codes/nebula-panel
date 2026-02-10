@@ -10,6 +10,7 @@
 @inject IServerRelocationService RelocationService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <PageTitle>Edit Server - Nebula Panel</PageTitle>
 <NavigationLock OnBeforeInternalNavigation="OnBeforeInternalNavigation" ConfirmExternalNavigation="_isDirty" />
@@ -128,6 +129,21 @@
                             <InputText id="iconUrl" @bind-Value="_model.IconUrl" class="input" placeholder="https://example.com/icon.png" />
                             <p class="text-xs text-nebula-text-muted mt-1">URL to a custom server icon. Leave empty to use the game's default icon.</p>
                         </div>
+
+                        @if (_availableNodes.Count > 0 || _model.NodeId.HasValue)
+                        {
+                            <div class="form-group md:col-span-2">
+                                <label for="node" class="label">Node</label>
+                                <select id="node" value="@(_model.NodeId?.ToString() ?? "")" @onchange="OnNodeChanged" class="input">
+                                    <option value="">Local (this server)</option>
+                                    @foreach (var node in _availableNodes)
+                                    {
+                                        <option value="@node.Id">@node.Name (@node.Address)@(node.Status == NodeStatus.Draining ? " - Draining" : "")</option>
+                                    }
+                                </select>
+                                <p class="text-xs text-nebula-text-muted mt-1">Select which node runs this server. "Local" for single-node setups.</p>
+                            </div>
+                        }
                     </div>
                 </ChildContent>
             </Card>
@@ -414,6 +430,7 @@
     private string _tagsInput = "";
     private bool _showAdvancedJvmSettings;
     private bool _showRelocateModal;
+    private List<NodeListItemDto> _availableNodes = [];
 
     private async Task OnBeforeInternalNavigation(LocationChangingContext context)
     {
@@ -431,7 +448,20 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadServerAsync();
+        await Task.WhenAll(LoadServerAsync(), LoadNodesAsync());
+    }
+
+    private async Task LoadNodesAsync()
+    {
+        try
+        {
+            var nodes = await Http.GetFromJsonAsync<List<NodeListItemDto>>("api/nodes");
+            _availableNodes = nodes?.Where(n => n.Status == NodeStatus.Online || n.Status == NodeStatus.Draining).ToList() ?? [];
+        }
+        catch
+        {
+            _availableNodes = [];
+        }
     }
 
     private async Task LoadServerAsync()
@@ -513,6 +543,9 @@
             _model.MaxCpuPercent = _server.ResourceLimits.MaxCpuPercent ?? 0;
         }
 
+        // Node assignment
+        _model.NodeId = _server.NodeId;
+
         // RCON config
         if (_server.RconConfig is not null)
         {
@@ -549,7 +582,8 @@
                 DockerConfig: _server.DeploymentType == ServerDeploymentType.Docker ? BuildDockerConfig() : null,
                 NativeConfig: _server.DeploymentType == ServerDeploymentType.Native ? BuildNativeConfig() : null,
                 RconConfig: BuildRconConfig(),
-                ResourceLimits: BuildResourceLimits()
+                ResourceLimits: BuildResourceLimits(),
+                NodeId: _model.NodeId
             );
 
             var result = await ServerService.UpdateServerAsync(ServerId, request);
@@ -667,6 +701,13 @@
         );
     }
 
+    private void OnNodeChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _model.NodeId = string.IsNullOrEmpty(value) ? null : Guid.Parse(value);
+        _isDirty = true;
+    }
+
     private void Cancel()
     {
         Navigation.NavigateTo($"/servers/{ServerId}");
@@ -725,5 +766,8 @@
         public RconProtocolType RconProtocol { get; set; } = RconProtocolType.Source;
         public string? RconPassword { get; set; }
         public int RconTimeout { get; set; } = 10;
+
+        // Node assignment
+        public Guid? NodeId { get; set; }
     }
 }

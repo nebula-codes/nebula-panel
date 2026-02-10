@@ -1,7 +1,5 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NebulaPanel.Application.Services;
@@ -20,16 +18,26 @@ public class NativeProcessExecutor : IServerExecutor
 {
     private readonly ILogger<NativeProcessExecutor> _logger;
     private readonly IServiceScopeFactory? _serviceScopeFactory;
-    private readonly ConcurrentDictionary<Guid, ManagedProcess> _managedProcesses = new();
+    private readonly NativeProcessStateStore _processStore;
 
     public ServerDeploymentType DeploymentType => ServerDeploymentType.Native;
 
     public NativeProcessExecutor(
         ILogger<NativeProcessExecutor> logger,
+        NativeProcessStateStore processStore,
         IServiceScopeFactory? serviceScopeFactory = null)
     {
         _logger = logger;
+        _processStore = processStore;
         _serviceScopeFactory = serviceScopeFactory;
+    }
+
+    /// <summary>
+    /// Test constructor — creates its own in-memory state store.
+    /// </summary>
+    internal NativeProcessExecutor(ILogger<NativeProcessExecutor> logger)
+        : this(logger, new NativeProcessStateStore(), null)
+    {
     }
 
     public Task<bool> InstallAsync(
@@ -69,7 +77,7 @@ public class NativeProcessExecutor : IServerExecutor
         var config = server.NativeConfig;
 
         // Check if already running
-        if (_managedProcesses.TryGetValue(server.Id, out var existingProcess) && existingProcess.IsRunning)
+        if (_processStore.TryGet(server.Id, out var existingProcess) && existingProcess is not null && existingProcess.IsRunning)
         {
             _logger.LogWarning("Server {ServerId} is already running with PID {ProcessId}",
                 server.Id, existingProcess.ProcessId);
@@ -141,7 +149,7 @@ public class NativeProcessExecutor : IServerExecutor
             server.Status = ServerStatus.Starting;
             server.LastStarted = DateTime.UtcNow;
 
-            _managedProcesses[server.Id] = managedProcess;
+            _processStore.Set(server.Id, managedProcess);
 
             // Start capturing output asynchronously
             managedProcess.StartOutputCapture();
@@ -162,7 +170,7 @@ public class NativeProcessExecutor : IServerExecutor
 
                     server.Status = ServerStatus.Restarting;
                     server.ProcessId = null;
-                    _managedProcesses.TryRemove(server.Id, out _);
+                    _processStore.TryRemove(server.Id, out _);
 
                     // Brief delay before restart to allow resources to be released
                     await Task.Delay(2000).ConfigureAwait(false);
@@ -205,7 +213,7 @@ public class NativeProcessExecutor : IServerExecutor
 
     public async Task<bool> StopAsync(GameServer server, bool force = false, CancellationToken ct = default)
     {
-        if (!_managedProcesses.TryGetValue(server.Id, out var managedProcess))
+        if (!_processStore.TryGet(server.Id, out var managedProcess) || managedProcess is null)
         {
             // Try to find by PID if we have one
             if (server.ProcessId.HasValue)
@@ -241,7 +249,7 @@ public class NativeProcessExecutor : IServerExecutor
                 server.Status = ServerStatus.Stopped;
                 server.LastStopped = DateTime.UtcNow;
                 server.ProcessId = null;
-                _managedProcesses.TryRemove(server.Id, out _);
+                _processStore.TryRemove(server.Id, out _);
 
                 // End Hytale session if this is a Hytale server
                 await EndHytaleSessionAsync(server, ct).ConfigureAwait(false);
@@ -282,7 +290,7 @@ public class NativeProcessExecutor : IServerExecutor
     public Task<ServerStatus> GetStatusAsync(GameServer server, CancellationToken ct = default)
     {
         // Check managed processes first
-        if (_managedProcesses.TryGetValue(server.Id, out var managedProcess))
+        if (_processStore.TryGet(server.Id, out var managedProcess) && managedProcess is not null)
         {
             return Task.FromResult(managedProcess.IsRunning ? ServerStatus.Running : ServerStatus.Stopped);
         }
@@ -309,7 +317,7 @@ public class NativeProcessExecutor : IServerExecutor
         GameServer server,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        if (!_managedProcesses.TryGetValue(server.Id, out var managedProcess))
+        if (!_processStore.TryGet(server.Id, out var managedProcess) || managedProcess is null)
         {
             _logger.LogWarning("No managed process found for server {ServerId}", server.Id);
             yield break;
@@ -323,7 +331,7 @@ public class NativeProcessExecutor : IServerExecutor
 
     public async Task SendCommandAsync(GameServer server, string command, CancellationToken ct = default)
     {
-        if (!_managedProcesses.TryGetValue(server.Id, out var managedProcess))
+        if (!_processStore.TryGet(server.Id, out var managedProcess) || managedProcess is null)
         {
             _logger.LogWarning("No managed process found for server {ServerId}", server.Id);
             throw new InvalidOperationException($"Server {server.Id} is not running or not managed");
@@ -335,7 +343,7 @@ public class NativeProcessExecutor : IServerExecutor
 
     public Task<ResourceUsage> GetResourceUsageAsync(GameServer server, CancellationToken ct = default)
     {
-        if (!_managedProcesses.TryGetValue(server.Id, out var managedProcess))
+        if (!_processStore.TryGet(server.Id, out var managedProcess) || managedProcess is null)
         {
             _logger.LogDebug(
                 "No managed process found for server {ServerId}, trying PID lookup (ProcessId={ProcessId})",

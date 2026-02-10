@@ -9,7 +9,7 @@ public class ServiceTestFixture
 {
     public Mock<IGameServerRepository> GameServerRepository { get; }
     public Mock<IGameRepository> GameRepository { get; }
-    public Mock<IServerExecutorFactory> ExecutorFactory { get; }
+    public Mock<INodeAwareExecutorFactory> NodeExecutorFactory { get; }
     public Mock<IServerExecutor> NativeExecutor { get; }
     public Mock<IServerExecutor> DockerExecutor { get; }
     public Mock<IImageService> ImageService { get; }
@@ -20,7 +20,7 @@ public class ServiceTestFixture
     {
         GameServerRepository = new Mock<IGameServerRepository>();
         GameRepository = new Mock<IGameRepository>();
-        ExecutorFactory = new Mock<IServerExecutorFactory>();
+        NodeExecutorFactory = new Mock<INodeAwareExecutorFactory>();
         NativeExecutor = new Mock<IServerExecutor>();
         DockerExecutor = new Mock<IServerExecutor>();
         ImageService = new Mock<IImageService>();
@@ -31,12 +31,14 @@ public class ServiceTestFixture
         EncryptionService.Setup(e => e.Encrypt(It.IsAny<string>())).Returns((string s) => s);
         EncryptionService.Setup(e => e.Decrypt(It.IsAny<string>())).Returns((string s) => s);
 
-        // Setup executor factory to return appropriate executors
+        // Setup executor factory to return appropriate executors based on server
         NativeExecutor.Setup(e => e.DeploymentType).Returns(ServerDeploymentType.Native);
         DockerExecutor.Setup(e => e.DeploymentType).Returns(ServerDeploymentType.Docker);
 
-        ExecutorFactory.Setup(f => f.GetExecutor(ServerDeploymentType.Native)).Returns(NativeExecutor.Object);
-        ExecutorFactory.Setup(f => f.GetExecutor(ServerDeploymentType.Docker)).Returns(DockerExecutor.Object);
+        NodeExecutorFactory.Setup(f => f.GetExecutor(It.Is<GameServer>(s => s.DeploymentType == ServerDeploymentType.Native)))
+            .Returns(NativeExecutor.Object);
+        NodeExecutorFactory.Setup(f => f.GetExecutor(It.Is<GameServer>(s => s.DeploymentType == ServerDeploymentType.Docker)))
+            .Returns(DockerExecutor.Object);
     }
 
     public GameServerBuilder CreateServerBuilder() => new();

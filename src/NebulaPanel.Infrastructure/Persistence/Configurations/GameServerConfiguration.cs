@@ -135,6 +135,13 @@ public class GameServerConfiguration : IEntityTypeConfiguration<GameServer>
             .HasForeignKey(s => s.OwnerId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(s => s.Node)
+            .WithMany(n => n.Servers)
+            .HasForeignKey(s => s.NodeId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        builder.HasIndex(s => s.NodeId);
+
         builder.HasMany(s => s.InstalledMods)
             .WithOne(m => m.Server)
             .HasForeignKey(m => m.ServerId)

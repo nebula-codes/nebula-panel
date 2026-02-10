@@ -61,16 +61,10 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Host.UseSerilog();
 
-// Persist DataProtection keys so antiforgery tokens and encrypted settings
-// survive container restarts. Without this, every restart generates new keys
-// and all existing tokens/cookies become invalid.
-var dataDir = builder.Configuration["Database:ConnectionString"]?.Contains("/app/data/") == true
-    ? "/app/data"
-    : "data";
-var keysDir = Path.Combine(dataDir, "keys");
-Directory.CreateDirectory(keysDir);
+// Persist DataProtection keys in the database so they are shared across nodes
+// and survive container restarts without needing a persistent filesystem mount.
 builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
+    .PersistKeysToDbContext<NebulaPanelDbContext>()
     .SetApplicationName("NebulaPanel");
 
 // Add services to the container.

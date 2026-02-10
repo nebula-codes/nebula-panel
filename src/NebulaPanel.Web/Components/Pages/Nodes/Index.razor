@@ -1,0 +1,659 @@
+@page "/nodes"
+@attribute [Authorize(Roles = "Admin")]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Domain.Enums
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Nodes - Nebula Panel</PageTitle>
+
+<div class="max-w-5xl mx-auto py-6 px-4">
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-nebula-text-primary">Nodes</h1>
+            <p class="text-nebula-text-muted mt-1">Manage remote agent nodes for multi-server deployments.</p>
+        </div>
+        <Button Variant="Button.ButtonVariant.Primary"
+                Text="Add Node"
+                IconName="plus"
+                OnClick="OpenCreateModal" />
+    </div>
+
+    <ErrorAlert Message="@_error" Dismissible="true" OnDismiss="@(() => _error = null)" Class="mb-6" />
+    <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Dismissible="true" OnDismiss="@(() => _success = null)" Class="mb-6" />
+
+    @if (_loading)
+    {
+        <div class="space-y-4">
+            @for (int i = 0; i < 3; i++)
+            {
+                <SkeletonCard Variant="SkeletonCard.SkeletonVariant.SettingsForm" />
+            }
+        </div>
+    }
+    else if (_nodes.Count == 0)
+    {
+        <Card>
+            <EmptyState IconName="network"
+                        Heading="No nodes configured"
+                        Description="Nodes allow you to distribute game servers across multiple machines. For single-server setups, you don't need to add any nodes.">
+                <Actions>
+                    <Button Variant="Button.ButtonVariant.Primary"
+                            Text="Add Node"
+                            IconName="plus"
+                            OnClick="OpenCreateModal" />
+                </Actions>
+            </EmptyState>
+        </Card>
+    }
+    else
+    {
+        <div class="space-y-4">
+            @foreach (var node in _nodes)
+            {
+                <Card Class="hover:border-nebula-border transition-colors">
+                    <ChildContent>
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-lg flex items-center justify-center @GetStatusBgClass(node.Status)">
+                                    <Icon Name="server" Size="IconSize.Small" Class="@GetStatusIconClass(node.Status)" />
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium text-nebula-text-primary">@node.Name</span>
+                                        <StatusBadge Status="@GetStatusType(node.Status)"
+                                                     Text="@node.Status.ToString()"
+                                                     ShowDot="true" />
+                                    </div>
+                                    <div class="flex items-center gap-3 text-sm text-nebula-text-muted mt-0.5">
+                                        <code class="text-xs bg-nebula-bg-tertiary px-1.5 py-0.5 rounded">@node.Address</code>
+                                        <span>@node.ServerCount server(s)</span>
+                                        @if (node.LastHeartbeat > DateTime.MinValue)
+                                        {
+                                            <span class="flex items-center gap-1">
+                                                <Icon Name="activity" Size="IconSize.Small" />
+                                                <RelativeTime DateTime="@node.LastHeartbeat" />
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Size="Button.ButtonSize.Small"
+                                        IconName="key"
+                                        IconOnly="true"
+                                        OnClick="@(() => OpenTokenModal(node))"
+                                        title="View Token" />
+                                @if (node.Status == NodeStatus.Online)
+                                {
+                                    <Button Variant="Button.ButtonVariant.Ghost"
+                                            Size="Button.ButtonSize.Small"
+                                            IconName="pause-circle"
+                                            IconOnly="true"
+                                            OnClick="@(() => ConfirmDrain(node))"
+                                            title="Drain" />
+                                }
+                                else if (node.Status == NodeStatus.Draining)
+                                {
+                                    <Button Variant="Button.ButtonVariant.Ghost"
+                                            Size="Button.ButtonSize.Small"
+                                            IconName="play-circle"
+                                            IconOnly="true"
+                                            OnClick="@(() => UndrainNode(node))"
+                                            title="Undrain" />
+                                }
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Size="Button.ButtonSize.Small"
+                                        IconName="pencil"
+                                        IconOnly="true"
+                                        OnClick="@(() => OpenEditModal(node))"
+                                        title="Edit" />
+                                <Button Variant="Button.ButtonVariant.Ghost"
+                                        Size="Button.ButtonSize.Small"
+                                        IconName="trash-2"
+                                        IconOnly="true"
+                                        OnClick="@(() => ConfirmDelete(node))"
+                                        title="Delete" />
+                            </div>
+                        </div>
+                    </ChildContent>
+                </Card>
+            }
+        </div>
+    }
+</div>
+
+@* Create / Edit Modal *@
+@if (_showFormModal)
+{
+    <Modal IsOpen="true" OnClose="CloseFormModal" Size="Modal.ModalSize.Medium">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">
+                @(_editingNode is not null ? "Edit Node" : "Add Node")
+            </h3>
+        </Header>
+        <Body>
+            <div class="space-y-4">
+                <div class="form-group">
+                    <label for="nodeName" class="label">Name <span class="text-nebula-error">*</span></label>
+                    <input id="nodeName" type="text" @bind="_formModel.Name" class="input" placeholder="us-east-1" />
+                    <p class="text-xs text-nebula-text-muted mt-1">A friendly name to identify this node.</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="nodeAddress" class="label">Address <span class="text-nebula-error">*</span></label>
+                    <input id="nodeAddress" type="text" @bind="_formModel.Address" class="input" placeholder="https://node1.example.com:5001" />
+                    <p class="text-xs text-nebula-text-muted mt-1">The gRPC endpoint address of the agent.</p>
+                </div>
+
+                <div class="border border-nebula-border-subtle rounded-nebula overflow-hidden">
+                    <button type="button"
+                            class="w-full flex items-center justify-between p-3 text-left hover:bg-nebula-bg-tertiary transition-colors"
+                            @onclick="() => _showCapacity = !_showCapacity">
+                        <span class="text-sm font-medium text-nebula-text-primary">Capacity Limits</span>
+                        <Icon Name="@(_showCapacity ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                    </button>
+                    @if (_showCapacity)
+                    {
+                        <div class="p-3 pt-0 border-t border-nebula-border-subtle">
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="form-group">
+                                    <label for="maxMemory" class="label text-xs">Max Memory (MB)</label>
+                                    <input id="maxMemory" type="number" @bind="_formModel.MaxMemoryMb" class="input" min="0" placeholder="0 = unlimited" />
+                                </div>
+                                <div class="form-group">
+                                    <label for="maxCpu" class="label text-xs">Max CPU (%)</label>
+                                    <input id="maxCpu" type="number" @bind="_formModel.MaxCpuPercent" class="input" min="0" max="100" placeholder="0 = unlimited" />
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="Button.ButtonVariant.Secondary" Text="Cancel" OnClick="CloseFormModal" />
+                <Button Variant="Button.ButtonVariant.Primary"
+                        Text="@(_editingNode is not null ? "Save" : "Create")"
+                        Loading="_formSaving"
+                        Disabled="@(!IsFormValid)"
+                        OnClick="SaveNode" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Delete Confirmation Modal *@
+@if (_showDeleteConfirm && _nodeToDelete is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDelete" Size="Modal.ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Delete Node</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Are you sure you want to delete <strong class="text-nebula-text-primary">@_nodeToDelete.Name</strong>?
+            </p>
+            @if (_nodeToDelete.ServerCount > 0)
+            {
+                <div class="mt-3 p-3 rounded-nebula bg-nebula-warning/10 border border-nebula-warning/30">
+                    <p class="text-sm text-nebula-warning flex items-center gap-2">
+                        <Icon Name="alert-triangle" Size="IconSize.Small" />
+                        This node has @_nodeToDelete.ServerCount server(s) assigned. Reassign or remove them first.
+                    </p>
+                </div>
+            }
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="Button.ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDelete" />
+                <Button Variant="Button.ButtonVariant.Danger"
+                        Text="Delete"
+                        Loading="_deleting"
+                        Disabled="@(_nodeToDelete.ServerCount > 0)"
+                        OnClick="DeleteNode" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Drain Confirmation Modal *@
+@if (_showDrainConfirm && _nodeToDrain is not null)
+{
+    <Modal IsOpen="true" OnClose="CancelDrain" Size="Modal.ModalSize.Small">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Drain Node</h3>
+        </Header>
+        <Body>
+            <p class="text-nebula-text-secondary">
+                Drain <strong class="text-nebula-text-primary">@_nodeToDrain.Name</strong>?
+            </p>
+            <div class="mt-3 p-3 rounded-nebula bg-nebula-warning/10 border border-nebula-warning/30">
+                <p class="text-sm text-nebula-warning flex items-center gap-2">
+                    <Icon Name="alert-triangle" Size="IconSize.Small" />
+                    New servers won't be assigned to this node. Existing servers will continue running until stopped.
+                </p>
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="Button.ButtonVariant.Secondary" Text="Cancel" OnClick="CancelDrain" />
+                <Button Variant="Button.ButtonVariant.Danger"
+                        Text="Drain"
+                        Loading="_draining"
+                        OnClick="DrainNode" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@* Token Modal *@
+@if (_showTokenModal && _tokenNode is not null)
+{
+    <Modal IsOpen="true" OnClose="CloseTokenModal" Size="Modal.ModalSize.Medium">
+        <Header>
+            <h3 class="text-lg font-medium text-nebula-text-primary">Agent Token - @_tokenNode.Name</h3>
+        </Header>
+        <Body>
+            <p class="text-sm text-nebula-text-muted mb-4">
+                Use this token to authenticate the agent on the remote node. It will only be shown once when first created or regenerated.
+            </p>
+
+            @if (_revealedToken is not null)
+            {
+                <div class="relative">
+                    <code class="block p-3 bg-nebula-bg-tertiary rounded-nebula text-sm text-nebula-text-primary break-all font-mono">@_revealedToken</code>
+                    <button type="button"
+                            class="absolute top-2 right-2 p-1.5 rounded bg-nebula-bg-secondary hover:bg-nebula-surface-hover text-nebula-text-muted hover:text-nebula-text-primary transition-colors"
+                            title="Copy to clipboard"
+                            @onclick="CopyToken">
+                        <Icon Name="@(_tokenCopied ? "check" : "copy")" Size="IconSize.Small" />
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="p-3 bg-nebula-bg-tertiary rounded-nebula text-sm text-nebula-text-muted">
+                    Token is hidden. Regenerate to get a new token.
+                </div>
+            }
+
+            <div class="mt-4 p-3 rounded-nebula bg-nebula-warning/10 border border-nebula-warning/30">
+                <p class="text-sm text-nebula-warning flex items-center gap-2">
+                    <Icon Name="alert-triangle" Size="IconSize.Small" />
+                    Regenerating the token will disconnect the current agent. You'll need to update the agent configuration.
+                </p>
+            </div>
+        </Body>
+        <Footer>
+            <div class="flex items-center justify-end gap-3">
+                <Button Variant="Button.ButtonVariant.Secondary" Text="Close" OnClick="CloseTokenModal" />
+                <Button Variant="Button.ButtonVariant.Danger"
+                        Text="Regenerate Token"
+                        IconName="refresh-cw"
+                        Loading="_regenerating"
+                        OnClick="RegenerateToken" />
+            </div>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string? _success;
+    private List<NodeListItemDto> _nodes = [];
+
+    // Form modal
+    private bool _showFormModal;
+    private bool _formSaving;
+    private bool _showCapacity;
+    private NodeListItemDto? _editingNode;
+    private NodeFormModel _formModel = new();
+
+    // Delete modal
+    private bool _showDeleteConfirm;
+    private bool _deleting;
+    private NodeListItemDto? _nodeToDelete;
+
+    // Drain modal
+    private bool _showDrainConfirm;
+    private bool _draining;
+    private NodeListItemDto? _nodeToDrain;
+
+    // Token modal
+    private bool _showTokenModal;
+    private bool _regenerating;
+    private bool _tokenCopied;
+    private NodeListItemDto? _tokenNode;
+    private string? _revealedToken;
+
+    private bool IsFormValid => !string.IsNullOrWhiteSpace(_formModel.Name)
+                                && !string.IsNullOrWhiteSpace(_formModel.Address);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNodesAsync();
+    }
+
+    private async Task LoadNodesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _nodes = await Http.GetFromJsonAsync<List<NodeListItemDto>>("api/nodes") ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load nodes: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Create / Edit
+    private void OpenCreateModal()
+    {
+        _editingNode = null;
+        _formModel = new NodeFormModel();
+        _showCapacity = false;
+        _showFormModal = true;
+    }
+
+    private void OpenEditModal(NodeListItemDto node)
+    {
+        _editingNode = node;
+        _formModel = new NodeFormModel
+        {
+            Name = node.Name,
+            Address = node.Address
+        };
+        _showCapacity = false;
+        _showFormModal = true;
+    }
+
+    private void CloseFormModal()
+    {
+        _showFormModal = false;
+        _editingNode = null;
+    }
+
+    private async Task SaveNode()
+    {
+        try
+        {
+            _formSaving = true;
+            _error = null;
+
+            var capacity = (_formModel.MaxMemoryMb > 0 || _formModel.MaxCpuPercent > 0)
+                ? new ResourceLimitsRequest(
+                    MaxMemoryMb: _formModel.MaxMemoryMb > 0 ? _formModel.MaxMemoryMb : null,
+                    MaxCpuPercent: _formModel.MaxCpuPercent > 0 ? _formModel.MaxCpuPercent : null,
+                    MaxDiskMb: null,
+                    MaxNetworkMbps: null)
+                : null;
+
+            if (_editingNode is not null)
+            {
+                var request = new UpdateNodeRequest(_formModel.Name, _formModel.Address, capacity);
+                var response = await Http.PutAsJsonAsync($"api/nodes/{_editingNode.Id}", request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _error = $"Failed to update node: {error}";
+                    return;
+                }
+                _success = $"Node '{_formModel.Name}' updated successfully.";
+            }
+            else
+            {
+                var request = new CreateNodeRequest(_formModel.Name, _formModel.Address, capacity);
+                var response = await Http.PostAsJsonAsync("api/nodes", request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _error = $"Failed to create node: {error}";
+                    return;
+                }
+
+                // Read the created node to get the token
+                var created = await response.Content.ReadFromJsonAsync<NodeDto>();
+                if (created is not null && !string.IsNullOrEmpty(created.AgentToken))
+                {
+                    _tokenNode = new NodeListItemDto(created.Id, created.Name, created.Address, created.Status, created.LastHeartbeat, created.ServerCount);
+                    _revealedToken = created.AgentToken;
+                    _tokenCopied = false;
+                    _showTokenModal = true;
+                }
+
+                _success = $"Node '{_formModel.Name}' created successfully.";
+            }
+
+            CloseFormModal();
+            await LoadNodesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _formSaving = false;
+        }
+    }
+
+    // Delete
+    private void ConfirmDelete(NodeListItemDto node)
+    {
+        _nodeToDelete = node;
+        _showDeleteConfirm = true;
+    }
+
+    private void CancelDelete()
+    {
+        _showDeleteConfirm = false;
+        _nodeToDelete = null;
+    }
+
+    private async Task DeleteNode()
+    {
+        if (_nodeToDelete is null) return;
+
+        try
+        {
+            _deleting = true;
+            _error = null;
+
+            var response = await Http.DeleteAsync($"api/nodes/{_nodeToDelete.Id}");
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _error = $"Failed to delete node: {error}";
+                return;
+            }
+
+            _success = $"Node '{_nodeToDelete.Name}' deleted.";
+            CancelDelete();
+            await LoadNodesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+
+    // Drain / Undrain
+    private void ConfirmDrain(NodeListItemDto node)
+    {
+        _nodeToDrain = node;
+        _showDrainConfirm = true;
+    }
+
+    private void CancelDrain()
+    {
+        _showDrainConfirm = false;
+        _nodeToDrain = null;
+    }
+
+    private async Task DrainNode()
+    {
+        if (_nodeToDrain is null) return;
+
+        try
+        {
+            _draining = true;
+            _error = null;
+
+            var response = await Http.PostAsync($"api/nodes/{_nodeToDrain.Id}/drain", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _error = $"Failed to drain node: {error}";
+                return;
+            }
+
+            _success = $"Node '{_nodeToDrain.Name}' is now draining.";
+            CancelDrain();
+            await LoadNodesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _draining = false;
+        }
+    }
+
+    private async Task UndrainNode(NodeListItemDto node)
+    {
+        try
+        {
+            _error = null;
+
+            var response = await Http.PostAsync($"api/nodes/{node.Id}/undrain", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _error = $"Failed to undrain node: {error}";
+                return;
+            }
+
+            _success = $"Node '{node.Name}' is back online.";
+            await LoadNodesAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    // Token
+    private void OpenTokenModal(NodeListItemDto node)
+    {
+        _tokenNode = node;
+        _revealedToken = null;
+        _tokenCopied = false;
+        _showTokenModal = true;
+    }
+
+    private void CloseTokenModal()
+    {
+        _showTokenModal = false;
+        _tokenNode = null;
+        _revealedToken = null;
+    }
+
+    private async Task RegenerateToken()
+    {
+        if (_tokenNode is null) return;
+
+        try
+        {
+            _regenerating = true;
+            _error = null;
+
+            var response = await Http.PostAsync($"api/nodes/{_tokenNode.Id}/regenerate-token", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _error = $"Failed to regenerate token: {error}";
+                return;
+            }
+
+            var token = await response.Content.ReadFromJsonAsync<string>();
+            _revealedToken = token;
+            _tokenCopied = false;
+            _success = $"Token regenerated for '{_tokenNode.Name}'.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _regenerating = false;
+        }
+    }
+
+    private async Task CopyToken()
+    {
+        if (_revealedToken is null) return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _revealedToken);
+            _tokenCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _tokenCopied = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            // Clipboard API may not be available
+        }
+    }
+
+    private static StatusBadge.StatusType GetStatusType(NodeStatus status) => status switch
+    {
+        NodeStatus.Online => StatusBadge.StatusType.Success,
+        NodeStatus.Offline => StatusBadge.StatusType.Error,
+        NodeStatus.Draining => StatusBadge.StatusType.Warning,
+        _ => StatusBadge.StatusType.Neutral
+    };
+
+    private static string GetStatusBgClass(NodeStatus status) => status switch
+    {
+        NodeStatus.Online => "bg-nebula-success/10",
+        NodeStatus.Offline => "bg-nebula-error/10",
+        NodeStatus.Draining => "bg-nebula-warning/10",
+        _ => "bg-nebula-bg-tertiary"
+    };
+
+    private static string GetStatusIconClass(NodeStatus status) => status switch
+    {
+        NodeStatus.Online => "text-nebula-success",
+        NodeStatus.Offline => "text-nebula-error",
+        NodeStatus.Draining => "text-nebula-warning",
+        _ => "text-nebula-text-muted"
+    };
+
+    private class NodeFormModel
+    {
+        public string Name { get; set; } = "";
+        public string Address { get; set; } = "";
+        public int MaxMemoryMb { get; set; }
+        public int MaxCpuPercent { get; set; }
+    }
+}

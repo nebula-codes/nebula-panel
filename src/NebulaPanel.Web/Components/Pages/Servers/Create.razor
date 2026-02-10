@@ -13,6 +13,7 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IServerPathResolver PathResolver
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <PageTitle>Create Server - Nebula Panel</PageTitle>
 <NavigationLock OnBeforeInternalNavigation="OnBeforeInternalNavigation" ConfirmExternalNavigation="_isDirty" />
@@ -139,6 +140,21 @@
                         <input id="installPath" type="text" @bind="_model.InstallPath" @bind:event="oninput" @onfocusout="OnInstallPathManualEdit" class="input" placeholder="~/game-servers/my-server" />
                         <p class="text-xs text-nebula-text-muted mt-1">Directory where server files will be stored (auto-filled based on server name)</p>
                     </div>
+
+                    @if (_availableNodes.Count > 0)
+                    {
+                        <div class="form-group">
+                            <label for="node" class="label">Node</label>
+                            <select id="node" value="@(_model.NodeId?.ToString() ?? "")" @onchange="OnNodeChanged" class="input">
+                                <option value="">Local (this server)</option>
+                                @foreach (var node in _availableNodes)
+                                {
+                                    <option value="@node.Id">@node.Name (@node.Address)</option>
+                                }
+                            </select>
+                            <p class="text-xs text-nebula-text-muted mt-1">Select which node runs this server. "Local" for single-node setups.</p>
+                        </div>
+                    }
 
                     <div class="form-group md:col-span-2">
                         <label for="description" class="label">Description</label>
@@ -490,6 +506,7 @@
     private string? _error;
 
     private List<GameListItemDto> _games = [];
+    private List<NodeListItemDto> _availableNodes = [];
     private GameDto? _selectedGame;
     private string? _selectedGameSlug;
     private string? _lastSuggestedPath;
@@ -513,7 +530,21 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadGamesAsync();
+        await Task.WhenAll(LoadGamesAsync(), LoadNodesAsync());
+    }
+
+    private async Task LoadNodesAsync()
+    {
+        try
+        {
+            var nodes = await Http.GetFromJsonAsync<List<NodeListItemDto>>("api/nodes");
+            _availableNodes = nodes?.Where(n => n.Status == NodeStatus.Online).ToList() ?? [];
+        }
+        catch
+        {
+            // Nodes are optional - don't block server creation
+            _availableNodes = [];
+        }
     }
 
     private async Task LoadGamesAsync()
@@ -587,6 +618,12 @@
         "hytale" => 5520,
         _ => 25565  // Fallback for unknown games
     };
+
+    private void OnNodeChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _model.NodeId = string.IsNullOrEmpty(value) ? null : Guid.Parse(value);
+    }
 
     private void SelectDeploymentType(ServerDeploymentType type)
     {
@@ -737,7 +774,8 @@
                 DockerConfig: _model.DeploymentType == ServerDeploymentType.Docker ? BuildDockerConfig() : null,
                 NativeConfig: _model.DeploymentType == ServerDeploymentType.Native ? BuildNativeConfig() : null,
                 RconConfig: BuildRconConfig(),
-                ResourceLimits: BuildResourceLimits()
+                ResourceLimits: BuildResourceLimits(),
+                NodeId: _model.NodeId
             );
 
             var result = await ServerService.CreateServerAsync(request, userId);
@@ -978,6 +1016,9 @@
         // Resource limits
         public int MaxMemoryMb { get; set; }
         public int MaxCpuPercent { get; set; }
+
+        // Node assignment
+        public Guid? NodeId { get; set; }
     }
 
 }

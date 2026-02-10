@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IWebhookEndpointRepository, WebhookEndpointRepository>();
         services.AddScoped<IWebhookDeliveryRepository, WebhookDeliveryRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+        services.AddScoped<INodeRepository, NodeRepository>();
 
         // Database info service
         services.AddScoped<IDatabaseInfoService, DatabaseInfoService>();
@@ -78,13 +79,26 @@ public static class DependencyInjection
         services.AddScoped<IAuditService, AuditService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
 
+        // Leader election for background services (single-node always wins)
+        services.AddSingleton<ILeaderElection, DatabaseLeaderElection>();
+
         // Server path resolver (auto-detects Docker mount mappings)
         services.AddSingleton<IServerPathResolver, ServerPathResolver>();
+
+        // Executor state stores (in-memory for single-node, replaceable for multi-node)
+        services.AddSingleton<NativeProcessStateStore>();
+        services.AddSingleton<DockerContainerStateStore>();
 
         // Server executors
         services.AddSingleton<IServerExecutor, NativeProcessExecutor>();
         services.AddSingleton<IServerExecutor, DockerServerExecutor>();
         services.AddSingleton<IServerExecutorFactory, ServerExecutorFactory>();
+
+        // Node-aware executor (routes local vs remote based on GameServer.NodeId)
+        services.AddSingleton<AgentChannelManager>();
+        services.AddSingleton<NodeAwareExecutorFactory>();
+        services.AddSingleton<INodeAwareExecutorFactory>(sp => sp.GetRequiredService<NodeAwareExecutorFactory>());
+        services.AddHostedService<NodeHeartbeatService>();
 
         // Steam integration
         services.AddHttpClient("SteamCMD");

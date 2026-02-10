@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using NebulaPanel.Domain.Entities;
 using NebulaPanel.Infrastructure.Persistence.Conventions;
@@ -5,7 +6,7 @@ using NebulaPanel.Infrastructure.Persistence.Conventions;
 namespace NebulaPanel.Infrastructure.Persistence;
 
 public class NebulaPanelDbContext(DbContextOptions<NebulaPanelDbContext> options)
-    : DbContext(options)
+    : DbContext(options), IDataProtectionKeyContext
 {
     // Main entities
     public DbSet<Game> Games => Set<Game>();
@@ -63,6 +64,13 @@ public class NebulaPanelDbContext(DbContextOptions<NebulaPanelDbContext> options
 
     // API Keys
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+
+    // Multi-node
+    public DbSet<Node> Nodes => Set<Node>();
+    public DbSet<ClusterLock> ClusterLocks => Set<ClusterLock>();
+
+    // Data Protection keys (shared across nodes)
+    public DbSet<DataProtectionKey> DataProtectionKeys { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -30,6 +30,14 @@ public static class Permissions
         public const string Delete = "games.delete";
     }
 
+    public static class Nodes
+    {
+        public const string View = "nodes.view";
+        public const string Create = "nodes.create";
+        public const string Edit = "nodes.edit";
+        public const string Delete = "nodes.delete";
+    }
+
     public static class Servers
     {
         public const string ViewOwn = "servers.own.view";

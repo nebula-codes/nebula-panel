@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthStateProvider AuthStateProvider
 @inject HealthCheckService HealthCheckService
+@inject HttpClient Http
 @using NebulaPanel.Application.DTOs
 @using NebulaPanel.Application.Services
 @using NebulaPanel.Domain.Enums
@@ -275,6 +276,57 @@
                 }
             </Card>
 
+            @* Cluster Nodes (Admin Only) *@
+            @if (_isAdmin)
+            {
+                <Card>
+                    <CardHeader Title="Cluster Nodes">
+                        <Actions>
+                            <a href="/nodes" class="text-xs text-nebula-accent hover:text-nebula-accent-hover transition-colors">Manage</a>
+                        </Actions>
+                    </CardHeader>
+                    @if (_nodes.Count == 0)
+                    {
+                        <div class="flex flex-col items-center justify-center py-6 text-center">
+                            <Icon Name="network" Size="Icon.IconSize.Medium" Class="text-nebula-text-muted mb-2" />
+                            <p class="text-sm text-nebula-text-muted">Single-node setup</p>
+                            <a href="/nodes" class="text-xs text-nebula-accent hover:text-nebula-accent-hover mt-1">Add your first node</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="divide-y divide-nebula-border-subtle -mx-6">
+                            @foreach (var node in _nodes)
+                            {
+                                <div class="flex items-center justify-between px-6 py-2.5">
+                                    <div class="flex items-center gap-3 min-w-0">
+                                        <span class="w-2 h-2 rounded-full flex-shrink-0 @GetNodeDotClass(node.Status)"></span>
+                                        <span class="text-sm text-nebula-text-primary truncate">@node.Name</span>
+                                    </div>
+                                    <div class="flex items-center gap-3 flex-shrink-0">
+                                        <span class="text-xs text-nebula-text-muted">@node.ServerCount server(s)</span>
+                                        @if (node.LastHeartbeat > DateTime.MinValue)
+                                        {
+                                            <span class="text-xs text-nebula-text-muted">
+                                                <RelativeTime DateTime="@node.LastHeartbeat" />
+                                            </span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="pt-3 mt-3 border-t border-nebula-border-subtle text-xs text-nebula-text-muted">
+                            @{
+                                var onlineCount = _nodes.Count(n => n.Status == NodeStatus.Online);
+                                var offlineCount = _nodes.Count(n => n.Status == NodeStatus.Offline);
+                                var drainingCount = _nodes.Count(n => n.Status == NodeStatus.Draining);
+                            }
+                            @onlineCount online@(offlineCount > 0 ? $", {offlineCount} offline" : "")@(drainingCount > 0 ? $", {drainingCount} draining" : "")
+                        </div>
+                    }
+                </Card>
+            }
+
             @* Resource History Chart *@
             <Card>
                 <CardHeader Title="Resource History">
@@ -455,6 +507,8 @@
     private bool _showBulkConfirm;
     private string? _pendingBulkAction;
     private bool _onboardingDismissed;
+    private bool _isAdmin;
+    private List<NodeListItemDto> _nodes = [];
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthStateTask { get; set; }
@@ -468,6 +522,8 @@
             _username = authState.User.FindFirst("name")?.Value
                         ?? authState.User.Identity?.Name
                         ?? "User";
+
+            _isAdmin = authState.User.IsInRole("Admin");
 
             // Extract first name if full name
             if (_username.Contains(' '))
@@ -592,8 +648,9 @@
             var serversTask = GameServerService.GetAllServersAsync();
             var resourceHistoryTask = DashboardService.GetResourceHistoryAsync(_selectedTimeRange);
             var healthCheckTask = LoadHealthCheckStatusAsync();
+            var nodesTask = _isAdmin ? LoadNodesAsync() : Task.CompletedTask;
 
-            await Task.WhenAll(summaryTask, healthTask, activityTask, announcementsTask, serversTask, resourceHistoryTask, healthCheckTask);
+            await Task.WhenAll(summaryTask, healthTask, activityTask, announcementsTask, serversTask, resourceHistoryTask, healthCheckTask, nodesTask);
 
             _summary = await summaryTask;
             _systemHealth = await healthTask;
@@ -979,6 +1036,26 @@
             _ => "text-nebula-text-muted"
         };
     }
+
+    private async Task LoadNodesAsync()
+    {
+        try
+        {
+            _nodes = await Http.GetFromJsonAsync<List<NodeListItemDto>>("api/nodes") ?? [];
+        }
+        catch
+        {
+            _nodes = [];
+        }
+    }
+
+    private static string GetNodeDotClass(NodeStatus status) => status switch
+    {
+        NodeStatus.Online => "bg-nebula-success",
+        NodeStatus.Offline => "bg-nebula-error",
+        NodeStatus.Draining => "bg-nebula-warning animate-pulse",
+        _ => "bg-nebula-text-muted"
+    };
 
     public async ValueTask DisposeAsync()
     {

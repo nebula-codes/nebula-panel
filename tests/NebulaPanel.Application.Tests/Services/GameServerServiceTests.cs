@@ -18,7 +18,7 @@ public class GameServerServiceTests
             _fixture.GameServerRepository.Object,
             _fixture.GameRepository.Object,
             _steamCmdServiceMock.Object,
-            _fixture.ExecutorFactory.Object,
+            _fixture.NodeExecutorFactory.Object,
             rconService: null,
             _fixture.ImageService.Object,
             serverActivityService: null,

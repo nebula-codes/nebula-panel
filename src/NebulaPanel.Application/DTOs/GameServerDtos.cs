@@ -33,7 +33,9 @@ public record GameServerDto(
     string? InstalledVersion,
     HytaleServerInfo? HytaleInfo,
     bool IsPinned,
-    List<string> Tags
+    List<string> Tags,
+    Guid? NodeId,
+    string? NodeName
 );
 
 public record GameServerListItemDto(
@@ -50,7 +52,9 @@ public record GameServerListItemDto(
     DateTime? LastStarted,
     bool HytaleUpdateAvailable,  // Whether a Hytale update is available
     bool IsPinned,
-    List<string> Tags
+    List<string> Tags,
+    Guid? NodeId,
+    string? NodeName
 );
 
 public record CreateGameServerRequest(
@@ -66,7 +70,8 @@ public record CreateGameServerRequest(
     DockerConfigurationRequest? DockerConfig,
     NativeConfigurationRequest? NativeConfig,
     RconConfigurationRequest? RconConfig,
-    ResourceLimitsRequest? ResourceLimits
+    ResourceLimitsRequest? ResourceLimits,
+    Guid? NodeId = null
 );
 
 public record UpdateGameServerRequest(
@@ -80,7 +85,8 @@ public record UpdateGameServerRequest(
     DockerConfigurationRequest? DockerConfig,
     NativeConfigurationRequest? NativeConfig,
     RconConfigurationRequest? RconConfig,
-    ResourceLimitsRequest? ResourceLimits
+    ResourceLimitsRequest? ResourceLimits,
+    Guid? NodeId = null
 );
 
 public record DockerConfigurationRequest(

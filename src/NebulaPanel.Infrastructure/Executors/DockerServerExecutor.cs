@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -28,17 +27,19 @@ public class DockerServerExecutor : IServerExecutor
     private readonly ILogger<DockerServerExecutor> _logger;
     private readonly IServiceScopeFactory? _serviceScopeFactory;
     private readonly IServerPathResolver _pathResolver;
-    private readonly ConcurrentDictionary<Guid, ManagedContainer> _managedContainers = new();
+    private readonly DockerContainerStateStore _containerStore;
 
     public ServerDeploymentType DeploymentType => ServerDeploymentType.Docker;
 
     public DockerServerExecutor(
         ILogger<DockerServerExecutor> logger,
         IServerPathResolver pathResolver,
+        DockerContainerStateStore containerStore,
         IServiceScopeFactory? serviceScopeFactory = null)
     {
         _logger = logger;
         _pathResolver = pathResolver;
+        _containerStore = containerStore;
         _serviceScopeFactory = serviceScopeFactory;
 
         // Create Docker client based on platform
@@ -257,7 +258,7 @@ public class DockerServerExecutor : IServerExecutor
                     // Attach stdin BEFORE starting to avoid race condition
                     var existingMc = new ManagedContainer(server.Id, server.DockerContainerId, _docker, _logger, effectiveTty);
                     await existingMc.AttachStdinAsync(ct).ConfigureAwait(false);
-                    _managedContainers[server.Id] = existingMc;
+                    _containerStore.Set(server.Id, existingMc);
 
                     await _docker.Containers.StartContainerAsync(
                         server.DockerContainerId,
@@ -397,7 +398,7 @@ public class DockerServerExecutor : IServerExecutor
                 await managedContainer.AttachStdinAsync(ct).ConfigureAwait(false);
 
                 // Only add to managed containers after successful stdin attachment
-                _managedContainers[server.Id] = managedContainer;
+                _containerStore.Set(server.Id, managedContainer);
 
                 // Now start the container
                 await _docker.Containers.StartContainerAsync(response.ID, new ContainerStartParameters(), ct)
@@ -549,7 +550,7 @@ public class DockerServerExecutor : IServerExecutor
             var tty = GetEffectiveTty(server, server.DockerConfig?.Tty ?? false);
             var managedContainer = new ManagedContainer(server.Id, server.DockerContainerId!, _docker, _logger, tty);
             await managedContainer.AttachStdinAsync(ct).ConfigureAwait(false);
-            _managedContainers[server.Id] = managedContainer;
+            _containerStore.Set(server.Id, managedContainer);
             managedContainer.StartLogCapture();
 
             _logger.LogInformation("Restarted container {ContainerId} for server {ServerId}",
@@ -611,7 +612,8 @@ public class DockerServerExecutor : IServerExecutor
         }
 
         // Check if we have a managed container with buffered logs
-        if (_managedContainers.TryGetValue(server.Id, out var managedContainer))
+        var managedContainer = _containerStore.Get(server.Id);
+        if (managedContainer is not null)
         {
             await foreach (var line in managedContainer.ReadOutputAsync(ct).ConfigureAwait(false))
             {
@@ -671,10 +673,11 @@ public class DockerServerExecutor : IServerExecutor
             }
 
             // Check if we have a managed container
-            _logger.LogInformation("Looking for managed container for server {ServerId}, managed containers count: {Count}",
-                server.Id, _managedContainers.Count);
+            _logger.LogInformation("Looking for managed container for server {ServerId}, managed server IDs count: {Count}",
+                server.Id, _containerStore.GetAllServerIds().Count);
 
-            if (_managedContainers.TryGetValue(server.Id, out var managedContainer))
+            var managedContainer = _containerStore.Get(server.Id);
+            if (managedContainer is not null)
             {
                 // Use the attached stdin stream - this goes through Docker's attach mechanism
                 // which properly handles TTY mode (like docker attach from CLI)
@@ -697,7 +700,7 @@ public class DockerServerExecutor : IServerExecutor
                 server.DockerContainerId, containerInfo.Config.AttachStdin, containerInfo.Config.OpenStdin, containerInfo.Config.Tty);
 
             managedContainer ??= new ManagedContainer(server.Id, server.DockerContainerId, _docker, _logger, containerInfo.Config.Tty);
-            _managedContainers[server.Id] = managedContainer;
+            _containerStore.Set(server.Id, managedContainer);
             await managedContainer.AttachStdinAsync(ct).ConfigureAwait(false);
 
             if (managedContainer.HasStdinStream)
@@ -817,8 +820,8 @@ public class DockerServerExecutor : IServerExecutor
                 new ContainerRemoveParameters { Force = true, RemoveVolumes = false },
                 ct).ConfigureAwait(false);
 
-            _managedContainers.TryRemove(server.Id, out var managedContainer);
-            managedContainer?.Dispose();
+            _containerStore.TryRemove(server.Id, out var removedContainer);
+            removedContainer?.Dispose();
 
             server.DockerContainerId = null;
 
@@ -2018,9 +2021,9 @@ public class DockerServerExecutor : IServerExecutor
 
     private void StopLogStreaming(Guid serverId)
     {
-        if (_managedContainers.TryRemove(serverId, out var managedContainer))
+        if (_containerStore.TryRemove(serverId, out var managedContainer))
         {
-            managedContainer.Dispose();
+            managedContainer?.Dispose();
         }
     }
 

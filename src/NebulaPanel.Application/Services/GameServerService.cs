@@ -23,23 +23,25 @@ public class GameServerService(
     IGameServerRepository serverRepository,
     IGameRepository gameRepository,
     ISteamCmdService steamCmdService,
-    IServerExecutorFactory executorFactory,
+    INodeAwareExecutorFactory nodeExecutorFactory,
     IRconService? rconService,
     IImageService imageService,
     IServerActivityService? serverActivityService,
     IEncryptionService encryptionService,
     ILogger<GameServerService> logger,
-    IAuditService? auditService = null) : IGameServerService
+    IAuditService? auditService = null,
+    INodeRepository? nodeRepository = null) : IGameServerService
 {
     private readonly IGameServerRepository _serverRepository = serverRepository;
     private readonly IGameRepository _gameRepository = gameRepository;
     private readonly ISteamCmdService _steamCmdService = steamCmdService;
-    private readonly IServerExecutorFactory _executorFactory = executorFactory;
+    private readonly INodeAwareExecutorFactory _nodeExecutorFactory = nodeExecutorFactory;
     private readonly IRconService? _rconService = rconService;
     private readonly IImageService _imageService = imageService;
     private readonly IServerActivityService? _serverActivityService = serverActivityService;
     private readonly IEncryptionService _encryptionService = encryptionService;
     private readonly IAuditService? _auditService = auditService;
+    private readonly INodeRepository? _nodeRepository = nodeRepository;
     private readonly ILogger<GameServerService> _logger = logger;
 
     public async Task<IReadOnlyList<GameServerListItemDto>> GetAllServersAsync(CancellationToken cancellationToken = default)
@@ -107,6 +109,16 @@ public class GameServerService(
             }
         }
 
+        // Validate node exists if specified
+        if (request.NodeId.HasValue && _nodeRepository is not null)
+        {
+            var nodeExists = await _nodeRepository.ExistsAsync(request.NodeId.Value, cancellationToken).ConfigureAwait(false);
+            if (!nodeExists)
+            {
+                return Result.Failure<GameServerDto>(Error.NotFound("Node", request.NodeId.Value.ToString()));
+            }
+        }
+
         var serverId = Guid.NewGuid();
 
         // Handle icon URL - download if remote
@@ -150,7 +162,8 @@ public class GameServerService(
             DockerConfig = MapDockerConfig(request.DockerConfig),
             NativeConfig = MapNativeConfig(request.NativeConfig),
             RconConfig = MapRconConfig(request.RconConfig),
-            ResourceLimits = MapResourceLimits(request.ResourceLimits)
+            ResourceLimits = MapResourceLimits(request.ResourceLimits),
+            NodeId = request.NodeId
         };
 
         EncryptRconPassword(server);
@@ -201,7 +214,7 @@ public class GameServerService(
         {
             try
             {
-                var executor = _executorFactory.GetExecutor(server.DeploymentType);
+                var executor = _nodeExecutorFactory.GetExecutor(server);
                 await executor.CleanupAsync(server, cancellationToken).ConfigureAwait(false);
                 server.DockerContainerId = null; // Clear container ID so a new one is created on next start
                 _logger.LogInformation("Removed Docker container for server {ServerName} due to port change", server.Name);
@@ -243,6 +256,17 @@ public class GameServerService(
             }
         }
 
+        // Validate node exists if specified
+        if (request.NodeId.HasValue && _nodeRepository is not null)
+        {
+            var nodeExists = await _nodeRepository.ExistsAsync(request.NodeId.Value, cancellationToken).ConfigureAwait(false);
+            if (!nodeExists)
+            {
+                return Result.Failure<GameServerDto>(Error.NotFound("Node", request.NodeId.Value.ToString()));
+            }
+        }
+
+        server.NodeId = request.NodeId;
         server.Name = request.Name;
         server.Description = request.Description;
         server.InstallPath = request.InstallPath;
@@ -302,7 +326,7 @@ public class GameServerService(
         {
             try
             {
-                var executor = _executorFactory.GetExecutor(server.DeploymentType);
+                var executor = _nodeExecutorFactory.GetExecutor(server);
                 await executor.CleanupAsync(server, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Removed Docker container for server {ServerName}", serverName);
             }
@@ -364,7 +388,7 @@ public class GameServerService(
 
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
 
             server.Status = ServerStatus.Starting;
             try
@@ -465,7 +489,7 @@ public class GameServerService(
 
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
 
             server.Status = ServerStatus.Stopping;
             try
@@ -553,7 +577,7 @@ public class GameServerService(
 
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
 
             server.Status = ServerStatus.Stopping;
             try
@@ -643,7 +667,7 @@ public class GameServerService(
 
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
 
             var success = await executor.StopAsync(server, force: true, cancellationToken).ConfigureAwait(false);
 
@@ -689,7 +713,7 @@ public class GameServerService(
 
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
             var usage = await executor.GetResourceUsageAsync(server, cancellationToken).ConfigureAwait(false);
             return Result.Success(usage);
         }
@@ -743,7 +767,7 @@ public class GameServerService(
         // Try stdin (primary for Native, fallback for Docker)
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
             await executor.SendCommandAsync(server, command, cancellationToken).ConfigureAwait(false);
             _logger.LogDebug("Sent command via stdin to server {ServerName}: {Command}", server.Name, command);
             return Result.Success<string?>(null); // No response for stdin commands
@@ -835,7 +859,7 @@ public class GameServerService(
             yield break;
         }
 
-        var executor = _executorFactory.GetExecutor(server.DeploymentType);
+        var executor = _nodeExecutorFactory.GetExecutor(server);
 
         await foreach (var line in executor.StreamConsoleAsync(server, cancellationToken).ConfigureAwait(false))
         {
@@ -863,7 +887,7 @@ public class GameServerService(
 
         try
         {
-            var executor = _executorFactory.GetExecutor(server.DeploymentType);
+            var executor = _nodeExecutorFactory.GetExecutor(server);
 
             // Remove the existing container using the cleanup method
             if (!string.IsNullOrEmpty(server.DockerContainerId))
@@ -976,7 +1000,9 @@ public class GameServerService(
             server.InstalledVersion,
             server.HytaleInfo,
             server.IsPinned,
-            server.Tags
+            server.Tags,
+            server.NodeId,
+            server.Node?.Name
         );
     }
 
@@ -994,7 +1020,9 @@ public class GameServerService(
         server.LastStarted,
         server.HytaleInfo?.UpdateAvailable == true && server.HytaleInfo.DismissedVersion != server.HytaleInfo.AvailableVersion,
         server.IsPinned,
-        server.Tags
+        server.Tags,
+        server.NodeId,
+        server.Node?.Name
     );
 
     private static DockerConfiguration? MapDockerConfig(DockerConfigurationRequest? request)

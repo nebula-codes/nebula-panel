@@ -1,0 +1,373 @@
+syntax = "proto3";
+
+option csharp_namespace = "NebulaPanel.Agent.Shared.Protos";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+
+// ─────────────────────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────────────────────
+
+service AgentService {
+  rpc Heartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+  rpc StartServer (StartServerRequest) returns (ServerOperationResponse);
+  rpc StopServer (StopServerRequest) returns (ServerOperationResponse);
+  rpc RestartServer (RestartServerRequest) returns (ServerOperationResponse);
+  rpc GetServerStatus (GetServerStatusRequest) returns (GetServerStatusResponse);
+  rpc SendCommand (SendCommandRequest) returns (SendCommandResponse);
+  rpc CleanupServer (CleanupServerRequest) returns (ServerOperationResponse);
+  rpc StreamConsole (StreamConsoleRequest) returns (stream ConsoleOutputLine);
+  rpc InstallServer (InstallServerRequest) returns (stream InstallProgressUpdate);
+  rpc UpdateServer (UpdateServerRequest) returns (stream UpdateProgressUpdate);
+  rpc GetResourceUsage (GetResourceUsageRequest) returns (ResourceUsageResponse);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Enums (mirror Domain enums)
+// ─────────────────────────────────────────────────────────────
+
+enum ServerDeploymentType {
+  SERVER_DEPLOYMENT_TYPE_DOCKER = 0;
+  SERVER_DEPLOYMENT_TYPE_NATIVE = 1;
+}
+
+enum ServerStatus {
+  SERVER_STATUS_UNKNOWN = 0;
+  SERVER_STATUS_STOPPED = 1;
+  SERVER_STATUS_STARTING = 2;
+  SERVER_STATUS_RUNNING = 3;
+  SERVER_STATUS_STOPPING = 4;
+  SERVER_STATUS_CRASHED = 5;
+  SERVER_STATUS_UPDATING = 6;
+  SERVER_STATUS_INSTALLING = 7;
+  SERVER_STATUS_RESTARTING = 8;
+}
+
+enum ExecutableType {
+  EXECUTABLE_TYPE_EXE = 0;
+  EXECUTABLE_TYPE_JAR = 1;
+  EXECUTABLE_TYPE_SHELL = 2;
+  EXECUTABLE_TYPE_STEAMCMD = 3;
+}
+
+enum DockerCommandMode {
+  DOCKER_COMMAND_MODE_STDIN = 0;
+  DOCKER_COMMAND_MODE_TMUX_INJECT = 1;
+}
+
+enum RestartPolicy {
+  RESTART_POLICY_NONE = 0;
+  RESTART_POLICY_ALWAYS = 1;
+  RESTART_POLICY_ON_FAILURE = 2;
+  RESTART_POLICY_UNLESS_STOPPED = 3;
+}
+
+enum RconProtocolType {
+  RCON_PROTOCOL_TYPE_SOURCE = 0;
+  RCON_PROTOCOL_TYPE_MINECRAFT = 1;
+  RCON_PROTOCOL_TYPE_WEBRCON = 2;
+  RCON_PROTOCOL_TYPE_BATTLEYE = 3;
+  RCON_PROTOCOL_TYPE_TELNET = 4;
+}
+
+enum ModpackProviderType {
+  MODPACK_PROVIDER_TYPE_CURSEFORGE = 0;
+  MODPACK_PROVIDER_TYPE_MODRINTH = 1;
+  MODPACK_PROVIDER_TYPE_FTB = 2;
+  MODPACK_PROVIDER_TYPE_ATLAUNCHER = 3;
+  MODPACK_PROVIDER_TYPE_TECHNIC = 4;
+}
+
+enum ModLoaderType {
+  MOD_LOADER_TYPE_NONE = 0;
+  MOD_LOADER_TYPE_FORGE = 1;
+  MOD_LOADER_TYPE_NEOFORGE = 2;
+  MOD_LOADER_TYPE_FABRIC = 3;
+  MOD_LOADER_TYPE_QUILT = 4;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Core Messages
+// ─────────────────────────────────────────────────────────────
+
+message ServerConfig {
+  string server_id = 1;
+  string name = 2;
+  ServerDeploymentType deployment_type = 3;
+  string install_path = 4;
+  int32 primary_port = 5;
+  string bind_address = 6;
+  ServerStatus status = 7;
+  google.protobuf.Int32Value process_id = 8;
+  string owner_id = 9;
+
+  // Docker-specific
+  google.protobuf.StringValue docker_container_id = 10;
+  DockerConfig docker_config = 11;
+
+  // Native-specific
+  NativeConfig native_config = 12;
+
+  // Common configs
+  RconConfig rcon_config = 13;
+  ResourceLimitsConfig resource_limits = 14;
+  InstalledModpackConfig installed_modpack = 15;
+  HytaleInfoConfig hytale_info = 16;
+
+  // Game metadata (minimal — only what executors need)
+  GameInfo game = 17;
+
+  // Version info
+  google.protobuf.StringValue installed_version = 18;
+
+  // Additional ports
+  map<string, int32> additional_ports = 19;
+}
+
+message GameInfo {
+  string name = 1;
+  ExecutableType executable_type = 2;
+  string default_executable_path = 3;
+  string default_start_command = 4;
+  google.protobuf.StringValue default_stop_command = 5;
+  bool supports_docker = 6;
+  google.protobuf.StringValue default_docker_image = 7;
+  google.protobuf.StringValue docker_data_path = 8;
+  google.protobuf.Int32Value default_port = 9;
+  google.protobuf.StringValue steam_app_id = 10;
+}
+
+message DockerConfig {
+  string image = 1;
+  string tag = 2;
+  map<string, string> environment_variables = 3;
+  repeated VolumeMount volumes = 4;
+  repeated PortMapping ports = 5;
+  google.protobuf.StringValue network = 6;
+  ResourceLimitsConfig limits = 7;
+  RestartPolicy restart_policy = 8;
+  google.protobuf.StringValue working_directory = 9;
+  google.protobuf.StringValue command = 10;
+  google.protobuf.StringValue entrypoint = 11;
+  bool tty = 12;
+  bool run_as_root = 13;
+  DockerCommandMode command_mode = 14;
+}
+
+message VolumeMount {
+  string host_path = 1;
+  string container_path = 2;
+  bool read_only = 3;
+  bool is_named_volume = 4;
+}
+
+message PortMapping {
+  int32 host_port = 1;
+  int32 container_port = 2;
+  string protocol = 3;
+}
+
+message NativeConfig {
+  string working_directory = 1;
+  string executable_path = 2;
+  string arguments = 3;
+  map<string, string> environment_variables = 4;
+  google.protobuf.StringValue java_path = 5;
+  google.protobuf.StringValue java_arguments = 6;
+  bool run_as_service = 7;
+  google.protobuf.StringValue run_as_user = 8;
+  bool use_startup_script = 9;
+  google.protobuf.StringValue startup_script_path = 10;
+}
+
+message RconConfig {
+  bool enabled = 1;
+  RconProtocolType protocol = 2;
+  string host = 3;
+  int32 port = 4;
+  google.protobuf.StringValue password = 5;
+  bool use_web_socket = 6;
+  google.protobuf.StringValue web_rcon_path = 7;
+  int32 timeout_seconds = 8;
+}
+
+message ResourceLimitsConfig {
+  google.protobuf.Int32Value max_memory_mb = 1;
+  google.protobuf.Int32Value max_cpu_percent = 2;
+  google.protobuf.Int32Value max_disk_mb = 3;
+  google.protobuf.Int32Value max_network_mbps = 4;
+}
+
+message InstalledModpackConfig {
+  ModpackProviderType provider = 1;
+  string modpack_id = 2;
+  string modpack_name = 3;
+  string version_id = 4;
+  google.protobuf.StringValue version_name = 5;
+  google.protobuf.StringValue minecraft_version = 6;
+  ModLoaderType loader_type = 7;
+  google.protobuf.StringValue loader_version = 8;
+  google.protobuf.Int32Value mod_count = 9;
+  google.protobuf.Timestamp installed_at = 10;
+}
+
+message HytaleInfoConfig {
+  string installed_version = 1;
+  string patchline = 2;
+  google.protobuf.Timestamp installed_at = 3;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Heartbeat
+// ─────────────────────────────────────────────────────────────
+
+message HeartbeatRequest {
+  string node_id = 1;
+}
+
+message HeartbeatResponse {
+  repeated RunningServerInfo running_servers = 1;
+  int64 uptime_seconds = 2;
+}
+
+message RunningServerInfo {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+  ServerStatus status = 3;
+  google.protobuf.Int32Value process_id = 4;
+  google.protobuf.StringValue docker_container_id = 5;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Server Operations
+// ─────────────────────────────────────────────────────────────
+
+message StartServerRequest {
+  ServerConfig config = 1;
+
+  // Hytale session tokens (resolved by Manager, injected by Agent)
+  google.protobuf.StringValue hytale_session_token = 2;
+  google.protobuf.StringValue hytale_identity_token = 3;
+}
+
+message StopServerRequest {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+  google.protobuf.StringValue docker_container_id = 3;
+  google.protobuf.Int32Value process_id = 4;
+  bool force = 5;
+}
+
+message RestartServerRequest {
+  ServerConfig config = 1;
+}
+
+message GetServerStatusRequest {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+  google.protobuf.StringValue docker_container_id = 3;
+  google.protobuf.Int32Value process_id = 4;
+}
+
+message GetServerStatusResponse {
+  ServerStatus status = 1;
+}
+
+message SendCommandRequest {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+  string command = 3;
+}
+
+message SendCommandResponse {
+  bool success = 1;
+  google.protobuf.StringValue error = 2;
+}
+
+message CleanupServerRequest {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+  google.protobuf.StringValue docker_container_id = 3;
+}
+
+message ServerOperationResponse {
+  bool success = 1;
+  google.protobuf.StringValue error = 2;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Console Streaming
+// ─────────────────────────────────────────────────────────────
+
+message StreamConsoleRequest {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+}
+
+message ConsoleOutputLine {
+  string line = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Install / Update
+// ─────────────────────────────────────────────────────────────
+
+message InstallServerRequest {
+  ServerConfig config = 1;
+}
+
+message InstallProgressUpdate {
+  double percent_complete = 1;
+  string current_step = 2;
+  google.protobuf.StringValue current_file = 3;
+  int64 bytes_downloaded = 4;
+  int64 total_bytes = 5;
+  bool is_indeterminate = 6;
+  bool completed = 7;
+  bool success = 8;
+  google.protobuf.StringValue error = 9;
+}
+
+message UpdateServerRequest {
+  ServerConfig config = 1;
+}
+
+message UpdateProgressUpdate {
+  double percent_complete = 1;
+  string current_step = 2;
+  google.protobuf.StringValue current_file = 3;
+  int64 bytes_downloaded = 4;
+  int64 total_bytes = 5;
+  bool is_indeterminate = 6;
+  google.protobuf.StringValue from_version = 7;
+  google.protobuf.StringValue to_version = 8;
+  bool completed = 9;
+  bool success = 10;
+  google.protobuf.StringValue error = 11;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Resource Usage
+// ─────────────────────────────────────────────────────────────
+
+message GetResourceUsageRequest {
+  string server_id = 1;
+  ServerDeploymentType deployment_type = 2;
+}
+
+message ResourceUsageResponse {
+  double cpu_percent = 1;
+  int64 memory_bytes = 2;
+  int64 virtual_memory_bytes = 3;
+  int64 disk_read_bytes = 4;
+  int64 disk_write_bytes = 5;
+  int64 network_sent_bytes = 6;
+  int64 network_received_bytes = 7;
+  int32 thread_count = 8;
+  int32 handle_count = 9;
+  google.protobuf.Duration uptime = 10;
+  google.protobuf.Timestamp timestamp = 11;
+}
