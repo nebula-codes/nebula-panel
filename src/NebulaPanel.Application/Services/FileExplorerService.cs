@@ -30,7 +30,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure<FileSystemEntryDto>($"Server not found: {serverId}");
+                return Result.Failure<FileSystemEntryDto>(Error.NotFound("Server", serverId.ToString()));
             }
 
             var entry = await _fileManager.GetDirectoryContentsAsync(server, path, ct).ConfigureAwait(false);
@@ -38,17 +38,17 @@ public class FileExplorerService(
         }
         catch (DirectoryNotFoundException ex)
         {
-            return Result.Failure<FileSystemEntryDto>(ex.Message);
+            return Result.Failure<FileSystemEntryDto>(Error.NotFound("Directory", ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<FileSystemEntryDto>("Access denied.");
+            return Result.Failure<FileSystemEntryDto>(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting directory contents for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<FileSystemEntryDto>($"Error reading directory: {ex.Message}");
+            return Result.Failure<FileSystemEntryDto>(Error.FromException(ex));
         }
     }
 
@@ -62,13 +62,13 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure<ReadFileResponse>($"Server not found: {serverId}");
+                return Result.Failure<ReadFileResponse>(Error.NotFound("Server", serverId.ToString()));
             }
 
             var info = await _fileManager.GetInfoAsync(server, path, ct).ConfigureAwait(false);
             if (info.Type != FileEntryType.File)
             {
-                return Result.Failure<ReadFileResponse>("Path is not a file.");
+                return Result.Failure<ReadFileResponse>(Error.Validation("Path is not a file."));
             }
 
             var content = await _fileManager.ReadFileAsync(server, path, ct).ConfigureAwait(false);
@@ -85,21 +85,21 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure<ReadFileResponse>(ex.Message);
+            return Result.Failure<ReadFileResponse>(Error.NotFound("File", ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure<ReadFileResponse>(ex.Message);
+            return Result.Failure<ReadFileResponse>(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<ReadFileResponse>("Access denied.");
+            return Result.Failure<ReadFileResponse>(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error reading file for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<ReadFileResponse>($"Error reading file: {ex.Message}");
+            return Result.Failure<ReadFileResponse>(Error.FromException(ex));
         }
     }
 
@@ -113,7 +113,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             // Check if file exists when CreateIfNotExists is false
@@ -122,7 +122,7 @@ public class FileExplorerService(
                 var exists = await _fileManager.ExistsAsync(server, request.Path, ct).ConfigureAwait(false);
                 if (!exists)
                 {
-                    return Result.Failure($"File not found: {request.Path}");
+                    return Result.Failure(Error.NotFound("File", request.Path));
                 }
             }
 
@@ -132,12 +132,12 @@ public class FileExplorerService(
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, request.Path);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error writing file for server {ServerId}, path {Path}", serverId, request.Path);
-            return Result.Failure($"Error writing file: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -151,13 +151,13 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure<FileDownloadInfo>($"Server not found: {serverId}");
+                return Result.Failure<FileDownloadInfo>(Error.NotFound("Server", serverId.ToString()));
             }
 
             var info = await _fileManager.GetInfoAsync(server, path, ct).ConfigureAwait(false);
             if (info.Type != FileEntryType.File)
             {
-                return Result.Failure<FileDownloadInfo>("Path is not a file. Use archive for directories.");
+                return Result.Failure<FileDownloadInfo>(Error.Validation("Path is not a file. Use archive for directories."));
             }
 
             var stream = await _fileManager.DownloadFileAsync(server, path, ct).ConfigureAwait(false);
@@ -172,17 +172,17 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure<FileDownloadInfo>(ex.Message);
+            return Result.Failure<FileDownloadInfo>(Error.NotFound("File", ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<FileDownloadInfo>("Access denied.");
+            return Result.Failure<FileDownloadInfo>(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error downloading file for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<FileDownloadInfo>($"Error downloading file: {ex.Message}");
+            return Result.Failure<FileDownloadInfo>(Error.FromException(ex));
         }
     }
 
@@ -199,7 +199,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure<UploadResult>($"Server not found: {serverId}");
+                return Result.Failure<UploadResult>(Error.NotFound("Server", serverId.ToString()));
             }
 
             // Sanitize file name
@@ -283,7 +283,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             await _fileManager.DeleteAsync(server, path, ct).ConfigureAwait(false);
@@ -291,21 +291,21 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.NotFound("File", ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error deleting for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure($"Error deleting: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -319,7 +319,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             // Sanitize new name
@@ -330,25 +330,25 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.NotFound("File", ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (ArgumentException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.Validation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, request.Path);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error renaming for server {ServerId}, path {Path}", serverId, request.Path);
-            return Result.Failure($"Error renaming: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -362,7 +362,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             await _fileManager.CreateDirectoryAsync(server, request.Path, ct).ConfigureAwait(false);
@@ -370,17 +370,17 @@ public class FileExplorerService(
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, request.Path);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating directory for server {ServerId}, path {Path}", serverId, request.Path);
-            return Result.Failure($"Error creating directory: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -394,7 +394,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure<FileDownloadInfo>($"Server not found: {serverId}");
+                return Result.Failure<FileDownloadInfo>(Error.NotFound("Server", serverId.ToString()));
             }
 
             var info = await _fileManager.GetInfoAsync(server, path, ct).ConfigureAwait(false);
@@ -413,17 +413,17 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure<FileDownloadInfo>(ex.Message);
+            return Result.Failure<FileDownloadInfo>(Error.NotFound("File", ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<FileDownloadInfo>("Access denied.");
+            return Result.Failure<FileDownloadInfo>(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating archive for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure<FileDownloadInfo>($"Error creating archive: {ex.Message}");
+            return Result.Failure<FileDownloadInfo>(Error.FromException(ex));
         }
     }
 
@@ -438,7 +438,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             await _fileManager.ExtractArchiveAsync(server, path, archive, ct).ConfigureAwait(false);
@@ -446,17 +446,17 @@ public class FileExplorerService(
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error extracting archive for server {ServerId}, path {Path}", serverId, path);
-            return Result.Failure($"Error extracting archive: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -471,7 +471,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             await _fileManager.CopyAsync(server, sourcePath, destinationPath, ct).ConfigureAwait(false);
@@ -479,21 +479,21 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.NotFound("File", ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, copy {Source} -> {Destination}", serverId, sourcePath, destinationPath);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error copying for server {ServerId}, {Source} -> {Destination}", serverId, sourcePath, destinationPath);
-            return Result.Failure($"Error copying: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -508,7 +508,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             await _fileManager.MoveAsync(server, sourcePath, destinationPath, ct).ConfigureAwait(false);
@@ -516,21 +516,21 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.NotFound("File", ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, move {Source} -> {Destination}", serverId, sourcePath, destinationPath);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error moving for server {ServerId}, {Source} -> {Destination}", serverId, sourcePath, destinationPath);
-            return Result.Failure($"Error moving: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -545,7 +545,7 @@ public class FileExplorerService(
             var server = await _serverRepository.GetByIdAsync(serverId, ct).ConfigureAwait(false);
             if (server is null)
             {
-                return Result.Failure($"Server not found: {serverId}");
+                return Result.Failure(Error.NotFound("Server", serverId.ToString()));
             }
 
             await _fileManager.ExtractArchiveInPlaceAsync(server, archivePath, targetPath, ct).ConfigureAwait(false);
@@ -553,21 +553,21 @@ public class FileExplorerService(
         }
         catch (FileNotFoundException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.NotFound("File", ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return Result.Failure(ex.Message);
+            return Result.Failure(Error.InvalidOperation(ex.Message));
         }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied for server {ServerId}, extract {ArchivePath}", serverId, archivePath);
-            return Result.Failure("Access denied.");
+            return Result.Failure(Error.Forbidden("Access denied."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error extracting archive for server {ServerId}, {ArchivePath}", serverId, archivePath);
-            return Result.Failure($"Error extracting archive: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
