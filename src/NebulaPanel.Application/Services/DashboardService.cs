@@ -148,7 +148,7 @@ public class DashboardService(
 
         if (errors.Count > 0)
         {
-            return Result.Failure($"Some servers failed to start: {string.Join("; ", errors)}");
+            return Result.Failure(Error.InvalidOperation($"Some servers failed to start: {string.Join("; ", errors)}"));
         }
 
         return Result.Success();
@@ -179,7 +179,7 @@ public class DashboardService(
 
         if (errors.Count > 0)
         {
-            return Result.Failure($"Some servers failed to stop: {string.Join("; ", errors)}");
+            return Result.Failure(Error.InvalidOperation($"Some servers failed to stop: {string.Join("; ", errors)}"));
         }
 
         return Result.Success();

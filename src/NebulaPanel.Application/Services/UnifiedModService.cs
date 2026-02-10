@@ -633,12 +633,12 @@ public class UnifiedModService : IUnifiedModService
 
         if (installedMod is null)
         {
-            return Result.Failure("Installed mod not found");
+            return Result.Failure(Error.NotFound("Installed mod"));
         }
 
         if (installedMod.ServerId != server.Id)
         {
-            return Result.Failure("Mod does not belong to this server");
+            return Result.Failure(Error.InvalidOperation("Mod does not belong to this server"));
         }
 
         try
@@ -665,7 +665,7 @@ public class UnifiedModService : IUnifiedModService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to uninstall mod {ModId} from server {ServerId}", installedModId, server.Id);
-            return Result.Failure($"Uninstall failed: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -690,12 +690,12 @@ public class UnifiedModService : IUnifiedModService
 
         if (installedMod is null)
         {
-            return Result.Failure<ServerModDto>("Installed mod not found");
+            return Result.Failure<ServerModDto>(Error.NotFound("Installed mod"));
         }
 
         if (installedMod.ServerId != server.Id)
         {
-            return Result.Failure<ServerModDto>("Mod does not belong to this server");
+            return Result.Failure<ServerModDto>(Error.InvalidOperation("Mod does not belong to this server"));
         }
 
         // Determine new state: explicit value or toggle current state
@@ -753,7 +753,7 @@ public class UnifiedModService : IUnifiedModService
                     // Ensure target doesn't exist
                     if (File.Exists(newPath))
                     {
-                        return Result.Failure<ServerModDto>($"Target file already exists: {newLocalPath}");
+                        return Result.Failure<ServerModDto>(Error.Conflict($"Target file already exists: {newLocalPath}"));
                     }
 
                     File.Move(currentPath, newPath);
@@ -780,7 +780,7 @@ public class UnifiedModService : IUnifiedModService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to toggle mod {ModId} on server {ServerId}", installedModId, server.Id);
-            return Result.Failure<ServerModDto>($"Failed to toggle mod: {ex.Message}");
+            return Result.Failure<ServerModDto>(Error.FromException(ex));
         }
     }
 

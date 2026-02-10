@@ -60,7 +60,7 @@ public class OfficialGameService(
         var provider = _registry.GetProvider(gameSlug);
         if (provider is null)
         {
-            return Result.Failure<OfficialGameDetailDto>($"Official game not found: {gameSlug}");
+            return Result.Failure<OfficialGameDetailDto>(Error.NotFound("Official game", gameSlug));
         }
 
         var metadata = _registry.GetProviderMetadata(gameSlug);
@@ -168,12 +168,12 @@ public class OfficialGameService(
         var game = await _gameRepository.GetBySlugAsync(gameSlug, cancellationToken).ConfigureAwait(false);
         if (game is null)
         {
-            return Result.Failure($"Game not found: {gameSlug}");
+            return Result.Failure(Error.NotFound("Game", gameSlug));
         }
 
         if (game.SourceType != Domain.Enums.GameSourceType.Official)
         {
-            return Result.Failure("Cannot change enabled status of non-official games via this endpoint");
+            return Result.Failure(Error.InvalidOperation("Cannot change enabled status of non-official games via this endpoint"));
         }
 
         game.IsEnabled = enabled;
@@ -190,7 +190,7 @@ public class OfficialGameService(
         var provider = _registry.GetProvider(gameSlug);
         if (provider is null)
         {
-            return Result.Failure<RefreshVersionsResultDto>($"Official game not found: {gameSlug}");
+            return Result.Failure<RefreshVersionsResultDto>(Error.NotFound("Official game", gameSlug));
         }
 
         try
@@ -219,7 +219,7 @@ public class OfficialGameService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to refresh versions for {GameSlug}", gameSlug);
-            return Result.Failure<RefreshVersionsResultDto>($"Failed to refresh versions: {ex.Message}");
+            return Result.Failure<RefreshVersionsResultDto>(Error.ExternalService("VersionProvider", $"Failed to refresh versions: {ex.Message}"));
         }
     }
 
@@ -231,7 +231,7 @@ public class OfficialGameService(
         var provider = _registry.GetProvider(gameSlug);
         if (provider is null)
         {
-            return Result.Failure<IReadOnlyList<GameVersionDto>>($"Official game not found: {gameSlug}");
+            return Result.Failure<IReadOnlyList<GameVersionDto>>(Error.NotFound("Official game", gameSlug));
         }
 
         try
@@ -259,7 +259,7 @@ public class OfficialGameService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get versions for {GameSlug}", gameSlug);
-            return Result.Failure<IReadOnlyList<GameVersionDto>>($"Failed to get versions: {ex.Message}");
+            return Result.Failure<IReadOnlyList<GameVersionDto>>(Error.ExternalService("VersionProvider", $"Failed to get versions: {ex.Message}"));
         }
     }
 
@@ -270,13 +270,13 @@ public class OfficialGameService(
         var provider = _registry.GetProvider(gameSlug);
         if (provider is null)
         {
-            return Result.Failure($"Official game not found: {gameSlug}");
+            return Result.Failure(Error.NotFound("Official game", gameSlug));
         }
 
         var game = await _gameRepository.GetBySlugAsync(gameSlug, cancellationToken).ConfigureAwait(false);
         if (game is null)
         {
-            return Result.Failure($"Game not found in database: {gameSlug}");
+            return Result.Failure(Error.NotFound("Game", gameSlug));
         }
 
         var definition = provider.GetGameDefinition();

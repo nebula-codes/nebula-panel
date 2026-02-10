@@ -79,9 +79,14 @@ public class DatabaseLeaderElection : ILeaderElection
             // Another node holds a valid lock
             return false;
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Optimistic concurrency conflict — another node won the race
+            return false;
+        }
         catch (DbUpdateException)
         {
-            // Concurrent insert/update — another node won the race
+            // Concurrent insert — another node won the race
             return false;
         }
     }

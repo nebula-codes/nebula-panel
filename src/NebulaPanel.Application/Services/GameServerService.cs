@@ -376,12 +376,12 @@ public class GameServerService(
 
         if (server.Status == ServerStatus.Running || server.Status == ServerStatus.Starting)
         {
-            return Result.Failure($"Server is already {server.Status.ToString().ToLowerInvariant()}.");
+            return Result.Failure(Error.ServerRunning("start"));
         }
 
         if (server.Status == ServerStatus.Installing || server.Status == ServerStatus.Updating)
         {
-            return Result.Failure($"Cannot start server while it is {server.Status.ToString().ToLowerInvariant()}.");
+            return Result.Failure(Error.InvalidOperation($"Cannot start server while it is {server.Status.ToString().ToLowerInvariant()}."));
         }
 
         _logger.LogInformation("Starting server {ServerName} ({ServerId})", server.Name, server.Id);
@@ -398,7 +398,7 @@ public class GameServerService(
             catch (DbUpdateConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when starting server {ServerId}", serverId);
-                return Result.Failure("Server state was modified by another request. Please try again.");
+                return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
             }
 
             var success = await executor.StartAsync(server, cancellationToken).ConfigureAwait(false);
@@ -448,7 +448,7 @@ public class GameServerService(
                     _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after failed start", serverId);
                 }
                 _logger.LogError("Failed to start server {ServerName}", server.Name);
-                return Result.Failure($"Failed to start server '{server.Name}'.");
+                return Result.Failure(Error.ExternalService("ServerExecutor", $"Failed to start server '{server.Name}'."));
             }
         }
         catch (Exception ex)
@@ -463,7 +463,7 @@ public class GameServerService(
             {
                 _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after error", serverId);
             }
-            return Result.Failure($"Error starting server: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -499,7 +499,7 @@ public class GameServerService(
             catch (DbUpdateConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when stopping server {ServerId}", serverId);
-                return Result.Failure("Server state was modified by another request. Please try again.");
+                return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
             }
 
             var success = await executor.StopAsync(server, force: false, cancellationToken).ConfigureAwait(false);
@@ -556,7 +556,7 @@ public class GameServerService(
             {
                 _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after error", serverId);
             }
-            return Result.Failure($"Error stopping server: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -570,7 +570,7 @@ public class GameServerService(
 
         if (server.Status == ServerStatus.Installing || server.Status == ServerStatus.Updating)
         {
-            return Result.Failure($"Cannot restart server while it is {server.Status.ToString().ToLowerInvariant()}.");
+            return Result.Failure(Error.InvalidOperation($"Cannot restart server while it is {server.Status.ToString().ToLowerInvariant()}."));
         }
 
         _logger.LogInformation("Restarting server {ServerName} ({ServerId})", server.Name, server.Id);
@@ -587,7 +587,7 @@ public class GameServerService(
             catch (DbUpdateConcurrencyException)
             {
                 _logger.LogWarning("Concurrent modification detected when restarting server {ServerId}", serverId);
-                return Result.Failure("Server state was modified by another request. Please try again.");
+                return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
             }
 
             var success = await executor.RestartAsync(server, cancellationToken).ConfigureAwait(false);
@@ -631,7 +631,7 @@ public class GameServerService(
                     _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after failed restart", serverId);
                 }
                 _logger.LogError("Failed to restart server {ServerName}", server.Name);
-                return Result.Failure($"Failed to restart server '{server.Name}'.");
+                return Result.Failure(Error.ExternalService("ServerExecutor", $"Failed to restart server '{server.Name}'."));
             }
         }
         catch (Exception ex)
@@ -646,7 +646,7 @@ public class GameServerService(
             {
                 _logger.LogWarning("Concurrent modification when resetting server {ServerId} status after error", serverId);
             }
-            return Result.Failure($"Error restarting server: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -694,7 +694,7 @@ public class GameServerService(
             _logger.LogError(ex, "Error force killing server {ServerName}", server.Name);
             server.Status = ServerStatus.Unknown;
             await _serverRepository.UpdateAsync(server, CancellationToken.None).ConfigureAwait(false);
-            return Result.Failure($"Error killing server: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -720,7 +720,7 @@ public class GameServerService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting resource usage for server {ServerName}", server.Name);
-            return Result.Failure<ResourceUsage>($"Error getting resource usage: {ex.Message}");
+            return Result.Failure<ResourceUsage>(Error.FromException(ex));
         }
     }
 
@@ -808,7 +808,7 @@ public class GameServerService(
             }
         }
 
-        return Result.Failure<string?>("Unable to send command: process not managed and RCON not available. Try restarting the server through the panel.");
+        return Result.Failure<string?>(Error.Rcon("Unable to send command: process not managed and RCON not available. Try restarting the server through the panel."));
     }
 
     private async Task<Result<string?>> TrySendViaRconAsync(GameServer server, string command, CancellationToken cancellationToken)
@@ -841,13 +841,13 @@ public class GameServerService(
             else
             {
                 _logger.LogWarning("RCON command returned null for server {ServerName} - connection may have failed", server.Name);
-                return Result.Failure<string?>("RCON connection failed");
+                return Result.Failure<string?>(Error.Rcon("RCON connection failed"));
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error sending command via RCON to server {ServerName}", server.Name);
-            return Result.Failure<string?>($"Error sending command via RCON: {ex.Message}");
+            return Result.Failure<string?>(Error.Rcon($"Error sending command via RCON: {ex.Message}"));
         }
     }
 
@@ -909,7 +909,7 @@ public class GameServerService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to recreate container for server {ServerId}", serverId);
-            return Result.Failure($"Failed to recreate container: {ex.Message}");
+            return Result.Failure(Error.Docker($"Failed to recreate container: {ex.Message}"));
         }
     }
 
@@ -929,7 +929,7 @@ public class GameServerService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to update tags for server {ServerId}", serverId);
-            return Result.Failure<List<string>>($"Failed to update tags: {ex.Message}");
+            return Result.Failure<List<string>>(Error.FromException(ex));
         }
     }
 
@@ -949,7 +949,7 @@ public class GameServerService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to toggle pin for server {ServerId}", serverId);
-            return Result.Failure<bool>($"Failed to toggle pin: {ex.Message}");
+            return Result.Failure<bool>(Error.FromException(ex));
         }
     }
 
@@ -1141,12 +1141,12 @@ public class GameServerService(
 
         if (string.IsNullOrEmpty(server.Game.SteamAppId))
         {
-            return Result.Failure($"Game '{server.Game.Name}' does not have a Steam App ID configured. Manual installation required.");
+            return Result.Failure(Error.Validation($"Game '{server.Game.Name}' does not have a Steam App ID configured. Manual installation required."));
         }
 
         if (server.Status != ServerStatus.Stopped && server.Status != ServerStatus.Unknown)
         {
-            return Result.Failure($"Cannot install server: server is currently {server.Status}. Please stop the server first.");
+            return Result.Failure(Error.InvalidOperation($"Cannot install server: server is currently {server.Status}. Please stop the server first."));
         }
 
         _logger.LogInformation("Starting installation of server {ServerName} (App ID: {AppId})", server.Name, server.Game.SteamAppId);
@@ -1182,7 +1182,7 @@ public class GameServerService(
             if (!success)
             {
                 _logger.LogError("Failed to install server {ServerName}", server.Name);
-                return Result.Failure($"Installation of server '{server.Name}' failed. Check logs for details.");
+                return Result.Failure(Error.InstallationFailed($"Installation of server '{server.Name}' failed.", "Check logs for details."));
             }
 
             _logger.LogInformation("Successfully installed server {ServerName}", server.Name);
@@ -1199,7 +1199,7 @@ public class GameServerService(
             _logger.LogError(ex, "Error installing server {ServerName}", server.Name);
             server.Status = ServerStatus.Stopped;
             await _serverRepository.UpdateAsync(server, CancellationToken.None).ConfigureAwait(false);
-            return Result.Failure($"Installation error: {ex.Message}");
+            return Result.Failure(Error.InstallationFailed($"Installation error: {ex.Message}"));
         }
     }
 
@@ -1218,12 +1218,12 @@ public class GameServerService(
 
         if (string.IsNullOrEmpty(server.Game.SteamAppId))
         {
-            return Result.Failure($"Game '{server.Game.Name}' does not have a Steam App ID configured. Manual update required.");
+            return Result.Failure(Error.Validation($"Game '{server.Game.Name}' does not have a Steam App ID configured. Manual update required."));
         }
 
         if (server.Status != ServerStatus.Stopped && server.Status != ServerStatus.Unknown)
         {
-            return Result.Failure($"Cannot update server: server is currently {server.Status}. Please stop the server first.");
+            return Result.Failure(Error.InvalidOperation($"Cannot update server: server is currently {server.Status}. Please stop the server first."));
         }
 
         var previousVersion = server.InstalledVersion;
@@ -1260,7 +1260,7 @@ public class GameServerService(
             if (!success)
             {
                 _logger.LogError("Failed to update server {ServerName}", server.Name);
-                return Result.Failure($"Update of server '{server.Name}' failed. Check logs for details.");
+                return Result.Failure(Error.InstallationFailed($"Update of server '{server.Name}' failed.", "Check logs for details."));
             }
 
             _logger.LogInformation("Successfully updated server {ServerName} from {OldVersion} to {NewVersion}",
@@ -1278,7 +1278,7 @@ public class GameServerService(
             _logger.LogError(ex, "Error updating server {ServerName}", server.Name);
             server.Status = ServerStatus.Stopped;
             await _serverRepository.UpdateAsync(server, CancellationToken.None).ConfigureAwait(false);
-            return Result.Failure($"Update error: {ex.Message}");
+            return Result.Failure(Error.InstallationFailed($"Update error: {ex.Message}"));
         }
     }
 

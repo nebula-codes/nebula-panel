@@ -255,7 +255,7 @@ public class GameServerServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("already running");
+        result.Error.Should().Contain("server is running");
     }
 
     [Fact]

@@ -23,5 +23,10 @@ public class ClusterLockConfiguration : IEntityTypeConfiguration<ClusterLock>
 
         builder.Property(l => l.ExpiresAt)
             .IsRequired();
+
+        builder.Property(l => l.RowVersion)
+            .IsRowVersion()
+            .IsConcurrencyToken()
+            .HasDefaultValueSql("randomblob(8)");
     }
 }

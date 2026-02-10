@@ -10,4 +10,5 @@ namespace NebulaPanel.Domain.Interfaces;
 public interface INodeAwareExecutorFactory
 {
     IServerExecutor GetExecutor(GameServer server);
+    Task PopulateCacheAsync(CancellationToken cancellationToken = default);
 }

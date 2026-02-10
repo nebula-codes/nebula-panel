@@ -62,7 +62,7 @@ public class SettingsService(
     {
         if (string.IsNullOrWhiteSpace(request.ApplicationName))
         {
-            return Result.Failure<GeneralSettingsDto>("Application name is required.");
+            return Result.Failure<GeneralSettingsDto>(Error.Validation("Application name is required."));
         }
 
         var settings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);
@@ -117,12 +117,12 @@ public class SettingsService(
     {
         if (request.CheckIntervalHours < 1 || request.CheckIntervalHours > 168)
         {
-            return Result.Failure<UpdateSettingsDto>("Check interval must be between 1 and 168 hours.");
+            return Result.Failure<UpdateSettingsDto>(Error.Validation("Check interval must be between 1 and 168 hours."));
         }
 
         if (!Enum.TryParse<UpdateChannel>(request.Channel, true, out var channel))
         {
-            return Result.Failure<UpdateSettingsDto>($"Invalid update channel: {request.Channel}");
+            return Result.Failure<UpdateSettingsDto>(Error.InvalidInput($"Invalid update channel: {request.Channel}"));
         }
 
         var settings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);
@@ -179,12 +179,12 @@ public class SettingsService(
     {
         if (!AvailableThemes.Any(t => t.Id == request.DefaultTheme))
         {
-            return Result.Failure<AppearanceSettingsDto>($"Invalid theme: {request.DefaultTheme}");
+            return Result.Failure<AppearanceSettingsDto>(Error.InvalidInput($"Invalid theme: {request.DefaultTheme}"));
         }
 
         if (!AvailableAccentColors.Any(c => c.Id == request.AccentColor))
         {
-            return Result.Failure<AppearanceSettingsDto>($"Invalid accent color: {request.AccentColor}");
+            return Result.Failure<AppearanceSettingsDto>(Error.InvalidInput($"Invalid accent color: {request.AccentColor}"));
         }
 
         var settings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);
@@ -336,12 +336,12 @@ public class SettingsService(
         catch (NotSupportedException ex)
         {
             logger.LogWarning(ex, "Database backup not supported");
-            return Result.Failure<Stream>(ex.Message);
+            return Result.Failure<Stream>(Error.InvalidOperation(ex.Message));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create database backup");
-            return Result.Failure<Stream>("Failed to create database backup.");
+            return Result.Failure<Stream>(Error.ExternalService("Database", "Failed to create database backup."));
         }
     }
 
@@ -372,7 +372,7 @@ public class SettingsService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to export settings");
-            return Result.Failure<SettingsExportDto>("Failed to export settings.");
+            return Result.Failure<SettingsExportDto>(Error.ExternalService("Settings", "Failed to export settings."));
         }
     }
 
@@ -385,7 +385,7 @@ public class SettingsService(
             var export = JsonSerializer.Deserialize<SettingsExportDto>(jsonContent, JsonOptions);
             if (export is null)
             {
-                return Result.Failure<SettingsImportPreviewDto>("Invalid settings file format.");
+                return Result.Failure<SettingsImportPreviewDto>(Error.Validation("Invalid settings file format."));
             }
 
             var warnings = new List<string>();
@@ -403,7 +403,7 @@ public class SettingsService(
         }
         catch (JsonException)
         {
-            return Result.Failure<SettingsImportPreviewDto>("Invalid JSON format in settings file.");
+            return Result.Failure<SettingsImportPreviewDto>(Error.Validation("Invalid JSON format in settings file."));
         }
     }
 
@@ -417,7 +417,7 @@ public class SettingsService(
             var export = JsonSerializer.Deserialize<SettingsExportDto>(request.JsonContent, JsonOptions);
             if (export is null)
             {
-                return Result.Failure("Invalid settings file format.");
+                return Result.Failure(Error.Validation("Invalid settings file format."));
             }
 
             var settings = await settingsRepository.GetAsync(cancellationToken).ConfigureAwait(false);
@@ -476,12 +476,12 @@ public class SettingsService(
         }
         catch (JsonException)
         {
-            return Result.Failure("Invalid JSON format in settings file.");
+            return Result.Failure(Error.Validation("Invalid JSON format in settings file."));
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to import settings");
-            return Result.Failure("Failed to import settings.");
+            return Result.Failure(Error.ExternalService("Settings", "Failed to import settings."));
         }
     }
 

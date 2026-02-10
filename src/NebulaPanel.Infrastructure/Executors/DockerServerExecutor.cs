@@ -21,7 +21,7 @@ namespace NebulaPanel.Infrastructure.Executors;
 /// Executes game servers as Docker containers using Docker.DotNet.
 /// Handles container lifecycle, port mappings, volumes, resource limits, and log streaming.
 /// </summary>
-public class DockerServerExecutor : IServerExecutor
+public class DockerServerExecutor : IServerExecutor, IDisposable
 {
     private readonly DockerClient _docker;
     private readonly ILogger<DockerServerExecutor> _logger;
@@ -2184,6 +2184,11 @@ public class DockerServerExecutor : IServerExecutor
             ct).ConfigureAwait(false);
 
         _logger.LogInformation("Sent command via tmux inject for container {ContainerId}", containerId);
+    }
+
+    public void Dispose()
+    {
+        _docker.Dispose();
     }
 }
 

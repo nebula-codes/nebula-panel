@@ -1043,8 +1043,9 @@
         {
             _nodes = await Http.GetFromJsonAsync<List<NodeListItemDto>>("api/nodes") ?? [];
         }
-        catch
+        catch (Exception ex)
         {
+            Console.WriteLine($"Failed to load nodes: {ex.Message}");
             _nodes = [];
         }
     }

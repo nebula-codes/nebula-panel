@@ -327,7 +327,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                     installationId,
                     MinecraftInstallProgressDto.Failed(installationId, error),
                     cts.Token).ConfigureAwait(false);
-                return Result.Failure<Guid>(error);
+                return Result.Failure<Guid>(Error.NotFound("Minecraft game"));
             }
 
             // Check if server name already exists for this owner
@@ -338,7 +338,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                     installationId,
                     MinecraftInstallProgressDto.Failed(installationId, error),
                     cts.Token).ConfigureAwait(false);
-                return Result.Failure<Guid>(error);
+                return Result.Failure<Guid>(Error.AlreadyExists("Server", data.ServerName));
             }
 
             // Check if port is in use in database
@@ -349,7 +349,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                     installationId,
                     MinecraftInstallProgressDto.Failed(installationId, error),
                     cts.Token).ConfigureAwait(false);
-                return Result.Failure<Guid>(error);
+                return Result.Failure<Guid>(Error.PortInUse(data.Port));
             }
 
             // Build the version string for the installer
@@ -405,7 +405,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                         MinecraftInstallProgressDto.Failed(installationId, modpackResult.Error ?? "Modpack installation failed."),
                         CancellationToken.None).ConfigureAwait(false);
 
-                    return Result.Failure<Guid>(modpackResult.Error ?? "Modpack installation failed.");
+                    return Result.Failure<Guid>(Error.InstallationFailed(modpackResult.Error ?? "Modpack installation failed."));
                 }
 
                 // Update server with installed version
@@ -427,7 +427,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                         installationId,
                         MinecraftInstallProgressDto.Failed(installationId, error),
                         cts.Token).ConfigureAwait(false);
-                    return Result.Failure<Guid>(error);
+                    return Result.Failure<Guid>(Error.NotFound("Minecraft provider"));
                 }
 
                 // Create progress adapter
@@ -461,7 +461,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                         MinecraftInstallProgressDto.Failed(installationId, result.Error ?? "Installation failed."),
                         CancellationToken.None).ConfigureAwait(false);
 
-                    return Result.Failure<Guid>(result.Error ?? "Installation failed.");
+                    return Result.Failure<Guid>(Error.InstallationFailed(result.Error ?? "Installation failed."));
                 }
 
                 // Update server with installed version
@@ -488,7 +488,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                 installationId,
                 MinecraftInstallProgressDto.Failed(installationId, "Installation was cancelled."),
                 CancellationToken.None).ConfigureAwait(false);
-            return Result.Failure<Guid>("Installation was cancelled.");
+            return Result.Failure<Guid>(Error.InvalidOperation("Installation was cancelled."));
         }
         catch (Exception ex)
         {
@@ -497,7 +497,7 @@ public class MinecraftInstallService : IMinecraftInstallService
                 installationId,
                 MinecraftInstallProgressDto.Failed(installationId, ex.Message),
                 CancellationToken.None).ConfigureAwait(false);
-            return Result.Failure<Guid>($"Installation failed: {ex.Message}");
+            return Result.Failure<Guid>(Error.InstallationFailed($"Installation failed: {ex.Message}"));
         }
         finally
         {
@@ -517,7 +517,7 @@ public class MinecraftInstallService : IMinecraftInstallService
             return Task.FromResult(Result.Success());
         }
 
-        return Task.FromResult(Result.Failure("Installation not found or already completed."));
+        return Task.FromResult(Result.Failure(Error.NotFound("Installation")));
     }
 
     public string GetDefaultInstallPath(string serverName)

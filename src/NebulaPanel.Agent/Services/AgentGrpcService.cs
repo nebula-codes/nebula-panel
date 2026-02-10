@@ -1,7 +1,5 @@
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
-using Microsoft.Extensions.Options;
-using NebulaPanel.Agent.Configuration;
 using NebulaPanel.Agent.Shared.Mappers;
 using NebulaPanel.Agent.Shared.Protos;
 using NebulaPanel.Domain.Interfaces;
@@ -18,7 +16,6 @@ public class AgentGrpcService(
     IServerExecutorFactory executorFactory,
     NativeProcessStateStore nativeStore,
     DockerContainerStateStore dockerStore,
-    IOptions<AgentOptions> agentOptions,
     ILogger<AgentGrpcService> logger) : AgentService.AgentServiceBase
 {
     private readonly DateTime _startedAt = DateTime.UtcNow;
@@ -27,8 +24,6 @@ public class AgentGrpcService(
 
     public override Task<HeartbeatResponse> Heartbeat(HeartbeatRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         var response = new HeartbeatResponse
         {
             UptimeSeconds = (long)(DateTime.UtcNow - _startedAt).TotalSeconds,
@@ -63,8 +58,6 @@ public class AgentGrpcService(
 
     public override async Task<ServerOperationResponse> StartServer(StartServerRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         try
         {
             var server = ServerConfigMapper.ToGameServer(request.Config);
@@ -88,8 +81,6 @@ public class AgentGrpcService(
 
     public override async Task<ServerOperationResponse> StopServer(StopServerRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         try
         {
             var server = BuildMinimalServer(request.ServerId,
@@ -113,8 +104,6 @@ public class AgentGrpcService(
 
     public override async Task<ServerOperationResponse> RestartServer(RestartServerRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         try
         {
             var server = ServerConfigMapper.ToGameServer(request.Config);
@@ -134,8 +123,6 @@ public class AgentGrpcService(
 
     public override async Task<GetServerStatusResponse> GetServerStatus(GetServerStatusRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         var server = BuildMinimalServer(request.ServerId,
             ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType),
             request.DockerContainerId,
@@ -154,8 +141,6 @@ public class AgentGrpcService(
 
     public override async Task<SendCommandResponse> SendCommand(SendCommandRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         try
         {
             var deploymentType = ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType);
@@ -177,8 +162,6 @@ public class AgentGrpcService(
 
     public override async Task<ServerOperationResponse> CleanupServer(CleanupServerRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         try
         {
             var server = BuildMinimalServer(request.ServerId,
@@ -204,8 +187,6 @@ public class AgentGrpcService(
         IServerStreamWriter<ConsoleOutputLine> responseStream,
         ServerCallContext context)
     {
-        ValidateToken(context);
-
         var deploymentType = ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType);
         var server = BuildMinimalServer(request.ServerId, deploymentType);
 
@@ -228,8 +209,6 @@ public class AgentGrpcService(
         IServerStreamWriter<InstallProgressUpdate> responseStream,
         ServerCallContext context)
     {
-        ValidateToken(context);
-
         var server = ServerConfigMapper.ToGameServer(request.Config);
         var executor = executorFactory.GetExecutor(server.DeploymentType);
 
@@ -272,8 +251,6 @@ public class AgentGrpcService(
         IServerStreamWriter<UpdateProgressUpdate> responseStream,
         ServerCallContext context)
     {
-        ValidateToken(context);
-
         var server = ServerConfigMapper.ToGameServer(request.Config);
         var executor = executorFactory.GetExecutor(server.DeploymentType);
 
@@ -314,8 +291,6 @@ public class AgentGrpcService(
 
     public override async Task<ResourceUsageResponse> GetResourceUsage(GetResourceUsageRequest request, ServerCallContext context)
     {
-        ValidateToken(context);
-
         var deploymentType = ServerConfigMapper.ToDomainDeploymentType(request.DeploymentType);
         var server = BuildMinimalServer(request.ServerId, deploymentType);
 
@@ -326,30 +301,6 @@ public class AgentGrpcService(
     }
 
     // ─── Helpers ──────────────────────────────────────────────
-
-    private void ValidateToken(ServerCallContext context)
-    {
-        var expectedToken = agentOptions.Value.Token;
-        if (string.IsNullOrEmpty(expectedToken))
-        {
-            logger.LogWarning("Agent token is not configured — rejecting request");
-            throw new RpcException(new Status(StatusCode.Unauthenticated, "Agent token not configured"));
-        }
-
-        var authHeader = context.RequestHeaders.GetValue("authorization");
-        if (string.IsNullOrEmpty(authHeader) ||
-            !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new RpcException(new Status(StatusCode.Unauthenticated, "Missing or invalid authorization"));
-        }
-
-        var token = authHeader["Bearer ".Length..];
-        if (!string.Equals(token, expectedToken, StringComparison.Ordinal))
-        {
-            logger.LogWarning("Invalid agent token from {Peer}", context.Peer);
-            throw new RpcException(new Status(StatusCode.Unauthenticated, "Invalid token"));
-        }
-    }
 
     /// <summary>
     /// Builds a minimal GameServer with just the fields needed for identity-based operations

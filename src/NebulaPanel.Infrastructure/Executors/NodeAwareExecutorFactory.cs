@@ -56,6 +56,24 @@ public class NodeAwareExecutorFactory(
         _nodeCache.TryRemove(nodeId, out _);
     }
 
+    /// <summary>
+    /// Loads all nodes into cache. Called at startup by NodeHeartbeatService
+    /// before the heartbeat loop begins, so GetNode() never needs a sync DB fallback.
+    /// </summary>
+    public async Task PopulateCacheAsync(CancellationToken cancellationToken = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<INodeRepository>();
+        var nodes = await repo.GetAllAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (var node in nodes)
+        {
+            _nodeCache.AddOrUpdate(node.Id, node, (_, _) => node);
+        }
+
+        _logger.LogInformation("Populated node cache with {Count} node(s)", nodes.Count);
+    }
+
     private Node GetNode(Guid nodeId)
     {
         if (_nodeCache.TryGetValue(nodeId, out var cached))
@@ -63,17 +81,7 @@ public class NodeAwareExecutorFactory(
             return cached;
         }
 
-        // Cache miss — load from DB (scoped since this factory is singleton)
-        using var scope = _scopeFactory.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<INodeRepository>();
-        var node = repo.GetByIdAsync(nodeId).GetAwaiter().GetResult();
-
-        if (node is null)
-        {
-            throw new InvalidOperationException($"Node {nodeId} not found.");
-        }
-
-        _nodeCache.TryAdd(nodeId, node);
-        return node;
+        throw new InvalidOperationException(
+            $"Node {nodeId} not found in cache. Ensure PopulateCacheAsync has been called.");
     }
 }

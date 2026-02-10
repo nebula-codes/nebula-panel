@@ -39,6 +39,7 @@ try
     {
         options.MaxReceiveMessageSize = 16 * 1024 * 1024; // 16 MB
         options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+        options.Interceptors.Add<TokenAuthInterceptor>();
     });
 
     // Configure Kestrel

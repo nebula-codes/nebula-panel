@@ -127,7 +127,7 @@ public class WebhookService(
         var json = JsonSerializer.Serialize(new { @event = "test", data = new { message = "Webhook test from Nebula Panel" }, timestamp = DateTime.UtcNow }, JsonOptions);
 
         var delivery = await DeliverAndRecordAsync(endpoint, WebhookEventType.ServerStarted, json, cancellationToken).ConfigureAwait(false);
-        return delivery.Success ? Result.Success() : Result.Failure($"Webhook delivery failed with HTTP {delivery.HttpStatusCode}");
+        return delivery.Success ? Result.Success() : Result.Failure(Error.ExternalService("Webhook", $"Webhook delivery failed with HTTP {delivery.HttpStatusCode}"));
     }
 
     private async Task<WebhookDelivery> DeliverAndRecordAsync(WebhookEndpoint endpoint, WebhookEventType eventType, string payload, CancellationToken cancellationToken)

@@ -30,7 +30,7 @@ public class NodeService(
 
     public async Task<IReadOnlyList<NodeListItemDto>> GetAllNodesAsync(CancellationToken cancellationToken = default)
     {
-        var nodes = await _nodeRepository.GetAllAsync(cancellationToken).ConfigureAwait(false);
+        var nodes = await _nodeRepository.GetAllWithServersAsync(cancellationToken).ConfigureAwait(false);
         return nodes.Select(MapToListItemDto).ToList();
     }
 

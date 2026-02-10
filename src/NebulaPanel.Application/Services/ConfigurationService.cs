@@ -72,14 +72,14 @@ public class ConfigurationService(
     {
         var server = await serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server == null)
-            return Result.Failure<ConfigValuesDto>("Server not found");
+            return Result.Failure<ConfigValuesDto>(Error.NotFound("Server", serverId.ToString()));
 
         if (!server.Game.ConfigurationSchemas.TryGetValue(fileName, out var schema))
-            return Result.Failure<ConfigValuesDto>($"No configuration schema found for file: {fileName}");
+            return Result.Failure<ConfigValuesDto>(Error.NotFound("ConfigurationSchema", fileName));
 
         var parser = parserFactory.GetParserOrDefault(schema.FileType);
         if (parser == null)
-            return Result.Failure<ConfigValuesDto>($"No parser available for file type: {schema.FileType}");
+            return Result.Failure<ConfigValuesDto>(Error.InvalidOperation($"No parser available for file type: {schema.FileType}"));
 
         Dictionary<string, object?> values;
 
@@ -93,7 +93,7 @@ public class ConfigurationService(
             }
             catch (Exception ex)
             {
-                return Result.Failure<ConfigValuesDto>($"Failed to read configuration file: {ex.Message}");
+                return Result.Failure<ConfigValuesDto>(Error.ExternalService("ConfigParser", $"Failed to read configuration file: {ex.Message}"));
             }
         }
         else
@@ -126,10 +126,10 @@ public class ConfigurationService(
     {
         var server = await serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server == null)
-            return Result.Failure("Server not found");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
 
         if (!server.Game.ConfigurationSchemas.TryGetValue(request.FileName, out var schema))
-            return Result.Failure($"No configuration schema found for file: {request.FileName}");
+            return Result.Failure(Error.NotFound("ConfigurationSchema", request.FileName));
 
         // Validate the values
         var validation = ValidateConfig(schema, request.Values);
@@ -137,12 +137,12 @@ public class ConfigurationService(
         {
             var errors = string.Join("; ", validation.FieldErrors
                 .SelectMany(kvp => kvp.Value.Select(e => $"{kvp.Key}: {e}")));
-            return Result.Failure($"Validation failed: {errors}");
+            return Result.Failure(Error.Validation($"Validation failed: {errors}"));
         }
 
         var parser = parserFactory.GetParserOrDefault(schema.FileType);
         if (parser == null)
-            return Result.Failure($"No parser available for file type: {schema.FileType}");
+            return Result.Failure(Error.InvalidOperation($"No parser available for file type: {schema.FileType}"));
 
         try
         {
@@ -163,7 +163,7 @@ public class ConfigurationService(
         }
         catch (Exception ex)
         {
-            return Result.Failure($"Failed to write configuration file: {ex.Message}");
+            return Result.Failure(Error.ExternalService("FileManager", $"Failed to write configuration file: {ex.Message}"));
         }
     }
 
@@ -197,10 +197,10 @@ public class ConfigurationService(
     {
         var server = await serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server == null)
-            return Result.Failure<string>("Server not found");
+            return Result.Failure<string>(Error.NotFound("Server", serverId.ToString()));
 
         if (!server.Game.ConfigurationSchemas.ContainsKey(fileName))
-            return Result.Failure<string>($"No configuration schema found for file: {fileName}");
+            return Result.Failure<string>(Error.NotFound("ConfigurationSchema", fileName));
 
         try
         {
@@ -212,7 +212,7 @@ public class ConfigurationService(
         }
         catch (Exception ex)
         {
-            return Result.Failure<string>($"Failed to read file: {ex.Message}");
+            return Result.Failure<string>(Error.ExternalService("FileManager", $"Failed to read file: {ex.Message}"));
         }
     }
 
@@ -224,10 +224,10 @@ public class ConfigurationService(
     {
         var server = await serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server == null)
-            return Result.Failure("Server not found");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
 
         if (!server.Game.ConfigurationSchemas.ContainsKey(fileName))
-            return Result.Failure($"No configuration schema found for file: {fileName}");
+            return Result.Failure(Error.NotFound("ConfigurationSchema", fileName));
 
         try
         {
@@ -236,7 +236,7 @@ public class ConfigurationService(
         }
         catch (Exception ex)
         {
-            return Result.Failure($"Failed to write file: {ex.Message}");
+            return Result.Failure(Error.ExternalService("FileManager", $"Failed to write file: {ex.Message}"));
         }
     }
 
@@ -247,10 +247,10 @@ public class ConfigurationService(
     {
         var server = await serverRepository.GetByIdWithGameAsync(serverId, cancellationToken).ConfigureAwait(false);
         if (server == null)
-            return Result.Failure("Server not found");
+            return Result.Failure(Error.NotFound("Server", serverId.ToString()));
 
         if (!server.Game.ConfigurationSchemas.TryGetValue(fileName, out var schema))
-            return Result.Failure($"No configuration schema found for file: {fileName}");
+            return Result.Failure(Error.NotFound("ConfigurationSchema", fileName));
 
         // Build default values from schema
         var defaultValues = new Dictionary<string, object?>();
@@ -273,14 +273,14 @@ public class ConfigurationService(
             }
             catch (Exception ex)
             {
-                return Result.Failure($"Failed to write template: {ex.Message}");
+                return Result.Failure(Error.ExternalService("FileManager", $"Failed to write template: {ex.Message}"));
             }
         }
 
         // Generate from defaults
         var parser = parserFactory.GetParserOrDefault(schema.FileType);
         if (parser == null)
-            return Result.Failure($"No parser available for file type: {schema.FileType}");
+            return Result.Failure(Error.InvalidOperation($"No parser available for file type: {schema.FileType}"));
 
         try
         {
@@ -290,7 +290,7 @@ public class ConfigurationService(
         }
         catch (Exception ex)
         {
-            return Result.Failure($"Failed to reset configuration: {ex.Message}");
+            return Result.Failure(Error.ExternalService("FileManager", $"Failed to reset configuration: {ex.Message}"));
         }
     }
 

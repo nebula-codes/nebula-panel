@@ -142,23 +142,26 @@ public static class ServerConfigMapper
         try
         {
             var game = server.Game;
-            config.Game = new GameInfo
+            if (game is not null)
             {
-                Name = game.Name,
-                ExecutableType = ToProtoExecutableType(game.ExecutableType),
-                DefaultExecutablePath = game.DefaultExecutablePath,
-                DefaultStartCommand = game.DefaultStartCommand,
-                DefaultStopCommand = game.DefaultStopCommand,
-                SupportsDocker = game.SupportsDocker,
-                DefaultDockerImage = game.DefaultDockerImage,
-                DockerDataPath = game.DockerDataPath,
-                DefaultPort = game.DefaultPort,
-                SteamAppId = game.SteamAppId,
-            };
+                config.Game = new GameInfo
+                {
+                    Name = game.Name,
+                    ExecutableType = ToProtoExecutableType(game.ExecutableType),
+                    DefaultExecutablePath = game.DefaultExecutablePath,
+                    DefaultStartCommand = game.DefaultStartCommand,
+                    DefaultStopCommand = game.DefaultStopCommand,
+                    SupportsDocker = game.SupportsDocker,
+                    DefaultDockerImage = game.DefaultDockerImage,
+                    DockerDataPath = game.DockerDataPath,
+                    DefaultPort = game.DefaultPort,
+                    SteamAppId = game.SteamAppId,
+                };
+            }
         }
         catch (InvalidOperationException)
         {
-            // Game navigation property not loaded — skip
+            // Game navigation property not loaded (EF lazy-load proxy) — skip
         }
 
         return config;

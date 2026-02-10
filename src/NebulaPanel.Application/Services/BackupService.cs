@@ -152,7 +152,7 @@ public class BackupService(
                 scheduledTaskId,
                 cancellationToken).ConfigureAwait(false),
 
-            _ => Result.Failure<BackupDto>($"Unknown backup scope: {request.Scope}")
+            _ => Result.Failure<BackupDto>(Error.Validation($"Unknown backup scope: {request.Scope}"))
         };
     }
 
@@ -253,7 +253,7 @@ public class BackupService(
             backup.Notes = $"{notes ?? ""}\nError: {ex.Message}".Trim();
             await _backupRepository.UpdateAsync(backup, cancellationToken).ConfigureAwait(false);
 
-            return Result.Failure<BackupDto>($"Failed to create backup: {ex.Message}");
+            return Result.Failure<BackupDto>(Error.FromException(ex));
         }
     }
 
@@ -297,7 +297,7 @@ public class BackupService(
             var stopResult = await _serverService.StopServerAsync(server.Id, cancellationToken).ConfigureAwait(false);
             if (stopResult.IsFailure)
             {
-                return Result.Failure($"Failed to stop server before restore: {stopResult.Error}");
+                return Result.Failure(Error.InvalidOperation($"Failed to stop server before restore: {stopResult.Error}"));
             }
 
             // Wait for server to fully stop
@@ -344,7 +344,7 @@ public class BackupService(
         {
             _logger.LogError(ex, "Failed to restore backup '{BackupName}' to server {ServerName}",
                 backup.Name, server.Name);
-            return Result.Failure($"Failed to restore backup: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -376,7 +376,7 @@ public class BackupService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete backup '{BackupName}'", backup.Name);
-            return Result.Failure($"Failed to delete backup: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 
@@ -479,7 +479,7 @@ public class BackupService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to apply retention policy for server {ServerId}", serverId);
-            return Result.Failure<int>($"Failed to apply retention policy: {ex.Message}");
+            return Result.Failure<int>(Error.FromException(ex));
         }
     }
 
@@ -567,7 +567,7 @@ public class BackupService(
         catch (Exception ex)
         {
             _logger.LogError(ex, "Scheduled backup failed for server {ServerId}", serverId);
-            return Result.Failure($"Scheduled backup failed: {ex.Message}");
+            return Result.Failure(Error.FromException(ex));
         }
     }
 

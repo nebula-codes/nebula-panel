@@ -10,4 +10,5 @@ public class ClusterLock
     public string HolderNodeId { get; set; } = string.Empty;
     public DateTime AcquiredAt { get; set; }
     public DateTime ExpiresAt { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 }

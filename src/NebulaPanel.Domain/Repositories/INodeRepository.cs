@@ -6,6 +6,7 @@ namespace NebulaPanel.Domain.Repositories;
 public interface INodeRepository
 {
     Task<IReadOnlyList<Node>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Node>> GetAllWithServersAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Node>> GetByStatusAsync(NodeStatus status, CancellationToken cancellationToken = default);
     Task<Node?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Node?> GetByIdWithServersAsync(Guid id, CancellationToken cancellationToken = default);

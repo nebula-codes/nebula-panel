@@ -73,7 +73,7 @@ public class ConfigurationServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Server not found");
+        result.Error.Should().Contain("not found");
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class ConfigurationServiceTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("No configuration schema found");
+        result.Error.Should().Contain("not found");
     }
 
     [Fact]

@@ -13,6 +13,14 @@ public class NodeRepository(NebulaPanelDbContext context) : INodeRepository
     public async Task<IReadOnlyList<Node>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Nodes
+            .OrderBy(n => n.Name)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<Node>> GetAllWithServersAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Nodes
             .Include(n => n.Servers)
             .OrderBy(n => n.Name)
             .ToListAsync(cancellationToken)

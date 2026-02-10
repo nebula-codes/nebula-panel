@@ -45,6 +45,16 @@ public class NodeHeartbeatService : BackgroundService
     {
         _logger.LogInformation("NodeHeartbeatService started");
 
+        // Pre-populate the node cache so GetExecutor() never needs a sync DB fallback
+        try
+        {
+            await _executorFactory.PopulateCacheAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to pre-populate node cache on startup");
+        }
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try

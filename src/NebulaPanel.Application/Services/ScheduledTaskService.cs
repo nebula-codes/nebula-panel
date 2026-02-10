@@ -45,7 +45,7 @@ public class ScheduledTaskService(
         var task = await _taskRepository.GetByIdWithServerAsync(id, cancellationToken).ConfigureAwait(false);
         if (task is null)
         {
-            return Result.Failure<ScheduledTaskDto>($"Scheduled task with ID '{id}' not found.");
+            return Result.Failure<ScheduledTaskDto>(Error.NotFound("ScheduledTask", id.ToString()));
         }
         return MapToDto(task);
     }
@@ -56,13 +56,13 @@ public class ScheduledTaskService(
         var server = await _serverRepository.GetByIdAsync(request.ServerId, cancellationToken).ConfigureAwait(false);
         if (server is null)
         {
-            return Result.Failure<ScheduledTaskDto>($"Server with ID '{request.ServerId}' not found.");
+            return Result.Failure<ScheduledTaskDto>(Error.NotFound("Server", request.ServerId.ToString()));
         }
 
         // Validate unique name per server
         if (await _taskRepository.NameExistsForServerAsync(request.Name, request.ServerId, cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<ScheduledTaskDto>($"A task named '{request.Name}' already exists for this server.");
+            return Result.Failure<ScheduledTaskDto>(Error.AlreadyExists("ScheduledTask", request.Name));
         }
 
         // Validate cron expression if provided
@@ -107,13 +107,13 @@ public class ScheduledTaskService(
         var task = await _taskRepository.GetByIdWithServerAsync(id, cancellationToken).ConfigureAwait(false);
         if (task is null)
         {
-            return Result.Failure<ScheduledTaskDto>($"Scheduled task with ID '{id}' not found.");
+            return Result.Failure<ScheduledTaskDto>(Error.NotFound("ScheduledTask", id.ToString()));
         }
 
         // Validate unique name
         if (await _taskRepository.NameExistsForServerAsync(request.Name, task.ServerId, id, cancellationToken).ConfigureAwait(false))
         {
-            return Result.Failure<ScheduledTaskDto>($"A task named '{request.Name}' already exists for this server.");
+            return Result.Failure<ScheduledTaskDto>(Error.AlreadyExists("ScheduledTask", request.Name));
         }
 
         // Validate cron expression if provided
@@ -159,7 +159,7 @@ public class ScheduledTaskService(
         var task = await _taskRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (task is null)
         {
-            return Result.Failure($"Scheduled task with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("ScheduledTask", id.ToString()));
         }
 
         // Remove Hangfire job
@@ -176,7 +176,7 @@ public class ScheduledTaskService(
         var task = await _taskRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (task is null)
         {
-            return Result.Failure($"Scheduled task with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("ScheduledTask", id.ToString()));
         }
 
         task.IsEnabled = true;
@@ -200,7 +200,7 @@ public class ScheduledTaskService(
         var task = await _taskRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (task is null)
         {
-            return Result.Failure($"Scheduled task with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("ScheduledTask", id.ToString()));
         }
 
         task.IsEnabled = false;
@@ -219,7 +219,7 @@ public class ScheduledTaskService(
         var task = await _taskRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (task is null)
         {
-            return Result.Failure($"Scheduled task with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("ScheduledTask", id.ToString()));
         }
 
         _logger.LogInformation("Manually triggered scheduled task {TaskName} ({TaskId})", task.Name, task.Id);
@@ -256,7 +256,7 @@ public class ScheduledTaskService(
                 ScheduledTaskType.Command => await ExecuteCommandTaskAsync(task, cancellationToken).ConfigureAwait(false),
                 ScheduledTaskType.Update => await ExecuteUpdateTaskAsync(task, cancellationToken).ConfigureAwait(false),
                 ScheduledTaskType.Backup => await ExecuteBackupTaskAsync(task, cancellationToken).ConfigureAwait(false),
-                _ => Result.Failure($"Unknown task type: {task.TaskType}")
+                _ => Result.Failure(Error.InvalidOperation($"Unknown task type: {task.TaskType}"))
             };
 
             if (result.IsFailure)
@@ -305,7 +305,7 @@ public class ScheduledTaskService(
     {
         if (string.IsNullOrEmpty(task.Configuration))
         {
-            return Result.Failure("Command task has no configuration.");
+            return Result.Failure(Error.Validation("Command task has no configuration."));
         }
 
         CommandTaskConfig? config;
@@ -315,12 +315,12 @@ public class ScheduledTaskService(
         }
         catch (JsonException ex)
         {
-            return Result.Failure($"Invalid command configuration: {ex.Message}");
+            return Result.Failure(Error.Validation($"Invalid command configuration: {ex.Message}"));
         }
 
         if (config is null || string.IsNullOrEmpty(config.Command))
         {
-            return Result.Failure("Command task has no command configured.");
+            return Result.Failure(Error.Validation("Command task has no command configured."));
         }
 
         return await _serverService.SendCommandAsync(task.ServerId, config.Command, cancellationToken)

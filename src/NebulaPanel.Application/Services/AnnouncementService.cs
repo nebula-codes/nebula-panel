@@ -28,7 +28,7 @@ public class AnnouncementService(
         var announcement = await _announcementRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (announcement is null)
         {
-            return Result.Failure<AnnouncementDto>($"Announcement with ID '{id}' not found.");
+            return Result.Failure<AnnouncementDto>(Error.NotFound("Announcement", id.ToString()));
         }
 
         return MapToDto(announcement);
@@ -38,7 +38,7 @@ public class AnnouncementService(
     {
         if (!Enum.TryParse<AnnouncementType>(request.Type, ignoreCase: true, out var announcementType))
         {
-            return Result.Failure<AnnouncementDto>($"Invalid announcement type: {request.Type}");
+            return Result.Failure<AnnouncementDto>(Error.InvalidInput($"Invalid announcement type: {request.Type}"));
         }
 
         var announcement = new Announcement
@@ -67,12 +67,12 @@ public class AnnouncementService(
         var announcement = await _announcementRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (announcement is null)
         {
-            return Result.Failure<AnnouncementDto>($"Announcement with ID '{id}' not found.");
+            return Result.Failure<AnnouncementDto>(Error.NotFound("Announcement", id.ToString()));
         }
 
         if (!Enum.TryParse<AnnouncementType>(request.Type, ignoreCase: true, out var announcementType))
         {
-            return Result.Failure<AnnouncementDto>($"Invalid announcement type: {request.Type}");
+            return Result.Failure<AnnouncementDto>(Error.InvalidInput($"Invalid announcement type: {request.Type}"));
         }
 
         announcement.Title = request.Title;
@@ -93,7 +93,7 @@ public class AnnouncementService(
         var announcement = await _announcementRepository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         if (announcement is null)
         {
-            return Result.Failure($"Announcement with ID '{id}' not found.");
+            return Result.Failure(Error.NotFound("Announcement", id.ToString()));
         }
 
         await _announcementRepository.DeleteAsync(id, cancellationToken).ConfigureAwait(false);

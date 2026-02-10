@@ -5,6 +5,7 @@
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Nodes - Nebula Panel</PageTitle>
 
@@ -331,6 +332,8 @@
     private NodeListItemDto? _tokenNode;
     private string? _revealedToken;
 
+    private readonly CancellationTokenSource _cts = new();
+
     private bool IsFormValid => !string.IsNullOrWhiteSpace(_formModel.Name)
                                 && !string.IsNullOrWhiteSpace(_formModel.Address);
 
@@ -615,14 +618,24 @@
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", _revealedToken);
             _tokenCopied = true;
             StateHasChanged();
-            await Task.Delay(2000);
+            await Task.Delay(2000, _cts.Token);
             _tokenCopied = false;
             StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            // Component disposed during delay
         }
         catch
         {
             // Clipboard API may not be available
         }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 
     private static StatusBadge.StatusType GetStatusType(NodeStatus status) => status switch
