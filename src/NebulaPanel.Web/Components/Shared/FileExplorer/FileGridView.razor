@@ -11,7 +11,8 @@
              @onclick:stopPropagation
              @ondblclick="() => OnOpen.InvokeAsync(entry)"
              @oncontextmenu="e => OnContextMenu.InvokeAsync((entry, e))"
-             @oncontextmenu:preventDefault>
+             @oncontextmenu:preventDefault
+             @oncontextmenu:stopPropagation>
 
             <div class="file-grid-icon">
                 @if (entry.Type == "directory")

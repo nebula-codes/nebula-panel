@@ -35,7 +35,8 @@
              @onclick:stopPropagation
              @ondblclick="() => OnOpen.InvokeAsync(entry)"
              @oncontextmenu="e => OnContextMenu.InvokeAsync((entry, e))"
-             @oncontextmenu:preventDefault>
+             @oncontextmenu:preventDefault
+             @oncontextmenu:stopPropagation>
 
             <div class="file-list-col-name">
                 <div class="file-list-icon">
