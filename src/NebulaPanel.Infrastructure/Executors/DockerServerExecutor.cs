@@ -1559,53 +1559,62 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
     {
         var bindings = new Dictionary<string, IList<PortBinding>>();
 
-        // Add configured port mappings
+        // Add configured port mappings, syncing host ports with server.PrimaryPort.
+        // Games like Hytale bake the port into DockerConfig.Ports at install time.
+        // If the user later changes the primary port, those mappings become stale.
+        // Detect this by checking if a mapping's host port matches the container port
+        // (the install-time pattern) but differs from the current primary port.
         foreach (var port in ports)
         {
+            var hostPort = port.HostPort;
+
+            // If this mapping's host port equals its container port (install-time default)
+            // but the server's primary port has since changed, update it.
+            if (hostPort == port.ContainerPort && hostPort != server.PrimaryPort)
+            {
+                hostPort = server.PrimaryPort;
+                _logger.LogDebug("Synced port mapping host port from {OldPort} to {NewPort} for {ContainerPort}/{Protocol}",
+                    port.HostPort, hostPort, port.ContainerPort, port.Protocol);
+            }
+
             var containerPort = $"{port.ContainerPort}/{port.Protocol}";
             bindings[containerPort] = new List<PortBinding>
             {
                 new()
                 {
                     HostIP = server.BindAddress,
-                    HostPort = port.HostPort.ToString()
+                    HostPort = hostPort.ToString()
                 }
             };
         }
 
-        // For modpack servers, automatically add primary port and RCON port
-        // Container uses default internal ports (25565 game, 25575 RCON); host port is user-specified
-        if (includeServerPorts)
+        // For Minecraft/modpack servers that have no explicit port mappings,
+        // automatically add primary port and RCON port.
+        // Container uses default internal ports (25565 game, 25575 RCON); host port is user-specified.
+        // Games with their own port mappings (e.g. Hytale) already have entries above.
+        if (includeServerPorts && bindings.Count == 0)
         {
-            // Add primary game port: map user's host port to container's internal port 25565
             const int defaultGamePort = 25565;
             var primaryPortKey = $"{defaultGamePort}/tcp";
-            if (!bindings.ContainsKey(primaryPortKey))
+            bindings[primaryPortKey] = new List<PortBinding>
             {
-                bindings[primaryPortKey] = new List<PortBinding>
-                {
-                    new() { HostIP = server.BindAddress, HostPort = server.PrimaryPort.ToString() }
-                };
-                _logger.LogDebug("Auto-added primary port mapping: {HostPort} -> {ContainerPort}",
-                    server.PrimaryPort, defaultGamePort);
-            }
+                new() { HostIP = server.BindAddress, HostPort = server.PrimaryPort.ToString() }
+            };
+            _logger.LogDebug("Auto-added primary port mapping: {HostPort} -> {ContainerPort}",
+                server.PrimaryPort, defaultGamePort);
 
             // Add RCON port if configured: map user's host port to container's internal port 25575
             if (server.RconConfig is { Enabled: true })
             {
                 const int defaultRconPort = 25575;
                 var rconPortKey = $"{defaultRconPort}/tcp";
-                if (!bindings.ContainsKey(rconPortKey))
+                bindings[rconPortKey] = new List<PortBinding>
                 {
-                    bindings[rconPortKey] = new List<PortBinding>
-                    {
-                        new() { HostIP = server.BindAddress, HostPort = server.RconConfig.Port.ToString() }
-                    };
-                    _logger.LogDebug("Auto-added RCON port mapping: {HostPort} -> {ContainerPort}",
-                        server.RconConfig.Port, defaultRconPort);
-                }
+                    new() { HostIP = server.BindAddress, HostPort = server.RconConfig.Port.ToString() }
+                };
+                _logger.LogDebug("Auto-added RCON port mapping: {HostPort} -> {ContainerPort}",
+                    server.RconConfig.Port, defaultRconPort);
             }
-
         }
 
         return bindings;
