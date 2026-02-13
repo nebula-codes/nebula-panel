@@ -27,6 +27,7 @@ using NebulaPanel.Infrastructure.ModpackProviders.FTB;
 using NebulaPanel.Infrastructure.ModpackProviders.Modrinth;
 using NebulaPanel.Infrastructure.Steam;
 using NebulaPanel.Infrastructure.OfficialGames.Hytale;
+using NebulaPanel.Infrastructure.OfficialGames.ArkSurvivalAscended;
 using NebulaPanel.Infrastructure.OfficialGames.Terraria;
 using NebulaPanel.Infrastructure.Security;
 using NebulaPanel.Infrastructure.Health;
@@ -216,10 +217,15 @@ public static class DependencyInjection
         // Minecraft config writer
         services.AddSingleton<IMinecraftConfigWriter, MinecraftConfigWriter>();
 
+        // Ark: Survival Ascended integration
+        services.AddSingleton<ArkVersionFetcher>();
+        services.AddSingleton<ArkServerInstaller>();
+
         // Official game providers and registry
         services.AddSingleton<IOfficialGameProvider, MinecraftProvider>();
         services.AddSingleton<IOfficialGameProvider, HytaleGameProvider>();
         services.AddSingleton<IOfficialGameProvider, TerrariaProvider>();
+        services.AddSingleton<IOfficialGameProvider, ArkSurvivalAscendedProvider>();
         // services.AddSingleton<IOfficialGameProvider, ValheimProvider>();
         services.AddSingleton<IOfficialGameRegistry, OfficialGameRegistry>();
 

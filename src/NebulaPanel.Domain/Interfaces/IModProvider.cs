@@ -102,7 +102,8 @@ public record ModSearchQuery(
     int Page = 1,
     int PageSize = 20,
     List<string>? Categories = null,
-    ModContentType ContentType = ModContentType.Mod
+    ModContentType ContentType = ModContentType.Mod,
+    bool? EarlyAccessOnly = null
 );
 
 /// <summary>
@@ -142,7 +143,8 @@ public record ModSearchItem(
     DateTime? UpdatedAt,
     List<string> Categories,
     List<string> GameVersions,
-    ModProviderType Provider
+    ModProviderType Provider,
+    bool IsEarlyAccess = false
 );
 
 /// <summary>

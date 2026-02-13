@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="arkBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#0d0d1a"/>
+    </linearGradient>
+    <linearGradient id="arkGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#00d4ff"/>
+      <stop offset="100%" style="stop-color:#0066cc"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="100" height="100" rx="8" fill="url(#arkBg)"/>
+  <!-- Mountain silhouette -->
+  <polygon points="0,85 20,45 35,60 50,30 65,55 80,40 100,85" fill="#16213e" opacity="0.8"/>
+  <polygon points="0,85 15,55 30,70 50,38 70,60 85,48 100,85" fill="#1a1a3e" opacity="0.6"/>
+  <!-- ARK "A" letterform -->
+  <path d="M50,18 L30,78 L38,78 L42,66 L58,66 L62,78 L70,78 L50,18Z M45,58 L50,40 L55,58Z" fill="url(#arkGlow)"/>
+  <!-- Element glow effect -->
+  <circle cx="50" cy="48" r="3" fill="#00d4ff" opacity="0.6"/>
+  <!-- Ground line -->
+  <rect y="85" width="100" height="15" fill="#0a0a14"/>
+  <!-- Grass tufts -->
+  <path d="M10,85 L12,80 L14,85 M25,85 L27,81 L29,85 M60,85 L62,79 L64,85 M80,85 L82,82 L84,85" stroke="#1a5c2e" stroke-width="1.5" fill="none"/>
+  <!-- Stars -->
+  <circle cx="15" cy="15" r="1" fill="#ffffff" opacity="0.7"/>
+  <circle cx="85" cy="20" r="1" fill="#ffffff" opacity="0.5"/>
+  <circle cx="75" cy="12" r="0.8" fill="#ffffff" opacity="0.6"/>
+  <circle cx="25" cy="25" r="0.8" fill="#ffffff" opacity="0.4"/>
+</svg>

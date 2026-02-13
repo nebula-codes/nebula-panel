@@ -60,6 +60,7 @@ public class CurseForgeSettings
     {
         ["minecraft"] = 432,
         ["minecraft-java"] = 432,
+        ["ark-survival-ascended"] = 83374,
         ["wow"] = 1,
         ["sims4"] = 78062
     };
@@ -72,6 +73,12 @@ public class CurseForgeSettings
         ["ResourcePack"] = 12,
         ["Shader"] = 6552,
         ["World"] = 17
+    };
+
+    // Default ASA class IDs
+    private static readonly Dictionary<string, int> DefaultAsaClassIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Mod"] = 6945
     };
 
     /// <summary>
@@ -98,14 +105,19 @@ public class CurseForgeSettings
         {
             var isMinecraft = gameSlug.Equals("minecraft", StringComparison.OrdinalIgnoreCase)
                 || gameSlug.Equals("minecraft-java", StringComparison.OrdinalIgnoreCase);
+            var isAsa = gameSlug.Equals("ark-survival-ascended", StringComparison.OrdinalIgnoreCase);
+
+            var classIds = isMinecraft
+                ? new Dictionary<string, int>(DefaultMinecraftClassIds, StringComparer.OrdinalIgnoreCase)
+                : isAsa
+                    ? new Dictionary<string, int>(DefaultAsaClassIds, StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             return new CurseForgeGameConfig
             {
                 GameId = gameId,
                 Enabled = true,
-                ClassIds = isMinecraft
-                    ? new Dictionary<string, int>(DefaultMinecraftClassIds, StringComparer.OrdinalIgnoreCase)
-                    : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+                ClassIds = classIds
             };
         }
 

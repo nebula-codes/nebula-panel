@@ -80,7 +80,9 @@ public sealed class CurseForgeProvider : IModProvider
 
         var gameId = gameConfig.GameId;
 
-        var sortField = MapSortToField(query.Sort);
+        var sortField = query.EarlyAccessOnly == true
+            ? CurseForgeSortField.EarlyAccess
+            : MapSortToField(query.Sort);
         var sortOrder = query.Sort == ModSearchSort.Name ? "asc" : "desc";
         var index = (query.Page - 1) * query.PageSize;
         var limit = Math.Min(query.PageSize, 50); // CurseForge max is 50
@@ -138,8 +140,15 @@ public sealed class CurseForgeProvider : IModProvider
             UpdatedAt: mod.DateModified,
             Categories: mod.Categories.Select(c => c.Name).ToList(),
             GameVersions: GetGameVersions(mod),
-            Provider: ModProviderType.CurseForge
+            Provider: ModProviderType.CurseForge,
+            IsEarlyAccess: mod.LatestEarlyAccessFilesIndexes?.Length > 0
         )).ToList();
+
+        // If filtering to early access only, remove non-early-access mods
+        if (query.EarlyAccessOnly == true)
+        {
+            mods = mods.Where(m => m.IsEarlyAccess).ToList();
+        }
 
         var totalPages = (int)Math.Ceiling((double)response.Pagination.TotalCount / query.PageSize);
 

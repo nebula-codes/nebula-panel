@@ -542,6 +542,11 @@
                                     @onclick="@(() => _modsSubTab = "browse")">
                                 Browse
                             </button>
+                            <button type="button"
+                                    class="px-4 py-2 text-sm font-medium transition-colors @(_modsSubTab == "premium" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
+                                    @onclick="@(() => _modsSubTab = "premium")">
+                                Premium
+                            </button>
                             @if (_availableUpdates.Count > 0)
                             {
                                 <button type="button"
@@ -717,6 +722,33 @@
                                         </div>
                                     </div>
                                 }
+                                break;
+
+                            case "premium":
+                                @* Premium / Early Access mods from CurseForge *@
+                                <div class="space-y-4">
+                                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4 mb-4">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <Icon Name="star" Size="IconSize.Small" Class="text-nebula-warning" />
+                                            <span class="text-sm font-medium text-nebula-text-primary">Premium / Early Access Mods</span>
+                                        </div>
+                                        <p class="text-xs text-nebula-text-muted">
+                                            These are paid mods available through CurseForge's Early Access program. You may need to purchase them on CurseForge before they can be downloaded.
+                                        </p>
+                                    </div>
+                                    <div class="text-center py-12">
+                                        <Icon Name="search" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-4 opacity-50" />
+                                        <h3 class="text-base font-medium text-nebula-text-primary mb-2">Browse Premium Mods</h3>
+                                        <p class="text-sm text-nebula-text-muted">
+                                            Search for premium and early access mods from CurseForge.
+                                        </p>
+                                        <Button Variant="ButtonVariant.Primary"
+                                                Text="Open Full Browser"
+                                                IconName="external-link"
+                                                Class="mt-4"
+                                                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}/mods?premium=true"))" />
+                                    </div>
+                                </div>
                                 break;
                         }
                     </div>
