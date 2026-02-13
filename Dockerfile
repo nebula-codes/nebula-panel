@@ -17,6 +17,16 @@ RUN dotnet restore src/NebulaPanel.Updater/NebulaPanel.Updater.csproj
 # Copy source code
 COPY src/ src/
 
+# Download Monaco Editor for local serving (no CDN dependency at runtime)
+RUN mkdir -p src/NebulaPanel.Web/wwwroot/lib/monaco-editor \
+    && curl -sL -o src/NebulaPanel.Web/wwwroot/lib/require.min.js \
+      https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js \
+    && curl -sL -o /tmp/monaco.tgz \
+      https://registry.npmjs.org/monaco-editor/-/monaco-editor-0.45.0.tgz \
+    && tar -xzf /tmp/monaco.tgz -C /tmp \
+    && cp -r /tmp/package/min src/NebulaPanel.Web/wwwroot/lib/monaco-editor/min \
+    && rm -rf /tmp/monaco.tgz /tmp/package
+
 # Build argument for version
 ARG VERSION=1.0.0
 

@@ -9,7 +9,7 @@ let monacoLoaded = false;
 let monacoLoadPromise = null;
 
 /**
- * Load Monaco Editor from CDN
+ * Load Monaco Editor from local static files
  */
 async function loadMonaco() {
     if (monacoLoaded) return;
@@ -24,7 +24,7 @@ async function loadMonaco() {
 
         // Load require.js
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js';
+        script.src = '/lib/require.min.js';
         script.onload = () => configureAndLoad(resolve, reject);
         script.onerror = () => reject(new Error('Failed to load require.js'));
         document.head.appendChild(script);
@@ -37,7 +37,7 @@ async function loadMonaco() {
 function configureAndLoad(resolve, reject) {
     require.config({
         paths: {
-            'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'
+            'vs': '/lib/monaco-editor/min/vs'
         }
     });
 
@@ -45,8 +45,8 @@ function configureAndLoad(resolve, reject) {
     window.MonacoEnvironment = {
         getWorkerUrl: function () {
             return `data:text/javascript;charset=utf-8,${encodeURIComponent(`
-                self.MonacoEnvironment = { baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/' };
-                importScripts('https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/base/worker/workerMain.js');
+                self.MonacoEnvironment = { baseUrl: '/lib/monaco-editor/min/' };
+                importScripts('/lib/monaco-editor/min/vs/base/worker/workerMain.js');
             `)}`;
         }
     };
