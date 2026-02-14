@@ -832,9 +832,10 @@
         // Auto-enable RunAsRoot for images that require it
         var runAsRoot = image.Contains("tmodloader", StringComparison.OrdinalIgnoreCase);
 
-        // Build environment variables and additional volume mounts for specific games
+        // Build environment variables, ports, and additional volume mounts for specific games
         Dictionary<string, string>? envVars = null;
         DockerCommandMode? commandMode = null;
+        List<PortMappingRequest>? ports = null;
 
         if (_selectedGame?.Slug == "terraria-tmodloader")
         {
@@ -856,13 +857,34 @@
             // Commands must be sent via `docker exec <container> inject "command"`.
             commandMode = DockerCommandMode.TmuxInject;
         }
+        else if (_selectedGame?.Slug == "ark-survival-ascended")
+        {
+            // acekorneya/asa_server image requires root for init script (modifies /etc/localtime, /etc/group)
+            runAsRoot = true;
+
+            var gamePort = _model.PrimaryPort > 0 ? _model.PrimaryPort : 7777;
+            ports =
+            [
+                new PortMappingRequest(gamePort, gamePort, "udp"),
+                new PortMappingRequest(gamePort + 1, gamePort + 1, "udp"),
+                new PortMappingRequest(_model.QueryPort > 0 ? _model.QueryPort : 27015, 27015, "udp"),
+                new PortMappingRequest(_model.RconPort > 0 ? _model.RconPort : 27020, 27020, "tcp")
+            ];
+
+            envVars = new Dictionary<string, string>
+            {
+                ["PUID"] = "1000",
+                ["PGID"] = "1000",
+                ["BATTLEEYE"] = "FALSE"
+            };
+        }
 
         return new DockerConfigurationRequest(
             Image: image,
             Tag: tag,
             EnvironmentVariables: envVars,
             Volumes: volumes,
-            Ports: null,
+            Ports: ports,
             Network: string.IsNullOrWhiteSpace(_model.DockerNetwork) ? null : _model.DockerNetwork,
             Limits: BuildResourceLimits(),
             RestartPolicy: _model.RestartPolicy,

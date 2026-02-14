@@ -39,7 +39,7 @@ public partial class ArkSurvivalAscendedProvider(
         DefaultStopCommand = "saveworld",
         SupportsDocker = true,
         DefaultDockerImage = "acekorneya/asa_server",
-        DockerDataPath = "/ark-server",
+        DockerDataPath = "/usr/games/.wine/drive_c/POK/Steam/steamapps/common/ARK Survival Ascended Dedicated Server",
         DefaultPort = 7777,
         IconPath = "/images/games/ark-survival-ascended.svg",
         SupportsMods = true,

@@ -1,0 +1,272 @@
+/* Main Container - inline, not modal */
+.generic-mod-browser {
+    display: flex;
+    flex-direction: column;
+    min-height: 400px;
+}
+
+/* Filter Bar */
+.filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--nebula-border-subtle);
+    flex-shrink: 0;
+}
+
+/* Search Input */
+.search-input-wrapper {
+    position: relative;
+    flex: 1;
+    min-width: 200px;
+    max-width: 400px;
+}
+
+::deep .search-icon {
+    position: absolute;
+    left: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--nebula-text-muted);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.search-input {
+    width: 100%;
+    padding: 0.625rem 2.5rem 0.625rem 2.5rem;
+    background: var(--nebula-input-bg, var(--nebula-bg-tertiary));
+    border: 1px solid var(--nebula-border);
+    border-radius: var(--nebula-radius);
+    color: var(--nebula-text-primary);
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search-input::placeholder {
+    color: var(--nebula-text-muted);
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--nebula-accent);
+    box-shadow: 0 0 0 3px var(--nebula-accent-subtle);
+}
+
+.search-clear {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--nebula-radius-sm);
+    color: var(--nebula-text-muted);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.search-clear:hover {
+    background: var(--nebula-bg-elevated);
+    color: var(--nebula-text-primary);
+}
+
+/* Filter Group */
+.filter-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+::deep .filter-select {
+    min-width: 140px;
+}
+
+::deep .filter-select .select-trigger {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+}
+
+/* Results Info Bar */
+.results-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+}
+
+.results-count {
+    color: var(--nebula-text-secondary);
+    font-weight: 500;
+}
+
+.provider-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.625rem;
+}
+
+.provider-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Provider colors for counts */
+.provider-count.provider-curseforge { background: rgba(246, 119, 55, 0.15); color: #f67737; }
+.provider-count.provider-modrinth { background: rgba(30, 201, 122, 0.15); color: #1ec97a; }
+.provider-count.provider-thunderstore { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.provider-count.provider-spigotmc { background: rgba(255, 175, 34, 0.15); color: #ffaf22; }
+.provider-count.provider-hangar { background: rgba(72, 177, 255, 0.15); color: #48b1ff; }
+.provider-count.provider-nexusmods { background: rgba(218, 138, 27, 0.15); color: #da8a1b; }
+.provider-count.provider-steamworkshop { background: rgba(30, 144, 255, 0.15); color: #1e90ff; }
+.provider-count.provider-modtale { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.provider-count.provider-local { background: var(--nebula-bg-tertiary); color: var(--nebula-text-muted); }
+
+/* Error Banner */
+.error-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    background: var(--nebula-error-subtle, rgba(244, 63, 94, 0.1));
+    border: 1px solid var(--nebula-error);
+    border-radius: var(--nebula-radius);
+    color: var(--nebula-error);
+    font-size: 0.875rem;
+    flex-shrink: 0;
+}
+
+.error-banner span {
+    flex: 1;
+}
+
+.error-banner button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem;
+    background: transparent;
+    border: none;
+    border-radius: var(--nebula-radius-sm);
+    color: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.error-banner button:hover {
+    opacity: 1;
+    background: rgba(244, 63, 94, 0.2);
+}
+
+/* Content Area */
+.content-area {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    gap: 0;
+    transition: gap 0.3s ease;
+}
+
+.content-area.with-panel {
+    gap: 1rem;
+}
+
+.results-container {
+    flex: 1;
+    overflow-y: auto;
+    min-width: 0;
+    transition: flex 0.3s ease;
+}
+
+.content-area.with-panel .results-container {
+    flex: 1 1 55%;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .filter-bar {
+        gap: 0.75rem;
+    }
+
+    .filter-group {
+        gap: 0.5rem;
+    }
+
+    ::deep .filter-select {
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 1024px) {
+    .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-input-wrapper {
+        max-width: none;
+    }
+
+    .filter-group {
+        justify-content: flex-start;
+    }
+
+    .results-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .content-area.with-panel {
+        flex-direction: column;
+    }
+
+    .content-area.with-panel .results-container {
+        flex: 0 0 auto;
+        max-height: 40%;
+        overflow-y: auto;
+    }
+
+    .filter-group {
+        flex-wrap: wrap;
+    }
+
+    ::deep .filter-select {
+        flex: 1 1 calc(50% - 0.25rem);
+        min-width: 0;
+    }
+
+    .provider-counts {
+        display: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .filter-bar {
+        padding-bottom: 0.75rem;
+    }
+
+    ::deep .filter-select {
+        flex: 1 1 100%;
+    }
+}

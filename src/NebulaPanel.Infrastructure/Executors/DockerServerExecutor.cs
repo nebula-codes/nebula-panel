@@ -29,6 +29,7 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
     private readonly IServiceScopeFactory? _serviceScopeFactory;
     private readonly IServerPathResolver _pathResolver;
     private readonly DockerContainerStateStore _containerStore;
+    private readonly IDockerPullNotifier? _pullNotifier;
 
     public ServerDeploymentType DeploymentType => ServerDeploymentType.Docker;
 
@@ -36,12 +37,14 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
         ILogger<DockerServerExecutor> logger,
         IServerPathResolver pathResolver,
         DockerContainerStateStore containerStore,
-        IServiceScopeFactory? serviceScopeFactory = null)
+        IServiceScopeFactory? serviceScopeFactory = null,
+        IDockerPullNotifier? pullNotifier = null)
     {
         _logger = logger;
         _pathResolver = pathResolver;
         _containerStore = containerStore;
         _serviceScopeFactory = serviceScopeFactory;
+        _pullNotifier = pullNotifier;
 
         // Create Docker client based on platform
         var dockerUri = GetDockerUri();
@@ -323,6 +326,9 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
 
                 try
                 {
+                    var layerProgress = new Dictionary<string, (long Current, long Total)>();
+                    var lastNotify = DateTimeOffset.MinValue;
+
                     await _docker.Images.CreateImageAsync(
                         new ImagesCreateParameters
                         {
@@ -332,18 +338,73 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
                         null,
                         new Progress<JSONMessage>(msg =>
                         {
-                            if (!string.IsNullOrEmpty(msg.Status))
+                            if (string.IsNullOrEmpty(msg.Status))
+                                return;
+
+                            _logger.LogDebug("[Docker Pull] {Status}", msg.Status);
+
+                            if (_pullNotifier is null)
+                                return;
+
+                            // Track per-layer progress
+                            if (!string.IsNullOrEmpty(msg.ID) && msg.Progress is not null)
                             {
-                                _logger.LogDebug("[Docker Pull] {Status}", msg.Status);
+                                layerProgress[msg.ID] = (msg.Progress.Current, msg.Progress.Total);
                             }
+
+                            // Mark layers complete when they finish extracting
+                            if (!string.IsNullOrEmpty(msg.ID) &&
+                                msg.Status is "Pull complete" or "Already exists")
+                            {
+                                layerProgress[msg.ID] = (1, 1);
+                            }
+
+                            // Throttle notifications to ~250ms
+                            var now = DateTimeOffset.UtcNow;
+                            if ((now - lastNotify).TotalMilliseconds < 250)
+                                return;
+                            lastNotify = now;
+
+                            // Compute aggregate progress
+                            long totalBytes = 0;
+                            long downloadedBytes = 0;
+                            int layersComplete = 0;
+                            int layersTotal = layerProgress.Count;
+
+                            foreach (var (_, (current, total)) in layerProgress)
+                            {
+                                totalBytes += total;
+                                downloadedBytes += current;
+                                if (total > 0 && current >= total)
+                                    layersComplete++;
+                            }
+
+                            var percent = totalBytes > 0
+                                ? Math.Min(100.0, (double)downloadedBytes / totalBytes * 100.0)
+                                : 0.0;
+
+                            var info = new DockerPullProgressInfo(
+                                Status: msg.Status,
+                                Layer: msg.ID,
+                                BytesDownloaded: downloadedBytes,
+                                TotalBytes: totalBytes,
+                                OverallPercent: percent,
+                                LayersComplete: layersComplete,
+                                LayersTotal: layersTotal);
+
+                            _ = _pullNotifier.NotifyPullProgressAsync(server.Id, info);
                         }),
                         ct).ConfigureAwait(false);
 
                     _logger.LogInformation("Successfully pulled image {Image}", imageName);
+                    if (_pullNotifier is not null)
+                        await _pullNotifier.NotifyPullCompleteAsync(server.Id, true).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to pull image {Image}", imageName);
+                    if (_pullNotifier is not null)
+                        await _pullNotifier.NotifyPullCompleteAsync(server.Id, false, ex.Message).ConfigureAwait(false);
                     server.Status = ServerStatus.Stopped;
                     return false;
                 }
@@ -1559,18 +1620,19 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
     {
         var bindings = new Dictionary<string, IList<PortBinding>>();
 
-        // Add configured port mappings, syncing host ports with server.PrimaryPort.
-        // Games like Hytale bake the port into DockerConfig.Ports at install time.
-        // If the user later changes the primary port, those mappings become stale.
-        // Detect this by checking if a mapping's host port matches the container port
-        // (the install-time pattern) but differs from the current primary port.
-        foreach (var port in ports)
+        // Add configured port mappings, syncing the primary game port with server.PrimaryPort.
+        // Games like Hytale/ASA bake ports into DockerConfig.Ports at install time.
+        // If the user later changes the primary port, the first mapping becomes stale.
+        // Only sync the FIRST port mapping (the primary game port by convention) —
+        // secondary ports (game+1, query, RCON) must keep their original values.
+        for (var i = 0; i < ports.Count; i++)
         {
+            var port = ports[i];
             var hostPort = port.HostPort;
 
-            // If this mapping's host port equals its container port (install-time default)
-            // but the server's primary port has since changed, update it.
-            if (hostPort == port.ContainerPort && hostPort != server.PrimaryPort)
+            // Only the first mapping is the primary game port. Sync it if the user
+            // changed PrimaryPort after installation.
+            if (i == 0 && hostPort == port.ContainerPort && hostPort != server.PrimaryPort)
             {
                 hostPort = server.PrimaryPort;
                 _logger.LogDebug("Synced port mapping host port from {OldPort} to {NewPort} for {ContainerPort}/{Protocol}",

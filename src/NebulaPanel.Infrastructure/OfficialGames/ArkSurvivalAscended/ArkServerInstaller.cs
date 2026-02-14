@@ -20,6 +20,13 @@ public class ArkServerInstaller(
     private const string ConfigRelativePath = "ShooterGame/Saved/Config/WindowsServer";
 
     /// <summary>
+    /// The path inside the acekorneya/asa_server container where the game is installed
+    /// (Wine prefix → SteamCMD → ARK Dedicated Server).
+    /// </summary>
+    private const string DockerGamePath =
+        "/usr/games/.wine/drive_c/POK/Steam/steamapps/common/ARK Survival Ascended Dedicated Server";
+
+    /// <summary>
     /// Installs ASA server to the specified location.
     /// </summary>
     public async Task<ServerInstallationResult> InstallAsync(
@@ -41,7 +48,7 @@ public class ArkServerInstaller(
     }
 
     /// <summary>
-    /// Docker install: creates host directories and default config files only.
+    /// Docker install: creates host directories, default config files, and configures Docker settings.
     /// The Docker image (acekorneya/asa_server) already contains the server.
     /// </summary>
     private async Task<ServerInstallationResult> InstallDockerAsync(
@@ -60,6 +67,35 @@ public class ArkServerInstaller(
 
             progress?.Report(OfficialInstallProgress.Progress("Configuring", "Creating data directories...", 60));
             CreateDataDirectories(server.InstallPath);
+
+            // Configure Docker settings for the acekorneya/asa_server image
+            progress?.Report(OfficialInstallProgress.Progress("Configuring", "Setting up Docker configuration...", 80));
+            var gamePort = server.PrimaryPort > 0 ? server.PrimaryPort : 7777;
+
+            server.DockerConfig = new DockerConfiguration
+            {
+                Image = "acekorneya/asa_server",
+                Tag = "latest",
+                RunAsRoot = true, // Image init script modifies /etc/localtime, /etc/group
+                Ports =
+                [
+                    new PortMapping { HostPort = gamePort, ContainerPort = gamePort, Protocol = "udp" },
+                    new PortMapping { HostPort = gamePort + 1, ContainerPort = gamePort + 1, Protocol = "udp" },
+                    new PortMapping { HostPort = 27015, ContainerPort = 27015, Protocol = "udp" },
+                    new PortMapping { HostPort = 27020, ContainerPort = 27020, Protocol = "tcp" }
+                ],
+                Volumes =
+                [
+                    new VolumeMount { HostPath = server.InstallPath, ContainerPath = DockerGamePath }
+                ],
+                EnvironmentVariables = new Dictionary<string, string>
+                {
+                    ["PUID"] = "1000",
+                    ["PGID"] = "1000",
+                    ["BATTLEEYE"] = "FALSE"
+                },
+                Tty = false
+            };
 
             progress?.Report(OfficialInstallProgress.Completed());
 

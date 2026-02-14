@@ -18,15 +18,18 @@ public class UnifiedModService : IUnifiedModService
 
     private readonly IEnumerable<IModProvider> _providers;
     private readonly IServerModRepository _serverModRepository;
+    private readonly IGameServerRepository _gameServerRepository;
     private readonly ILogger<UnifiedModService> _logger;
 
     public UnifiedModService(
         IEnumerable<IModProvider> providers,
         IServerModRepository serverModRepository,
+        IGameServerRepository gameServerRepository,
         ILogger<UnifiedModService> logger)
     {
         _providers = providers;
         _serverModRepository = serverModRepository;
+        _gameServerRepository = gameServerRepository;
         _logger = logger;
     }
 
@@ -236,6 +239,14 @@ public class UnifiedModService : IUnifiedModService
             if (details is null)
             {
                 return new InstallResult(false, null, "Mod not found", 0);
+            }
+
+            // For games where the server manages mod downloads (e.g. ASA),
+            // just record the mod in the database and sync IDs to server config
+            if (IsServerManagedMods(server))
+            {
+                return await InstallServerManagedModAsync(server, provider, modId, details, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             // Get versions to find the target version
@@ -643,8 +654,8 @@ public class UnifiedModService : IUnifiedModService
 
         try
         {
-            // Delete the file if it exists
-            if (!string.IsNullOrEmpty(installedMod.LocalPath))
+            // Delete the file if it exists (skip for server-managed mods — server handles files)
+            if (!IsServerManagedMods(server) && !string.IsNullOrEmpty(installedMod.LocalPath))
             {
                 var filePath = Path.Combine(server.InstallPath, installedMod.LocalPath);
                 if (File.Exists(filePath))
@@ -655,6 +666,12 @@ public class UnifiedModService : IUnifiedModService
 
             // Delete database record
             await _serverModRepository.DeleteAsync(installedModId, cancellationToken).ConfigureAwait(false);
+
+            // Sync mod IDs to server config for server-managed games
+            if (IsServerManagedMods(server))
+            {
+                await SyncServerManagedModIdsAsync(server, cancellationToken).ConfigureAwait(false);
+            }
 
             _logger.LogInformation(
                 "Uninstalled mod {ModName} from server {ServerId}",
@@ -771,6 +788,12 @@ public class UnifiedModService : IUnifiedModService
 
             await _serverModRepository.UpdateAsync(installedMod, cancellationToken).ConfigureAwait(false);
 
+            // Sync mod IDs to server config for server-managed games
+            if (IsServerManagedMods(server))
+            {
+                await SyncServerManagedModIdsAsync(server, cancellationToken).ConfigureAwait(false);
+            }
+
             _logger.LogInformation(
                 "Toggled mod {ModName} to {State} on server {ServerId}",
                 installedMod.Name, newEnabledState ? "enabled" : "disabled", server.Id);
@@ -870,6 +893,105 @@ public class UnifiedModService : IUnifiedModService
                 config.Priority
             );
         }).ToList();
+    }
+
+    /// <summary>
+    /// Returns true for games where the server itself manages mod downloads
+    /// (e.g. ARK: Survival Ascended auto-downloads CurseForge mods on boot).
+    /// </summary>
+    private static bool IsServerManagedMods(GameServer server) =>
+        server.Game?.Slug == "ark-survival-ascended";
+
+    /// <summary>
+    /// Records a mod in the database without downloading files, then syncs
+    /// the mod ID list to the server's startup configuration.
+    /// </summary>
+    private async Task<InstallResult> InstallServerManagedModAsync(
+        GameServer server,
+        ModProviderType provider,
+        string modId,
+        ModDetails details,
+        CancellationToken cancellationToken)
+    {
+        var serverMod = new ServerMod
+        {
+            Id = Guid.NewGuid(),
+            ServerId = server.Id,
+            ModId = modId,
+            Name = details.Name,
+            Version = null,
+            VersionId = null,
+            Provider = provider,
+            InstalledAt = DateTime.UtcNow,
+            IsEnabled = true,
+            LocalPath = null,
+            IconUrl = details.IconUrl,
+            FileSizeBytes = null,
+            FileHash = null
+        };
+
+        await _serverModRepository.AddAsync(serverMod, cancellationToken).ConfigureAwait(false);
+        await SyncServerManagedModIdsAsync(server, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Added server-managed mod {ModName} ({ModId}) to server {ServerId}",
+            details.Name, modId, server.Id);
+
+        return new InstallResult(
+            true,
+            MapToDto(serverMod),
+            null,
+            0,
+            "Added — will download on next server start"
+        );
+    }
+
+    /// <summary>
+    /// Syncs enabled mod IDs to the server's startup configuration.
+    /// Docker: sets MOD_IDS environment variable.
+    /// Native: sets -mods= command line argument.
+    /// </summary>
+    private async Task SyncServerManagedModIdsAsync(
+        GameServer server,
+        CancellationToken cancellationToken)
+    {
+        var mods = await _serverModRepository.GetByServerIdAsync(server.Id, cancellationToken).ConfigureAwait(false);
+        var modIdsCsv = string.Join(",", mods.Where(m => m.IsEnabled).Select(m => m.ModId));
+
+        if (server.DeploymentType == ServerDeploymentType.Docker && server.DockerConfig is not null)
+        {
+            server.DockerConfig.EnvironmentVariables ??= [];
+
+            if (string.IsNullOrEmpty(modIdsCsv))
+            {
+                server.DockerConfig.EnvironmentVariables.Remove("MOD_IDS");
+            }
+            else
+            {
+                server.DockerConfig.EnvironmentVariables["MOD_IDS"] = modIdsCsv;
+            }
+        }
+        else if (server.DeploymentType == ServerDeploymentType.Native && server.NativeConfig is not null)
+        {
+            var args = server.NativeConfig.Arguments ?? string.Empty;
+            // Remove existing -mods= argument
+            args = Regex.Replace(args, @"-mods=\S*", "").Trim();
+
+            if (!string.IsNullOrEmpty(modIdsCsv))
+            {
+                args = string.IsNullOrEmpty(args)
+                    ? $"-mods={modIdsCsv}"
+                    : $"{args} -mods={modIdsCsv}";
+            }
+
+            server.NativeConfig.Arguments = args;
+        }
+
+        await _gameServerRepository.UpdateAsync(server, cancellationToken).ConfigureAwait(false);
+
+        _logger.LogInformation(
+            "Synced server-managed mod IDs for server {ServerId}: {ModIds}",
+            server.Id, modIdsCsv);
     }
 
     private List<IModProvider> GetEnabledProvidersForServer(GameServer server)

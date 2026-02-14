@@ -75,11 +75,9 @@ public class CurseForgeSettings
         ["World"] = 17
     };
 
-    // Default ASA class IDs
-    private static readonly Dictionary<string, int> DefaultAsaClassIds = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["Mod"] = 6945
-    };
+    // ASA is a CurseForge Studios game — it does not use traditional class IDs.
+    // Passing no classId returns all ASA mods correctly.
+    private static readonly Dictionary<string, int> DefaultAsaClassIds = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Gets the game configuration for a given slug, falling back to defaults if not configured.

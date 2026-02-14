@@ -1,0 +1,533 @@
+@using NebulaPanel.Domain.Entities
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.Repositories
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Application.DTOs
+
+@implements IDisposable
+
+@inject IUnifiedModService ModService
+@inject IGameServerRepository ServerRepository
+@inject IToastService ToastService
+
+<div class="generic-mod-browser">
+    @if (_loadingServer)
+    {
+        <div class="flex items-center justify-center py-12">
+            <span class="spinner w-6 h-6"></span>
+            <span class="ml-2 text-nebula-text-muted">Loading mod browser...</span>
+        </div>
+    }
+    else if (_server == null)
+    {
+        <EmptyState IconName="alert-circle"
+                    Heading="Unable to load mod browser"
+                    Description="Could not load server information." />
+    }
+    else
+    {
+        @* Filter Bar *@
+        <div class="filter-bar">
+            @* Search Input *@
+            <div class="search-input-wrapper">
+                <Icon Name="search" Size="IconSize.Small" Class="search-icon" />
+                <input type="text"
+                       class="search-input"
+                       placeholder="Search mods..."
+                       @bind="_searchQuery"
+                       @bind:event="oninput"
+                       @bind:after="OnSearchChanged"
+                       @onkeydown="HandleSearchKeyDown" />
+                @if (!string.IsNullOrEmpty(_searchQuery))
+                {
+                    <button type="button" class="search-clear" @onclick="ClearSearch" title="Clear search">
+                        <Icon Name="x" Size="IconSize.Small" />
+                    </button>
+                }
+            </div>
+
+            @* Filter Dropdowns *@
+            <div class="filter-group">
+                @if (_providerOptions.Count > 2)
+                {
+                    <Select TValue="ModProviderType?"
+                            Value="_selectedProvider"
+                            ValueChanged="OnProviderChanged"
+                            Options="_providerOptions"
+                            LabelSelector="@(p => GetProviderLabel(p))"
+                            Placeholder="All Sources"
+                            Class="filter-select" />
+                }
+
+                <Select TValue="ModContentType?"
+                        Value="_selectedContentType"
+                        ValueChanged="OnContentTypeChanged"
+                        Options="_contentTypeOptions"
+                        LabelSelector="@(c => GetContentTypeName(c))"
+                        Placeholder="All Types"
+                        Class="filter-select" />
+
+                <Select TValue="ModSearchSort"
+                        Value="_sortBy"
+                        ValueChanged="OnSortChanged"
+                        Options="_sortOptions"
+                        LabelSelector="@(s => GetSortDisplayName(s))"
+                        Class="filter-select" />
+            </div>
+
+            @* View Toggle *@
+            <ViewToggle @bind-Value="_viewMode"
+                        StorageKey="generic-mod-browser-view" />
+        </div>
+
+        @* Results Info Bar *@
+        @if (!_isLoading && _totalCount > 0)
+        {
+            <div class="results-info">
+                <span class="results-count">
+                    @_totalCount.ToString("N0") mod@(_totalCount != 1 ? "s" : "") found
+                </span>
+                @if (_resultCountByProvider.Count > 1)
+                {
+                    <div class="provider-counts">
+                        @foreach (var (provider, count) in _resultCountByProvider.OrderByDescending(x => x.Value))
+                        {
+                            <span class="provider-count provider-@provider.ToString().ToLowerInvariant()"
+                                  title="@count results from @GetProviderDisplayName(provider)">
+                                @GetProviderDisplayName(provider): @count.ToString("N0")
+                            </span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @* Error Display *@
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="error-banner">
+                <Icon Name="alert-circle" Size="IconSize.Small" />
+                <span>@_error</span>
+                <button type="button" @onclick="DismissError" title="Dismiss">
+                    <Icon Name="x" Size="IconSize.Small" />
+                </button>
+            </div>
+        }
+
+        @* Content Area *@
+        <div class="content-area @(_detailsPanelOpen ? "with-panel" : "")">
+            <div class="results-container">
+                @if (_viewMode == ViewMode.Grid)
+                {
+                    <ModBrowserGridView Mods="_searchResults"
+                                       InstalledModIds="_installedModIds"
+                                       Loading="_isLoading"
+                                       BusyMods="_busyMods"
+                                       TotalCount="_totalCount"
+                                       CurrentPage="_currentPage"
+                                       PageSize="_pageSize"
+                                       OnInstall="HandleInstall"
+                                       OnViewDetails="OpenDetailsPanel"
+                                       OnPageChanged="OnPageChanged" />
+                }
+                else
+                {
+                    <ModBrowserDataGrid Mods="_searchResults"
+                                       InstalledModIds="_installedModIds"
+                                       Loading="_isLoading"
+                                       BusyMods="_busyMods"
+                                       TotalCount="_totalCount"
+                                       CurrentPage="_currentPage"
+                                       PageSize="_pageSize"
+                                       SortColumn="@GetSortColumn()"
+                                       SortDescending="_sortDescending"
+                                       OnInstall="HandleInstall"
+                                       OnViewDetails="OpenDetailsPanel"
+                                       OnPageChanged="OnPageChanged"
+                                       OnSortChanged="OnDataGridSortChanged" />
+                }
+            </div>
+
+            @* Details Side Panel *@
+            <ModDetailsSlidePanel Mod="_selectedMod"
+                                 IsOpen="_detailsPanelOpen"
+                                 IsInstalled="@IsModInstalled(_selectedMod)"
+                                 IsBusy="@IsModBusy(_selectedMod)"
+                                 OnClose="CloseDetailsPanel"
+                                 OnInstall="HandleInstallFromPanel" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid ServerId { get; set; }
+
+    [Parameter]
+    public EventCallback OnModInstalled { get; set; }
+
+    // Server entity (loaded internally)
+    private GameServer? _server;
+    private bool _loadingServer = true;
+
+    // Search state
+    private string _searchQuery = "";
+    private ModProviderType? _selectedProvider;
+    private ModContentType? _selectedContentType;
+    private ModSearchSort _sortBy = ModSearchSort.Downloads;
+    private bool _sortDescending = true;
+    private ViewMode _viewMode = ViewMode.Grid;
+
+    // Pagination
+    private int _currentPage = 1;
+    private const int _pageSize = 20;
+
+    // Results
+    private IReadOnlyList<ModSearchItem> _searchResults = [];
+    private Dictionary<ModProviderType, int> _resultCountByProvider = new();
+    private int _totalCount;
+
+    // Installed mods
+    private HashSet<string> _installedModIds = [];
+
+    // Loading state
+    private bool _isLoading;
+    private HashSet<string> _busyMods = [];
+    private string? _error;
+
+    // Details panel
+    private bool _detailsPanelOpen;
+    private ModSearchItem? _selectedMod;
+
+    // Debounce timer
+    private Timer? _debounceTimer;
+    private const int DebounceDelayMs = 300;
+
+    // Filter options
+    private List<ModProviderType?> _providerOptions = [];
+    private List<ModContentType?> _contentTypeOptions =
+    [
+        null,
+        ModContentType.Mod,
+        ModContentType.Modpack,
+        ModContentType.ResourcePack,
+        ModContentType.Shader,
+        ModContentType.World
+    ];
+    private readonly List<ModSearchSort> _sortOptions =
+    [
+        ModSearchSort.Downloads,
+        ModSearchSort.Updated,
+        ModSearchSort.Created,
+        ModSearchSort.Name,
+        ModSearchSort.Relevance
+    ];
+
+    private bool _initialized;
+    private Guid? _lastServerId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_initialized || _lastServerId != ServerId)
+        {
+            _lastServerId = ServerId;
+            await InitializeAsync();
+            _initialized = true;
+        }
+    }
+
+    private async Task InitializeAsync()
+    {
+        _loadingServer = true;
+        StateHasChanged();
+
+        try
+        {
+            _server = await ServerRepository.GetByIdWithGameAsync(ServerId).ConfigureAwait(false);
+            if (_server?.Game == null)
+            {
+                _loadingServer = false;
+                return;
+            }
+
+            // Load available providers for this game
+            var providers = ModService.GetProvidersForGame(_server.Game);
+            _providerOptions = [null, .. providers.Where(p => p.Enabled).Select(p => (ModProviderType?)p.Type)];
+
+            _loadingServer = false;
+
+            // Load installed mods
+            await LoadInstalledModsAsync();
+
+            // Perform initial search
+            await SearchAsync();
+        }
+        catch
+        {
+            _loadingServer = false;
+        }
+    }
+
+    private async Task LoadInstalledModsAsync()
+    {
+        try
+        {
+            if (_server == null) return;
+            var installed = await ModService.GetInstalledAsync(_server);
+            _installedModIds = installed.Select(m => m.ModId).ToHashSet();
+        }
+        catch
+        {
+            _installedModIds = [];
+        }
+    }
+
+    private void OnSearchChanged()
+    {
+        _debounceTimer?.Dispose();
+        _debounceTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                _currentPage = 1;
+                await SearchAsync();
+            });
+        }, null, DebounceDelayMs, Timeout.Infinite);
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            _debounceTimer?.Dispose();
+            _currentPage = 1;
+            _ = SearchAsync();
+        }
+    }
+
+    private async Task ClearSearch()
+    {
+        _searchQuery = "";
+        _currentPage = 1;
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (_server == null) return;
+
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var query = new ModSearchQuery(
+                Query: string.IsNullOrWhiteSpace(_searchQuery) ? null : _searchQuery,
+                GameSlug: _server.Game.Slug,
+                GameVersion: null,
+                ModLoader: null,
+                Sort: _sortBy,
+                Page: _currentPage,
+                PageSize: _pageSize,
+                Categories: null,
+                ContentType: _selectedContentType ?? ModContentType.Mod
+            );
+
+            if (_selectedProvider.HasValue)
+            {
+                var result = await ModService.SearchProviderAsync(_server, _selectedProvider.Value, query);
+                _searchResults = result.Mods;
+                _resultCountByProvider = new Dictionary<ModProviderType, int>
+                {
+                    [_selectedProvider.Value] = result.TotalCount
+                };
+                _totalCount = result.TotalCount;
+            }
+            else
+            {
+                var result = await ModService.SearchAsync(_server, query);
+                _searchResults = result.Mods;
+                _resultCountByProvider = result.ResultCountByProvider;
+                _totalCount = result.TotalCount;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Search failed: {ex.Message}";
+            _searchResults = [];
+            _resultCountByProvider = new();
+            _totalCount = 0;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnProviderChanged(ModProviderType? provider)
+    {
+        _selectedProvider = provider;
+        _currentPage = 1;
+        await SearchAsync();
+    }
+
+    private async Task OnContentTypeChanged(ModContentType? contentType)
+    {
+        _selectedContentType = contentType;
+        _currentPage = 1;
+        await SearchAsync();
+    }
+
+    private async Task OnSortChanged(ModSearchSort sort)
+    {
+        _sortBy = sort;
+        _sortDescending = sort != ModSearchSort.Name;
+        _currentPage = 1;
+        await SearchAsync();
+    }
+
+    private async Task OnPageChanged(int page)
+    {
+        _currentPage = page;
+        await SearchAsync();
+    }
+
+    private async Task OnDataGridSortChanged((string Column, bool Descending) sort)
+    {
+        _sortBy = MapColumnToSort(sort.Column);
+        _sortDescending = sort.Descending;
+        _currentPage = 1;
+        await SearchAsync();
+    }
+
+    private async Task HandleInstall(ModSearchItem mod)
+    {
+        if (_server == null || _busyMods.Contains(mod.Id)) return;
+
+        _busyMods.Add(mod.Id);
+        StateHasChanged();
+
+        try
+        {
+            var progress = new Progress<DownloadProgress>(_ => InvokeAsync(StateHasChanged));
+
+            var result = await ModService.InstallAsync(
+                _server, mod.Provider, mod.Id, null, progress);
+
+            if (result.Success)
+            {
+                ToastService.ShowSuccess(result.Message ?? $"Successfully installed {mod.Name}");
+                _installedModIds.Add(mod.Id);
+                await OnModInstalled.InvokeAsync();
+            }
+            else
+            {
+                ToastService.ShowError(result.Error ?? "Installation failed");
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to install {mod.Name}: {ex.Message}");
+        }
+        finally
+        {
+            _busyMods.Remove(mod.Id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleInstallFromPanel(ModSearchItem mod)
+    {
+        await HandleInstall(mod);
+    }
+
+    private void OpenDetailsPanel(ModSearchItem mod)
+    {
+        _selectedMod = mod;
+        _detailsPanelOpen = true;
+        StateHasChanged();
+    }
+
+    private void CloseDetailsPanel()
+    {
+        _detailsPanelOpen = false;
+        _selectedMod = null;
+        StateHasChanged();
+    }
+
+    private void DismissError()
+    {
+        _error = null;
+    }
+
+    private bool IsModInstalled(ModSearchItem? mod) =>
+        mod != null && _installedModIds.Contains(mod.Id);
+
+    private bool IsModBusy(ModSearchItem? mod) =>
+        mod != null && _busyMods.Contains(mod.Id);
+
+    private string GetSortColumn() => _sortBy switch
+    {
+        ModSearchSort.Downloads => "downloads",
+        ModSearchSort.Updated => "updated",
+        ModSearchSort.Created => "created",
+        ModSearchSort.Name => "name",
+        _ => "downloads"
+    };
+
+    private ModSearchSort MapColumnToSort(string column) => column.ToLowerInvariant() switch
+    {
+        "downloads" => ModSearchSort.Downloads,
+        "updated" => ModSearchSort.Updated,
+        "created" => ModSearchSort.Created,
+        "name" => ModSearchSort.Name,
+        "author" => ModSearchSort.Name,
+        _ => ModSearchSort.Downloads
+    };
+
+    private static string GetProviderLabel(ModProviderType? provider) =>
+        provider.HasValue ? GetProviderDisplayName(provider.Value) : "All Sources";
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.Thunderstore => "Thunderstore",
+        ModProviderType.SpigotMC => "SpigotMC",
+        ModProviderType.Hangar => "Hangar",
+        ModProviderType.NexusMods => "Nexus Mods",
+        ModProviderType.SteamWorkshop => "Steam Workshop",
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.Local => "Local",
+        _ => provider.ToString()
+    };
+
+    private static string GetSortDisplayName(ModSearchSort sort) => sort switch
+    {
+        ModSearchSort.Downloads => "Most Downloads",
+        ModSearchSort.Updated => "Recently Updated",
+        ModSearchSort.Created => "Newest",
+        ModSearchSort.Name => "Name",
+        ModSearchSort.Relevance => "Relevance",
+        _ => sort.ToString()
+    };
+
+    private static string GetContentTypeName(ModContentType? type) => type switch
+    {
+        null => "All Types",
+        ModContentType.Mod => "Mods",
+        ModContentType.Modpack => "Modpacks",
+        ModContentType.ResourcePack => "Resource Packs",
+        ModContentType.Shader => "Shaders",
+        ModContentType.World => "Worlds/Maps",
+        _ => type.ToString() ?? "Unknown"
+    };
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

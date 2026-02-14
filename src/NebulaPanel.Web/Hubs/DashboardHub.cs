@@ -50,7 +50,29 @@ public interface IDashboardHubClient
     /// Called when the health check status changes.
     /// </summary>
     Task HealthStatusChanged(string status, IReadOnlyList<string>? degradedChecks);
+
+    /// <summary>
+    /// Called with real-time Docker image pull progress updates.
+    /// </summary>
+    Task DockerPullProgress(Guid serverId, DockerPullProgressDto progress);
+
+    /// <summary>
+    /// Called when a Docker image pull completes (successfully or with error).
+    /// </summary>
+    Task DockerPullComplete(Guid serverId, bool success, string? error);
 }
+
+/// <summary>
+/// DTO for Docker image pull progress sent to SignalR clients.
+/// </summary>
+public record DockerPullProgressDto(
+    string Status,
+    string? Layer,
+    long BytesDownloaded,
+    long TotalBytes,
+    double OverallPercent,
+    int LayersComplete,
+    int LayersTotal);
 
 /// <summary>
 /// SignalR hub for real-time dashboard updates.

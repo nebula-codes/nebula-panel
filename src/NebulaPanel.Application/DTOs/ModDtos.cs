@@ -37,7 +37,8 @@ public record InstallResult(
     bool Success,
     ServerModDto? InstalledMod,
     string? Error,
-    int DependenciesInstalled
+    int DependenciesInstalled,
+    string? Message = null
 );
 
 /// <summary>

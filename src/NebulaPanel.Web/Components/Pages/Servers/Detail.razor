@@ -11,7 +11,9 @@
 @using NebulaPanel.Web.Components.Shared.Hytale
 @using NebulaPanel.Web.Components.Shared.Terraria
 @using NebulaPanel.Domain.Repositories
+@using NebulaPanel.Web.Hubs
 @using NebulaPanel.Web.Services
+@using Microsoft.AspNetCore.SignalR.Client
 @inject IGameServerService ServerService
 @inject IUnifiedModService ModService
 @inject IScheduledTaskService TaskService
@@ -22,6 +24,7 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IToastService ToastService
+@inject AuthStateProvider AuthStateProvider
 @implements IAsyncDisposable
 
 <PageTitle>@(_server?.Name ?? "Server") - Nebula Panel</PageTitle>
@@ -126,10 +129,37 @@
                 }
                 else if (_server.Status == ServerStatus.Installing || _server.Status == ServerStatus.Updating)
                 {
-                    <div class="flex items-center gap-2 text-nebula-text-muted px-3">
-                        <span class="spinner"></span>
-                        <span>@(_server.Status == ServerStatus.Installing ? "Installing..." : "Updating...")</span>
-                    </div>
+                    @if (_dockerPulling && _pullProgress != null)
+                    {
+                        <div class="flex items-center gap-3 px-3 min-w-[280px]">
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs text-nebula-text-muted">Pulling image...</span>
+                                    <span class="text-xs font-medium text-nebula-text-secondary">
+                                        @(_pullProgress.OverallPercent.ToString("F0"))%
+                                    </span>
+                                </div>
+                                <div class="h-1.5 bg-nebula-bg-tertiary rounded-full overflow-hidden">
+                                    <div class="h-full bg-nebula-accent rounded-full transition-all duration-300"
+                                         style="width: @(_pullProgress.OverallPercent.ToString("F1"))%"></div>
+                                </div>
+                                <span class="text-[10px] text-nebula-text-muted mt-0.5 block">
+                                    @_pullProgress.Status
+                                    @if (_pullProgress.LayersTotal > 0)
+                                    {
+                                        @: — @_pullProgress.LayersComplete/@_pullProgress.LayersTotal layers
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="flex items-center gap-2 text-nebula-text-muted px-3">
+                            <span class="spinner"></span>
+                            <span>@(_server.Status == ServerStatus.Installing ? "Installing..." : "Updating...")</span>
+                        </div>
+                    }
                 }
             </div>
         </div>
@@ -542,11 +572,6 @@
                                     @onclick="@(() => _modsSubTab = "browse")">
                                 Browse
                             </button>
-                            <button type="button"
-                                    class="px-4 py-2 text-sm font-medium transition-colors @(_modsSubTab == "premium" ? "text-nebula-accent border-b-2 border-nebula-accent" : "text-nebula-text-muted hover:text-nebula-text-primary")"
-                                    @onclick="@(() => _modsSubTab = "premium")">
-                                Premium
-                            </button>
                             @if (_availableUpdates.Count > 0)
                             {
                                 <button type="button"
@@ -649,25 +674,13 @@
                                 break;
 
                             case "browse":
-                                @* Mod Browser - reuse HytaleModBrowser for Hytale, or generic for others *@
                                 @if (_server?.HytaleInfo != null)
                                 {
                                     <HytaleModBrowser ServerId="_server.Id" OnModInstalled="RefreshServerAsync" />
                                 }
                                 else
                                 {
-                                    <div class="text-center py-12">
-                                        <Icon Name="search" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-4 opacity-50" />
-                                        <h3 class="text-base font-medium text-nebula-text-primary mb-2">Mod Browser</h3>
-                                        <p class="text-sm text-nebula-text-muted">
-                                            Search and install mods from CurseForge, Modrinth, and other providers.
-                                        </p>
-                                        <Button Variant="ButtonVariant.Primary"
-                                                Text="Open Full Browser"
-                                                IconName="external-link"
-                                                Class="mt-4"
-                                                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}/mods"))" />
-                                    </div>
+                                    <GenericModBrowser ServerId="ServerId" OnModInstalled="RefreshServerAsync" />
                                 }
                                 break;
 
@@ -724,32 +737,6 @@
                                 }
                                 break;
 
-                            case "premium":
-                                @* Premium / Early Access mods from CurseForge *@
-                                <div class="space-y-4">
-                                    <div class="bg-nebula-bg-secondary rounded-nebula border border-nebula-border p-4 mb-4">
-                                        <div class="flex items-center gap-2 mb-2">
-                                            <Icon Name="star" Size="IconSize.Small" Class="text-nebula-warning" />
-                                            <span class="text-sm font-medium text-nebula-text-primary">Premium / Early Access Mods</span>
-                                        </div>
-                                        <p class="text-xs text-nebula-text-muted">
-                                            These are paid mods available through CurseForge's Early Access program. You may need to purchase them on CurseForge before they can be downloaded.
-                                        </p>
-                                    </div>
-                                    <div class="text-center py-12">
-                                        <Icon Name="search" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-4 opacity-50" />
-                                        <h3 class="text-base font-medium text-nebula-text-primary mb-2">Browse Premium Mods</h3>
-                                        <p class="text-sm text-nebula-text-muted">
-                                            Search for premium and early access mods from CurseForge.
-                                        </p>
-                                        <Button Variant="ButtonVariant.Primary"
-                                                Text="Open Full Browser"
-                                                IconName="external-link"
-                                                Class="mt-4"
-                                                OnClick="@(() => Navigation.NavigateTo($"/servers/{ServerId}/mods?premium=true"))" />
-                                    </div>
-                                </div>
-                                break;
                         }
                     </div>
                     }
@@ -1556,6 +1543,11 @@
     private bool _showConsoleSearch;
     private string _consoleSearchQuery = "";
 
+    // Docker pull progress
+    private bool _dockerPulling;
+    private DockerPullProgressDto? _pullProgress;
+    private HubConnection? _dashboardHub;
+
     private ResourceUsage? _resourceUsage;
     private Timer? _resourceTimer;
     private bool _resourceMonitoringInProgress;
@@ -1659,12 +1651,65 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && _server?.Status == ServerStatus.Running)
+        if (firstRender)
         {
-            StartConsoleStream();
-            StartResourceMonitoring();
+            if (_server?.Status == ServerStatus.Running)
+            {
+                StartConsoleStream();
+                StartResourceMonitoring();
+            }
+
+            // Connect to DashboardHub for Docker pull progress
+            if (_server?.DeploymentType == ServerDeploymentType.Docker)
+            {
+                await ConnectDashboardHubAsync();
+            }
         }
-        await Task.CompletedTask;
+    }
+
+    private async Task ConnectDashboardHubAsync()
+    {
+        try
+        {
+            var token = await AuthStateProvider.GetTokenAsync();
+            if (string.IsNullOrEmpty(token)) return;
+
+            _dashboardHub = new HubConnectionBuilder()
+                .WithUrl(Navigation.ToAbsoluteUri("/hubs/dashboard"), options =>
+                {
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+                })
+                .WithAutomaticReconnect()
+                .Build();
+
+            _dashboardHub.On<Guid, DockerPullProgressDto>("DockerPullProgress", async (serverId, progress) =>
+            {
+                if (serverId != ServerId) return;
+
+                _dockerPulling = true;
+                _pullProgress = progress;
+                await InvokeAsync(StateHasChanged);
+            });
+
+            _dashboardHub.On<Guid, bool, string?>("DockerPullComplete", async (serverId, success, error) =>
+            {
+                if (serverId != ServerId) return;
+
+                _dockerPulling = false;
+                _pullProgress = null;
+                await InvokeAsync(async () =>
+                {
+                    await LoadServerAsync();
+                    StateHasChanged();
+                });
+            });
+
+            await _dashboardHub.StartAsync();
+        }
+        catch
+        {
+            // Non-critical — pull progress just won't show
+        }
     }
 
     private static string? GetTabIcon(string tab) => tab switch
@@ -3140,5 +3185,18 @@
             _consoleCts = null;
         }
         StopResourceMonitoring();
+
+        if (_dashboardHub is not null)
+        {
+            try
+            {
+                await _dashboardHub.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+            _dashboardHub = null;
+        }
     }
 }
