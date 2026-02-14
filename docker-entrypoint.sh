@@ -12,5 +12,9 @@ if [ -S /var/run/docker.sock ]; then
     usermod -aG "$DOCKER_GROUP" nebula
 fi
 
+# Ensure nebula owns the server files directory so it can edit configs
+# (game server containers may create files with a different UID)
+chown -R nebula:nebula /app/servers 2>/dev/null || true
+
 # Drop privileges and exec the application
 exec gosu nebula "$@"
