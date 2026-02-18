@@ -878,6 +878,27 @@
                 ["BATTLEEYE"] = "FALSE"
             };
         }
+        else if (_selectedGame?.Slug == "fika-spt")
+        {
+            // FIKA SPT entrypoint script needs root to create users, chown files, and run cron
+            runAsRoot = true;
+
+            var gamePort = _model.PrimaryPort > 0 ? _model.PrimaryPort : 6969;
+            ports =
+            [
+                new PortMappingRequest(gamePort, 6969, "tcp")
+            ];
+
+            envVars = new Dictionary<string, string>
+            {
+                ["INSTALL_FIKA"] = "true",
+                ["AUTO_UPDATE_FIKA"] = "true",
+                ["LISTEN_ALL_NETWORKS"] = "true",
+                ["ENABLE_PROFILE_BACKUP"] = "true",
+                ["UID"] = "1000",
+                ["GID"] = "1000"
+            };
+        }
 
         return new DockerConfigurationRequest(
             Image: image,

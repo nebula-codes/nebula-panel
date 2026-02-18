@@ -84,9 +84,11 @@ public record IntegrationSettingsDto(
     bool CurseForgeConfigured,
     bool SteamConfigured,
     bool ModtaleConfigured,
+    bool SptForgeConfigured,
     string? CurseForgeApiKeyMasked,
     string? SteamApiKeyMasked,
-    string? ModtaleApiKeyMasked);
+    string? ModtaleApiKeyMasked,
+    string? SptForgeApiKeyMasked);
 
 public record UpdateIntegrationSettingsRequest(
     string? CurseForgeApiKey,
@@ -94,4 +96,6 @@ public record UpdateIntegrationSettingsRequest(
     string? ModtaleApiKey,
     bool ClearCurseForge = false,
     bool ClearSteam = false,
-    bool ClearModtale = false);
+    bool ClearModtale = false,
+    string? SptForgeApiKey = null,
+    bool ClearSptForge = false);

@@ -42,6 +42,8 @@ public sealed class IntegrationSettingsProvider : IIntegrationSettingsProvider
 
     public string? GetModtaleApiKey() => GetCachedSettings().ModtaleApiKey;
 
+    public string? GetSptForgeApiKey() => GetCachedSettings().SptForgeApiKey;
+
     public void InvalidateCache()
     {
         _cached = null;
@@ -102,7 +104,8 @@ public sealed class IntegrationSettingsProvider : IIntegrationSettingsProvider
             {
                 CurseForgeApiKey = TryDecrypt(data.CurseForgeApiKey),
                 SteamApiKey = TryDecrypt(data.SteamApiKey),
-                ModtaleApiKey = TryDecrypt(data.ModtaleApiKey)
+                ModtaleApiKey = TryDecrypt(data.ModtaleApiKey),
+                SptForgeApiKey = TryDecrypt(data.SptForgeApiKey)
             };
         }
         catch (Exception ex)
@@ -133,5 +136,6 @@ public sealed class IntegrationSettingsProvider : IIntegrationSettingsProvider
         public string? CurseForgeApiKey { get; set; }
         public string? SteamApiKey { get; set; }
         public string? ModtaleApiKey { get; set; }
+        public string? SptForgeApiKey { get; set; }
     }
 }

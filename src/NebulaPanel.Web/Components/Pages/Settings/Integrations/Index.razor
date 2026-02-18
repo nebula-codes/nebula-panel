@@ -286,6 +286,79 @@
                 </div>
             </Card>
 
+            @* SPT Forge Card *@
+            <Card>
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-nebula bg-[#2d2d2d] flex items-center justify-center">
+                        <Icon Name="crosshair" Size="IconSize.Medium" Class="text-white" />
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <h3 class="font-medium text-nebula-text-primary">SPT Forge</h3>
+                            @if (_integrationSettings?.SptForgeConfigured == true)
+                            {
+                                <StatusBadge Status="StatusType.Success" Text="Configured" Size="BadgeSize.Small" />
+                            }
+                            else
+                            {
+                                <StatusBadge Status="StatusType.Warning" Text="Not Configured" Size="BadgeSize.Small" />
+                            }
+                        </div>
+                        @if (_editingSptForge)
+                        {
+                            <div class="mt-1 space-y-2">
+                                <div>
+                                    <input type="password"
+                                           @bind="_sptForgeKeyInput"
+                                           @bind:event="oninput"
+                                           placeholder="@(_integrationSettings?.SptForgeConfigured == true ? "Enter new key to replace" : "Enter API token")"
+                                           class="input w-full text-sm" />
+                                    <p class="text-xs text-nebula-text-muted mt-1">Get your token at forge.sp-tarkov.com (Profile > API Tokens)</p>
+                                </div>
+                                @if (_activeProvider == "sptforge" && _statusMessage != null)
+                                {
+                                    <p class="text-xs @(_statusIsError ? "text-nebula-error" : "text-nebula-success")">@_statusMessage</p>
+                                }
+                                <div class="flex items-center gap-2">
+                                    <Button Variant="Button.ButtonVariant.Primary" Size="Button.ButtonSize.Small" Text="Save"
+                                            Loading="@(_savingProvider == "sptforge")" Disabled="@(string.IsNullOrWhiteSpace(_sptForgeKeyInput))"
+                                            OnClick="@(() => SaveApiKeyAsync("sptforge"))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Test"
+                                            Loading="@(_validatingProvider == "sptforge")" Disabled="@(string.IsNullOrWhiteSpace(_sptForgeKeyInput))"
+                                            OnClick="@(() => TestApiKeyAsync("sptforge", _sptForgeKeyInput))" />
+                                    <Button Variant="Button.ButtonVariant.Ghost" Size="Button.ButtonSize.Small" Text="Cancel"
+                                            OnClick="@(() => CancelEdit("sptforge"))" />
+                                    @if (_integrationSettings?.SptForgeConfigured == true)
+                                    {
+                                        <Button Variant="Button.ButtonVariant.Danger" Size="Button.ButtonSize.Small" Text="Remove"
+                                                OnClick="@(() => RemoveApiKeyAsync("sptforge"))" />
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-sm text-nebula-text-muted truncate">
+                                @if (_integrationSettings?.SptForgeConfigured == true)
+                                {
+                                    <span>Key: @_integrationSettings.SptForgeApiKeyMasked</span>
+                                }
+                                else
+                                {
+                                    <span>Required for browsing and downloading SPT/FIKA mods.</span>
+                                }
+                            </p>
+                            <div class="mt-2">
+                                <Button Variant="Button.ButtonVariant.Secondary"
+                                        Size="Button.ButtonSize.Small"
+                                        Text="@(_integrationSettings?.SptForgeConfigured == true ? "Edit" : "Configure")"
+                                        OnClick="@(() => { _editingSptForge = true; _sptForgeKeyInput = string.Empty; })" />
+                            </div>
+                        }
+                    </div>
+                </div>
+            </Card>
+
             @* Modrinth Card *@
             <Card>
                 <div class="flex items-start gap-4">
@@ -316,9 +389,11 @@
     private bool _editingSteam;
     private bool _editingCurseForge;
     private bool _editingModtale;
+    private bool _editingSptForge;
     private string _steamKeyInput = string.Empty;
     private string _curseForgeKeyInput = string.Empty;
     private string _modtaleKeyInput = string.Empty;
+    private string _sptForgeKeyInput = string.Empty;
 
     // Cached user ID (resolved async on init)
     private Guid _userId;
@@ -403,6 +478,7 @@
                 "steam" => new UpdateIntegrationSettingsRequest(null, _steamKeyInput, null),
                 "curseforge" => new UpdateIntegrationSettingsRequest(_curseForgeKeyInput, null, null),
                 "modtale" => new UpdateIntegrationSettingsRequest(null, null, _modtaleKeyInput),
+                "sptforge" => new UpdateIntegrationSettingsRequest(null, null, null, SptForgeApiKey: _sptForgeKeyInput),
                 _ => throw new ArgumentException($"Unknown provider: {provider}")
             };
 
@@ -443,6 +519,7 @@
                 "steam" => new UpdateIntegrationSettingsRequest(null, null, null, ClearSteam: true),
                 "curseforge" => new UpdateIntegrationSettingsRequest(null, null, null, ClearCurseForge: true),
                 "modtale" => new UpdateIntegrationSettingsRequest(null, null, null, ClearModtale: true),
+                "sptforge" => new UpdateIntegrationSettingsRequest(null, null, null, ClearSptForge: true),
                 _ => throw new ArgumentException($"Unknown provider: {provider}")
             };
 
@@ -489,6 +566,10 @@
                 _editingModtale = false;
                 _modtaleKeyInput = string.Empty;
                 break;
+            case "sptforge":
+                _editingSptForge = false;
+                _sptForgeKeyInput = string.Empty;
+                break;
         }
     }
 
@@ -497,6 +578,7 @@
         "steam" => "Steam",
         "curseforge" => "CurseForge",
         "modtale" => "Modtale",
+        "sptforge" => "SPT Forge",
         _ => provider
     };
 

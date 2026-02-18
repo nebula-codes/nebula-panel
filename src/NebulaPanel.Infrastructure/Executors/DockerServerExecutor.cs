@@ -326,7 +326,7 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
 
                 try
                 {
-                    var layerProgress = new Dictionary<string, (long Current, long Total)>();
+                    var layerProgress = new System.Collections.Concurrent.ConcurrentDictionary<string, (long Current, long Total)>();
                     var lastNotify = DateTimeOffset.MinValue;
 
                     await _docker.Images.CreateImageAsync(

@@ -1,5 +1,6 @@
 @page "/servers/{ServerId:guid}/mods"
 @attribute [Authorize]
+@implements IDisposable
 @using NebulaPanel.Application.DTOs
 @using NebulaPanel.Application.Services
 @using NebulaPanel.Domain.Enums
@@ -365,12 +366,26 @@
                                                     Installed
                                                 </span>
                                             }
+                                            else if (GetQueueItem(mod) is { } queueItem)
+                                            {
+                                                <span class="inline-flex items-center gap-1 text-xs @GetQueueStatusColor(queueItem.Status)">
+                                                    @if (queueItem.Status == ModInstallStatus.Downloading || queueItem.Status == ModInstallStatus.Installing)
+                                                    {
+                                                        <span class="spinner w-3 h-3"></span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <Icon Name="clock" Size="IconSize.Small" />
+                                                    }
+                                                    @GetQueueStatusText(queueItem.Status)
+                                                </span>
+                                            }
                                             else
                                             {
                                                 <Button Variant="ButtonVariant.Primary"
                                                         Size="ButtonSize.Small"
                                                         Text="Install"
-                                                        OnClick="@(() => InstallMod(mod))" />
+                                                        OnClick="@(() => EnqueueInstall(mod))" />
                                             }
                                         </td>
                                     </tr>
@@ -455,6 +470,115 @@
     }
 </div>
 
+@* Install Queue Panel *@
+@if (_installQueue.Count > 0)
+{
+    <div class="fixed bottom-4 right-4 z-40 w-96 bg-nebula-bg-secondary border border-nebula-border rounded-nebula shadow-lg overflow-hidden">
+        @* Header *@
+        <button class="w-full flex items-center justify-between px-4 py-3 bg-nebula-bg-tertiary hover:bg-nebula-bg-primary transition-colors"
+                @onclick="@(() => _showQueuePanel = !_showQueuePanel)">
+            <div class="flex items-center gap-2">
+                <Icon Name="download" Size="IconSize.Small" Class="text-nebula-accent" />
+                <span class="text-sm font-medium text-nebula-text-primary">
+                    Install Queue
+                </span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-nebula-accent text-white">
+                    @GetQueueSummary()
+                </span>
+            </div>
+            <Icon Name="@(_showQueuePanel ? "chevron-down" : "chevron-up")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+        </button>
+
+        @if (_showQueuePanel)
+        {
+            <div class="max-h-64 overflow-y-auto divide-y divide-nebula-border">
+                @foreach (var item in _installQueue)
+                {
+                    <div class="px-4 py-2.5 flex items-center gap-3">
+                        @* Status icon *@
+                        @switch (item.Status)
+                        {
+                            case ModInstallStatus.Pending:
+                                <Icon Name="clock" Size="IconSize.Small" Class="text-nebula-text-muted flex-shrink-0" />
+                                break;
+                            case ModInstallStatus.Downloading:
+                            case ModInstallStatus.Installing:
+                                <span class="spinner w-4 h-4 flex-shrink-0"></span>
+                                break;
+                            case ModInstallStatus.Completed:
+                                <Icon Name="check-circle" Size="IconSize.Small" Class="text-nebula-success flex-shrink-0" />
+                                break;
+                            case ModInstallStatus.Failed:
+                                <Icon Name="x-circle" Size="IconSize.Small" Class="text-nebula-error flex-shrink-0" />
+                                break;
+                        }
+
+                        @* Info *@
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm text-nebula-text-primary truncate">@item.Mod.Name</div>
+                            <div class="text-xs text-nebula-text-muted">
+                                @switch (item.Status)
+                                {
+                                    case ModInstallStatus.Pending:
+                                        <span>Waiting...</span>
+                                        break;
+                                    case ModInstallStatus.Downloading:
+                                        @if (item.TotalBytes > 0)
+                                        {
+                                            <span>Downloading @FormatBytes(item.BytesDownloaded) / @FormatBytes(item.TotalBytes)</span>
+                                        }
+                                        else
+                                        {
+                                            <span>Downloading...</span>
+                                        }
+                                        break;
+                                    case ModInstallStatus.Installing:
+                                        <span>Installing...</span>
+                                        break;
+                                    case ModInstallStatus.Completed:
+                                        <span>Installed</span>
+                                        break;
+                                    case ModInstallStatus.Failed:
+                                        <span class="text-nebula-error" title="@item.ErrorMessage">@(item.ErrorMessage ?? "Failed")</span>
+                                        break;
+                                }
+                            </div>
+                            @if (item.Status is ModInstallStatus.Downloading or ModInstallStatus.Installing && item.ProgressPercent > 0)
+                            {
+                                <div class="mt-1 h-1 bg-nebula-bg-tertiary rounded-full overflow-hidden">
+                                    <div class="h-full bg-nebula-accent rounded-full transition-all duration-300"
+                                         style="width: @(item.ProgressPercent.ToString("F0"))%"></div>
+                                </div>
+                            }
+                        </div>
+
+                        @* Cancel button for pending/active items *@
+                        @if (item.Status is ModInstallStatus.Pending or ModInstallStatus.Downloading)
+                        {
+                            <button class="text-nebula-text-muted hover:text-nebula-error transition-colors flex-shrink-0"
+                                    title="Cancel"
+                                    @onclick="@(() => CancelQueueItem(item))">
+                                <Icon Name="x" Size="IconSize.Small" />
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* Footer *@
+            @if (_installQueue.Any(i => i.Status is ModInstallStatus.Completed or ModInstallStatus.Failed))
+            {
+                <div class="px-4 py-2 border-t border-nebula-border bg-nebula-bg-tertiary">
+                    <button class="text-xs text-nebula-text-muted hover:text-nebula-text-secondary transition-colors"
+                            @onclick="ClearCompletedFromQueue">
+                        Clear finished
+                    </button>
+                </div>
+            }
+        }
+    </div>
+}
+
 @* Mod Details Modal *@
 <Modal IsOpen="@_showDetailsModal" Size="ModalSize.Medium" OnClose="CloseDetailsModal">
     <Header>
@@ -516,7 +640,23 @@
         }
     </Body>
     <Footer>
-        <div class="flex justify-end gap-3">
+        <div class="flex justify-between items-center">
+            <div>
+                @if (_selectedMod != null)
+                {
+                    var modPageUrl = GetModPageUrl(_selectedMod.Provider, _selectedMod.ModId);
+                    @if (modPageUrl != null)
+                    {
+                        <a href="@modPageUrl"
+                           target="_blank"
+                           rel="noopener noreferrer"
+                           class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-nebula bg-nebula-bg-tertiary text-nebula-text-secondary hover:text-nebula-text-primary hover:bg-nebula-bg-primary transition-colors">
+                            <Icon Name="external-link" Size="IconSize.Small" />
+                            View on @GetProviderDisplayName(_selectedMod.Provider)
+                        </a>
+                    }
+                }
+            </div>
             <Button Variant="ButtonVariant.Secondary" Text="Close" OnClick="CloseDetailsModal" />
         </div>
     </Footer>
@@ -597,6 +737,24 @@
     // Delete confirmation modal
     private ServerModDto? _modToDelete;
     private bool _deleting;
+
+    // Install queue
+    private readonly List<ModInstallQueueItem> _installQueue = [];
+    private bool _isProcessingQueue;
+    private bool _showQueuePanel = true;
+
+    private enum ModInstallStatus { Pending, Downloading, Installing, Completed, Failed }
+
+    private sealed class ModInstallQueueItem
+    {
+        public required ModSearchItem Mod { get; init; }
+        public ModInstallStatus Status { get; set; } = ModInstallStatus.Pending;
+        public double ProgressPercent { get; set; }
+        public long BytesDownloaded { get; set; }
+        public long TotalBytes { get; set; }
+        public string? ErrorMessage { get; set; }
+        public CancellationTokenSource Cts { get; } = new();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -773,30 +931,151 @@
         }
     }
 
-    private async Task InstallMod(ModSearchItem mod)
+    private void EnqueueInstall(ModSearchItem mod)
     {
         if (_server is null) return;
+        if (IsModInstalled(mod) || GetQueueItem(mod) != null) return;
+
+        var item = new ModInstallQueueItem { Mod = mod };
+        _installQueue.Add(item);
+
+        if (!_isProcessingQueue)
+        {
+            _ = ProcessQueueAsync();
+        }
+    }
+
+    private async Task ProcessQueueAsync()
+    {
+        if (_isProcessingQueue) return;
+        _isProcessingQueue = true;
 
         try
         {
-            var result = await ModService.InstallAsync(_server, mod.Provider, mod.Id, null);
+            while (_installQueue.FirstOrDefault(i => i.Status == ModInstallStatus.Pending) is { } next)
+            {
+                if (next.Cts.IsCancellationRequested)
+                {
+                    next.Status = ModInstallStatus.Failed;
+                    next.ErrorMessage = "Cancelled";
+                    await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+                    continue;
+                }
+
+                await ProcessInstallItemAsync(next).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _isProcessingQueue = false;
+        }
+    }
+
+    private async Task ProcessInstallItemAsync(ModInstallQueueItem item)
+    {
+        if (_server is null) return;
+
+        item.Status = ModInstallStatus.Downloading;
+        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+
+        var progress = new Progress<DownloadProgress>(p =>
+        {
+            item.BytesDownloaded = p.BytesDownloaded;
+            item.TotalBytes = p.TotalBytes;
+            item.ProgressPercent = p.Percentage;
+            if (p.Percentage >= 100)
+            {
+                item.Status = ModInstallStatus.Installing;
+            }
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            var result = await ModService.InstallAsync(
+                _server, item.Mod.Provider, item.Mod.Id, null, progress, item.Cts.Token)
+                .ConfigureAwait(false);
+
             if (result.Success && result.InstalledMod != null)
             {
+                item.Status = ModInstallStatus.Completed;
+                item.ProgressPercent = 100;
                 _installedMods.Add(result.InstalledMod);
-                ToastService.ShowSuccess($"Successfully installed {mod.Name}");
-                StateHasChanged();
+                await InvokeAsync(() => ToastService.ShowSuccess($"Installed {item.Mod.Name}")).ConfigureAwait(false);
             }
             else
             {
-                ToastService.ShowError(result.Error ?? "Failed to install mod");
+                item.Status = ModInstallStatus.Failed;
+                item.ErrorMessage = result.Error ?? "Install failed";
+                await InvokeAsync(() => ToastService.ShowError(item.ErrorMessage)).ConfigureAwait(false);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            item.Status = ModInstallStatus.Failed;
+            item.ErrorMessage = "Cancelled";
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Install failed: {ex.Message}");
-            ToastService.ShowError($"Failed to install {mod.Name}");
+            item.Status = ModInstallStatus.Failed;
+            item.ErrorMessage = ex.Message;
+            await InvokeAsync(() => ToastService.ShowError($"Failed to install {item.Mod.Name}")).ConfigureAwait(false);
+        }
+
+        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+    }
+
+    private ModInstallQueueItem? GetQueueItem(ModSearchItem mod)
+    {
+        return _installQueue.FirstOrDefault(i =>
+            i.Mod.Id == mod.Id && i.Mod.Provider == mod.Provider &&
+            i.Status is not (ModInstallStatus.Completed or ModInstallStatus.Failed));
+    }
+
+    private void CancelQueueItem(ModInstallQueueItem item)
+    {
+        item.Cts.Cancel();
+        if (item.Status == ModInstallStatus.Pending)
+        {
+            item.Status = ModInstallStatus.Failed;
+            item.ErrorMessage = "Cancelled";
         }
     }
+
+    private void ClearCompletedFromQueue()
+    {
+        _installQueue.RemoveAll(i => i.Status is ModInstallStatus.Completed or ModInstallStatus.Failed);
+    }
+
+    private string GetQueueSummary()
+    {
+        var active = _installQueue.Count(i => i.Status is ModInstallStatus.Pending or ModInstallStatus.Downloading or ModInstallStatus.Installing);
+        var done = _installQueue.Count(i => i.Status == ModInstallStatus.Completed);
+        var failed = _installQueue.Count(i => i.Status == ModInstallStatus.Failed);
+
+        if (active > 0) return $"{active} in progress";
+        if (failed > 0) return $"{done} done, {failed} failed";
+        return $"{done} done";
+    }
+
+    private static string GetQueueStatusColor(ModInstallStatus status) => status switch
+    {
+        ModInstallStatus.Pending => "text-nebula-text-muted",
+        ModInstallStatus.Downloading or ModInstallStatus.Installing => "text-nebula-accent",
+        ModInstallStatus.Completed => "text-nebula-success",
+        ModInstallStatus.Failed => "text-nebula-error",
+        _ => "text-nebula-text-muted"
+    };
+
+    private static string GetQueueStatusText(ModInstallStatus status) => status switch
+    {
+        ModInstallStatus.Pending => "Queued",
+        ModInstallStatus.Downloading => "Downloading",
+        ModInstallStatus.Installing => "Installing",
+        ModInstallStatus.Completed => "Installed",
+        ModInstallStatus.Failed => "Failed",
+        _ => ""
+    };
 
     private async Task ToggleMod(ServerModDto mod)
     {
@@ -1101,5 +1380,45 @@
         return page == _currentPage
             ? $"{baseClass} bg-nebula-accent text-white"
             : $"{baseClass} text-nebula-text-secondary hover:bg-nebula-bg-tertiary";
+    }
+
+    private static string? GetModPageUrl(ModProviderType provider, string modId) => provider switch
+    {
+        ModProviderType.SptForge => $"https://forge.sp-tarkov.com/mod/{modId}",
+        ModProviderType.Modrinth => $"https://modrinth.com/mod/{modId}",
+        ModProviderType.CurseForge => $"https://www.curseforge.com/projects/{modId}",
+        ModProviderType.Modtale => $"https://modtale.net/project/{modId}",
+        ModProviderType.SteamWorkshop => $"https://steamcommunity.com/sharedfiles/filedetails/?id={modId}",
+        _ => null
+    };
+
+    private static string GetProviderDisplayName(ModProviderType provider) => provider switch
+    {
+        ModProviderType.SptForge => "SPT Forge",
+        ModProviderType.Modrinth => "Modrinth",
+        ModProviderType.CurseForge => "CurseForge",
+        ModProviderType.Modtale => "Modtale",
+        ModProviderType.SteamWorkshop => "Steam Workshop",
+        ModProviderType.Thunderstore => "Thunderstore",
+        ModProviderType.SpigotMC => "SpigotMC",
+        ModProviderType.Hangar => "Hangar",
+        ModProviderType.NexusMods => "Nexus Mods",
+        _ => provider.ToString()
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1_048_576) return $"{bytes / 1_048_576.0:F1} MB";
+        if (bytes >= 1024) return $"{bytes / 1024.0:F0} KB";
+        return $"{bytes} B";
+    }
+
+    public void Dispose()
+    {
+        foreach (var item in _installQueue)
+        {
+            item.Cts.Cancel();
+            item.Cts.Dispose();
+        }
     }
 }

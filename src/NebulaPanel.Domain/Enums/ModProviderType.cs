@@ -10,5 +10,6 @@ public enum ModProviderType
     SpigotMC,       // SpigotMC resources (Minecraft plugins)
     Hangar,         // PaperMC Hangar (Minecraft plugins)
     NexusMods,      // Nexus Mods (various games)
-    Modtale         // Modtale (Hytale)
+    Modtale,        // Modtale (Hytale)
+    SptForge        // SPT Forge (SPT/Tarkov mods)
 }

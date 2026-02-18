@@ -23,6 +23,7 @@ public class ApiKeyValidator(
             "curseforge" => await ValidateCurseForgeAsync(apiKey, cancellationToken).ConfigureAwait(false),
             "steam" => await ValidateSteamAsync(apiKey, cancellationToken).ConfigureAwait(false),
             "modtale" => await ValidateModtaleAsync(apiKey, cancellationToken).ConfigureAwait(false),
+            "sptforge" => await ValidateSptForgeAsync(apiKey, cancellationToken).ConfigureAwait(false),
             _ => (false, $"Unknown provider: {provider}")
         };
     }
@@ -122,6 +123,43 @@ public class ApiKeyValidator(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Modtale API key validation failed");
+            return (false, $"Validation failed: {ex.Message}");
+        }
+    }
+
+    private async Task<(bool Success, string? Message)> ValidateSptForgeAsync(
+        string apiKey, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = httpClientFactory.CreateClient("SptForge");
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(Timeout);
+
+            using var request = new HttpRequestMessage(HttpMethod.Get, "api/v0/mods?per_page=1");
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+            using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+
+            if (response.IsSuccessStatusCode)
+                return (true, "API key is valid");
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return (false, "API key is invalid or expired");
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                return (false, "API key does not have sufficient permissions");
+
+            return (false, $"Unexpected response: {(int)response.StatusCode}");
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, "Validation request timed out");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "SPT Forge API key validation failed");
             return (false, $"Validation failed: {ex.Message}");
         }
     }

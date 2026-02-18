@@ -224,9 +224,11 @@ public class SettingsService(
             CurseForgeConfigured: !string.IsNullOrWhiteSpace(integration.CurseForgeApiKey),
             SteamConfigured: !string.IsNullOrWhiteSpace(integration.SteamApiKey),
             ModtaleConfigured: !string.IsNullOrWhiteSpace(integration.ModtaleApiKey),
+            SptForgeConfigured: !string.IsNullOrWhiteSpace(integration.SptForgeApiKey),
             CurseForgeApiKeyMasked: MaskApiKey(TryDecrypt(integration.CurseForgeApiKey)),
             SteamApiKeyMasked: MaskApiKey(TryDecrypt(integration.SteamApiKey)),
-            ModtaleApiKeyMasked: MaskApiKey(TryDecrypt(integration.ModtaleApiKey)));
+            ModtaleApiKeyMasked: MaskApiKey(TryDecrypt(integration.ModtaleApiKey)),
+            SptForgeApiKeyMasked: MaskApiKey(TryDecrypt(integration.SptForgeApiKey)));
     }
 
     public async Task<Result<IntegrationSettingsDto>> UpdateIntegrationSettingsAsync(
@@ -253,7 +255,12 @@ public class SettingsService(
                 ? null
                 : request.ModtaleApiKey != null
                     ? encryptionService.Encrypt(request.ModtaleApiKey)
-                    : existing.ModtaleApiKey
+                    : existing.ModtaleApiKey,
+            SptForgeApiKey = request.ClearSptForge
+                ? null
+                : request.SptForgeApiKey != null
+                    ? encryptionService.Encrypt(request.SptForgeApiKey)
+                    : existing.SptForgeApiKey
         };
 
         settings.IntegrationSettingsJson = JsonSerializer.Serialize(updated, JsonOptions);
@@ -269,9 +276,11 @@ public class SettingsService(
             CurseForgeConfigured: !string.IsNullOrWhiteSpace(updated.CurseForgeApiKey),
             SteamConfigured: !string.IsNullOrWhiteSpace(updated.SteamApiKey),
             ModtaleConfigured: !string.IsNullOrWhiteSpace(updated.ModtaleApiKey),
+            SptForgeConfigured: !string.IsNullOrWhiteSpace(updated.SptForgeApiKey),
             CurseForgeApiKeyMasked: MaskApiKey(TryDecrypt(updated.CurseForgeApiKey)),
             SteamApiKeyMasked: MaskApiKey(TryDecrypt(updated.SteamApiKey)),
-            ModtaleApiKeyMasked: MaskApiKey(TryDecrypt(updated.ModtaleApiKey)));
+            ModtaleApiKeyMasked: MaskApiKey(TryDecrypt(updated.ModtaleApiKey)),
+            SptForgeApiKeyMasked: MaskApiKey(TryDecrypt(updated.SptForgeApiKey)));
     }
 
     private string? TryDecrypt(string? encrypted)
@@ -305,6 +314,7 @@ public class SettingsService(
         public string? CurseForgeApiKey { get; set; }
         public string? SteamApiKey { get; set; }
         public string? ModtaleApiKey { get; set; }
+        public string? SptForgeApiKey { get; set; }
     }
 
     #endregion

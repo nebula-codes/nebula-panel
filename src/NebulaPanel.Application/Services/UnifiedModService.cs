@@ -19,17 +19,20 @@ public class UnifiedModService : IUnifiedModService
     private readonly IEnumerable<IModProvider> _providers;
     private readonly IServerModRepository _serverModRepository;
     private readonly IGameServerRepository _gameServerRepository;
+    private readonly IModArchiveExtractor _archiveExtractor;
     private readonly ILogger<UnifiedModService> _logger;
 
     public UnifiedModService(
         IEnumerable<IModProvider> providers,
         IServerModRepository serverModRepository,
         IGameServerRepository gameServerRepository,
+        IModArchiveExtractor archiveExtractor,
         ILogger<UnifiedModService> logger)
     {
         _providers = providers;
         _serverModRepository = serverModRepository;
         _gameServerRepository = gameServerRepository;
+        _archiveExtractor = archiveExtractor;
         _logger = logger;
     }
 
@@ -238,6 +241,7 @@ public class UnifiedModService : IUnifiedModService
             var details = await modProvider.GetDetailsAsync(modId, cancellationToken).ConfigureAwait(false);
             if (details is null)
             {
+                _logger.LogWarning("Mod {ModId} not found on provider {Provider}", modId, provider);
                 return new InstallResult(false, null, "Mod not found", 0);
             }
 
@@ -261,6 +265,7 @@ public class UnifiedModService : IUnifiedModService
 
             if (versions.Count == 0)
             {
+                _logger.LogWarning("No compatible versions found for mod {ModId}, game version {GameVersion}", modId, gameVersion);
                 return new InstallResult(false, null, $"No compatible versions found for game version {gameVersion}", 0);
             }
 
@@ -271,6 +276,7 @@ public class UnifiedModService : IUnifiedModService
                 targetVersion = versions.FirstOrDefault(v => v.Id == versionId);
                 if (targetVersion is null)
                 {
+                    _logger.LogWarning("Version {VersionId} not found for mod {ModId}", versionId, modId);
                     return new InstallResult(false, null, $"Version {versionId} not found", 0);
                 }
             }
@@ -279,14 +285,19 @@ public class UnifiedModService : IUnifiedModService
                 targetVersion = versions[0]; // First is latest
             }
 
+            _logger.LogInformation("Selected version {Version} ({VersionId}) with {FileCount} files for mod {ModId}",
+                targetVersion.Version, targetVersion.Id, targetVersion.Files.Count, modId);
+
             // Determine mod install path
             var modInstallPath = GetModInstallPath(server);
             if (string.IsNullOrEmpty(modInstallPath))
             {
+                _logger.LogWarning("Could not determine mod install path for server {ServerId}", server.Id);
                 return new InstallResult(false, null, "Could not determine mod installation path", 0);
             }
 
             var fullInstallPath = Path.Combine(server.InstallPath, modInstallPath);
+            _logger.LogInformation("Downloading mod {ModId} to {Path}", modId, fullInstallPath);
 
             // Download the mod
             var downloadResult = await modProvider.DownloadAsync(
@@ -298,7 +309,33 @@ public class UnifiedModService : IUnifiedModService
 
             if (!downloadResult.Success)
             {
+                _logger.LogWarning("Download failed for mod {ModId}: {Error}", modId, downloadResult.Error);
                 return new InstallResult(false, null, downloadResult.Error ?? "Download failed", 0);
+            }
+
+            // Extract archive if the downloaded file is an archive
+            string? localPath = null;
+            if (downloadResult.FilePath is not null && IsArchive(downloadResult.FilePath))
+            {
+                _logger.LogInformation("Extracting archive {Archive} for mod {ModId}", downloadResult.FilePath, modId);
+                var extractResult = await _archiveExtractor.ExtractAsync(
+                    downloadResult.FilePath,
+                    server.InstallPath,
+                    modInstallPath!,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (!extractResult.Success)
+                {
+                    _logger.LogWarning("Extraction failed for mod {ModId}: {Error}", modId, extractResult.Error);
+                    return new InstallResult(false, null, extractResult.Error ?? "Extraction failed", 0);
+                }
+
+                localPath = extractResult.ExtractedPath;
+                _logger.LogInformation("Extracted mod {ModId} to {Path}", modId, localPath);
+            }
+            else if (downloadResult.FilePath is not null)
+            {
+                localPath = Path.GetRelativePath(server.InstallPath, downloadResult.FilePath);
             }
 
             // Get file info
@@ -316,9 +353,7 @@ public class UnifiedModService : IUnifiedModService
                 Provider = provider,
                 InstalledAt = DateTime.UtcNow,
                 IsEnabled = true,
-                LocalPath = downloadResult.FilePath is not null
-                    ? Path.GetRelativePath(server.InstallPath, downloadResult.FilePath)
-                    : null,
+                LocalPath = localPath,
                 IconUrl = details.IconUrl,
                 FileSizeBytes = primaryFile?.SizeBytes,
                 FileHash = downloadResult.FileHash
@@ -475,6 +510,27 @@ public class UnifiedModService : IUnifiedModService
                     continue;
                 }
 
+                // Extract archive if needed
+                string? depLocalPath = null;
+                if (downloadResult.FilePath is not null && IsArchive(downloadResult.FilePath))
+                {
+                    var extractResult = await _archiveExtractor.ExtractAsync(
+                        downloadResult.FilePath,
+                        server.InstallPath,
+                        modInstallPath ?? "mods",
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (extractResult.Success)
+                        depLocalPath = extractResult.ExtractedPath;
+                    else
+                        _logger.LogWarning("Extraction failed for dependency {ModId}: {Error}",
+                            dependency.ModId, extractResult.Error);
+                }
+                else if (downloadResult.FilePath is not null)
+                {
+                    depLocalPath = Path.GetRelativePath(server.InstallPath, downloadResult.FilePath);
+                }
+
                 // Create database record
                 var primaryFile = targetVersion.Files.FirstOrDefault(f => f.IsPrimary) ?? targetVersion.Files.FirstOrDefault();
                 var serverMod = new ServerMod
@@ -488,9 +544,7 @@ public class UnifiedModService : IUnifiedModService
                     Provider = providerType,
                     InstalledAt = DateTime.UtcNow,
                     IsEnabled = true,
-                    LocalPath = downloadResult.FilePath is not null
-                        ? Path.GetRelativePath(server.InstallPath, downloadResult.FilePath)
-                        : null,
+                    LocalPath = depLocalPath,
                     IconUrl = depDetails.IconUrl,
                     FileSizeBytes = primaryFile?.SizeBytes,
                     FileHash = downloadResult.FileHash
@@ -581,13 +635,17 @@ public class UnifiedModService : IUnifiedModService
                 return new InstallResult(false, null, "Already on the latest version", 0);
             }
 
-            // Delete old file if it exists
+            // Delete old files if they exist
             if (!string.IsNullOrEmpty(installedMod.LocalPath))
             {
-                var oldFilePath = Path.Combine(server.InstallPath, installedMod.LocalPath);
-                if (File.Exists(oldFilePath))
+                var oldPath = Path.Combine(server.InstallPath, installedMod.LocalPath);
+                if (Directory.Exists(oldPath))
                 {
-                    File.Delete(oldFilePath);
+                    Directory.Delete(oldPath, recursive: true);
+                }
+                else if (File.Exists(oldPath))
+                {
+                    File.Delete(oldPath);
                 }
             }
 
@@ -607,15 +665,33 @@ public class UnifiedModService : IUnifiedModService
                 return new InstallResult(false, null, downloadResult.Error ?? "Download failed", 0);
             }
 
+            // Extract archive if needed
+            string? updatedLocalPath = null;
+            if (downloadResult.FilePath is not null && IsArchive(downloadResult.FilePath))
+            {
+                var extractResult = await _archiveExtractor.ExtractAsync(
+                    downloadResult.FilePath,
+                    server.InstallPath,
+                    modInstallPath!,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (!extractResult.Success)
+                    return new InstallResult(false, null, extractResult.Error ?? "Extraction failed", 0);
+
+                updatedLocalPath = extractResult.ExtractedPath;
+            }
+            else if (downloadResult.FilePath is not null)
+            {
+                updatedLocalPath = Path.GetRelativePath(server.InstallPath, downloadResult.FilePath);
+            }
+
             // Update database record
             var primaryFile = latestVersion.Files.FirstOrDefault(f => f.IsPrimary) ?? latestVersion.Files.FirstOrDefault();
 
             installedMod.Version = latestVersion.Version;
             installedMod.VersionId = latestVersion.Id;
             installedMod.UpdatedAt = DateTime.UtcNow;
-            installedMod.LocalPath = downloadResult.FilePath is not null
-                ? Path.GetRelativePath(server.InstallPath, downloadResult.FilePath)
-                : null;
+            installedMod.LocalPath = updatedLocalPath;
             installedMod.FileSizeBytes = primaryFile?.SizeBytes;
             installedMod.FileHash = downloadResult.FileHash;
 
@@ -654,13 +730,29 @@ public class UnifiedModService : IUnifiedModService
 
         try
         {
-            // Delete the file if it exists (skip for server-managed mods — server handles files)
+            // Delete files/directory if they exist (skip for server-managed mods — server handles files)
             if (!IsServerManagedMods(server) && !string.IsNullOrEmpty(installedMod.LocalPath))
             {
-                var filePath = Path.Combine(server.InstallPath, installedMod.LocalPath);
-                if (File.Exists(filePath))
+                var modPath = Path.Combine(server.InstallPath, installedMod.LocalPath);
+
+                // Safety: never delete the install root or well-known shared directories
+                if (IsSafeToDelete(modPath, server.InstallPath))
                 {
-                    File.Delete(filePath);
+                    if (Directory.Exists(modPath))
+                    {
+                        Directory.Delete(modPath, recursive: true);
+                    }
+                    else if (File.Exists(modPath))
+                    {
+                        File.Delete(modPath);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Skipping deletion of {Path} — it is a shared/protected directory. " +
+                        "Mod files may need to be cleaned up manually.",
+                        modPath);
                 }
             }
 
@@ -1057,6 +1149,44 @@ public class UnifiedModService : IUnifiedModService
         }
 
         return "mods";
+    }
+
+    private static bool IsArchive(string filePath)
+    {
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        return ext is ".zip" or ".7z" or ".rar";
+    }
+
+    /// <summary>
+    /// Checks whether a path is safe to delete during mod uninstall.
+    /// Prevents accidental deletion of the server root, well-known game directories,
+    /// or any path that is a parent of the install root.
+    /// </summary>
+    private static bool IsSafeToDelete(string modPath, string serverInstallPath)
+    {
+        var fullModPath = Path.GetFullPath(modPath).TrimEnd(Path.DirectorySeparatorChar);
+        var fullInstallPath = Path.GetFullPath(serverInstallPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        // Never delete the server install root itself
+        if (fullModPath.Equals(fullInstallPath, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Never delete a parent of the install root
+        if (fullInstallPath.StartsWith(fullModPath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Never delete well-known shared directories
+        var relativePath = Path.GetRelativePath(fullInstallPath, fullModPath)
+            .Replace('\\', '/').TrimEnd('/').ToLowerInvariant();
+
+        string[] protectedPaths =
+        [
+            "spt", "spt/user", "spt/user/mods", "spt/bepinex", "spt/bepinex/plugins",
+            "user", "user/mods", "bepinex", "bepinex/plugins",
+            "mods", "plugins", "config",
+        ];
+
+        return !protectedPaths.Contains(relativePath);
     }
 
     /// <summary>

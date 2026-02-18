@@ -29,6 +29,8 @@ using NebulaPanel.Infrastructure.Steam;
 using NebulaPanel.Infrastructure.OfficialGames.Hytale;
 using NebulaPanel.Infrastructure.OfficialGames.ArkSurvivalAscended;
 using NebulaPanel.Infrastructure.OfficialGames.Terraria;
+using NebulaPanel.Infrastructure.OfficialGames.FikaSpt;
+using NebulaPanel.Infrastructure.ModProviders.SptForge;
 using NebulaPanel.Infrastructure.Security;
 using NebulaPanel.Infrastructure.Health;
 using NebulaPanel.Infrastructure.Webhooks;
@@ -221,11 +223,20 @@ public static class DependencyInjection
         services.AddSingleton<ArkVersionFetcher>();
         services.AddSingleton<ArkServerInstaller>();
 
+        // FIKA SPT integration
+        services.AddHttpClient("FikaSpt", client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NebulaPanel/1.0 (game-server-panel)");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddSingleton<FikaSptVersionFetcher>();
+
         // Official game providers and registry
         services.AddSingleton<IOfficialGameProvider, MinecraftProvider>();
         services.AddSingleton<IOfficialGameProvider, HytaleGameProvider>();
         services.AddSingleton<IOfficialGameProvider, TerrariaProvider>();
         services.AddSingleton<IOfficialGameProvider, ArkSurvivalAscendedProvider>();
+        services.AddSingleton<IOfficialGameProvider, FikaSptProvider>();
         // services.AddSingleton<IOfficialGameProvider, ValheimProvider>();
         services.AddSingleton<IOfficialGameRegistry, OfficialGameRegistry>();
 
@@ -282,6 +293,19 @@ public static class DependencyInjection
 
         // Steam Workshop mod provider
         services.AddSingleton<IModProvider, SteamWorkshopProvider>();
+
+        // SPT Forge mod provider (SPT/Tarkov mods)
+        services.AddHttpClient("SptForge", client =>
+        {
+            client.BaseAddress = new Uri("https://forge.sp-tarkov.com/");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NebulaPanel/1.0 (game-server-panel)");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddSingleton<SptForgeApiClient>();
+        services.AddSingleton<IModProvider, SptForgeProvider>();
+
+        // Mod archive extractor (zip/7z)
+        services.AddSingleton<IModArchiveExtractor, ModArchiveExtractor>();
 
         // FTB modpack provider (no auth required)
         services.AddHttpClient("FTB", client =>
