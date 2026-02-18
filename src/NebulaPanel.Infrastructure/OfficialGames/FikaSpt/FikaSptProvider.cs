@@ -67,11 +67,13 @@ public partial class FikaSptProvider(
     {
         var schemas = new Dictionary<string, ConfigurationSchema>();
         AddDockerEnvSchema(schemas);
+        AddFikaConfigSchema(schemas);
         return schemas;
     }
 
-    // Partial method implemented in Config/FikaSptProvider.DockerEnv.cs
+    // Partial methods implemented in Config/ partial class files
     static partial void AddDockerEnvSchema(Dictionary<string, ConfigurationSchema> schemas);
+    static partial void AddFikaConfigSchema(Dictionary<string, ConfigurationSchema> schemas);
 
     public string GetDefaultInstallPath(string serverName)
     {
