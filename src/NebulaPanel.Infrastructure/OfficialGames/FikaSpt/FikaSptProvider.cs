@@ -124,6 +124,10 @@ public partial class FikaSptProvider(
 
         Directory.CreateDirectory(server.InstallPath);
 
+        // Pre-create directories that the container would otherwise create as root,
+        // so NebulaPanel retains write access for mod installation and file management.
+        Directory.CreateDirectory(Path.Combine(server.InstallPath, "SPT", "user", "mods"));
+
         progress?.Report(OfficialInstallProgress.Progress("Setup",
             "Server directory created. Docker will pull the image on first start.", 50));
 
