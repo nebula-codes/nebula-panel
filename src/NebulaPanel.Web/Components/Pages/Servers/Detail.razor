@@ -2711,7 +2711,10 @@
 
     private void EditSettings()
     {
-        Navigation.NavigateTo($"/servers/{ServerId}/edit");
+        if (_server?.GameName == "Fika Headless Client")
+            Navigation.NavigateTo($"/servers/{ServerId}/edit/fika-headless");
+        else
+            Navigation.NavigateTo($"/servers/{ServerId}/edit");
     }
 
     // Startup Script Methods

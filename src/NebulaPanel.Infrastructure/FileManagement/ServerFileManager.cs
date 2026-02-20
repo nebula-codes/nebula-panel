@@ -59,6 +59,30 @@ public class ServerFileManager(ILogger<ServerFileManager> logger) : IServerFileM
             entries.Add(CreateFileEntry(server, file));
         }
 
+        // At root level, append synthetic entries for Docker volume mounts
+        if (string.IsNullOrEmpty(relativePath) && server.DockerConfig?.Volumes != null)
+        {
+            var volumes = server.DockerConfig.Volumes
+                .Where(v => !v.IsNamedVolume && !string.IsNullOrEmpty(v.HostPath))
+                .ToList();
+
+            for (int i = 0; i < volumes.Count; i++)
+            {
+                var vol = volumes[i];
+                if (!Directory.Exists(vol.HostPath)) continue;
+
+                var volDir = new DirectoryInfo(vol.HostPath);
+                entries.Add(new FileSystemEntry
+                {
+                    Name = $"[Volume] {vol.ContainerPath}",
+                    Path = $"vol:{i}",
+                    Type = FileEntryType.Directory,
+                    ModifiedAt = volDir.LastWriteTimeUtc,
+                    IsHidden = false
+                });
+            }
+        }
+
         return new FileSystemEntry
         {
             Name = string.IsNullOrEmpty(relativePath) ? server.Name : dirInfo.Name,
@@ -232,7 +256,11 @@ public class ServerFileManager(ILogger<ServerFileManager> logger) : IServerFileM
         ValidatePath(server, fullPath);
 
         var parentDir = Path.GetDirectoryName(fullPath);
-        var newPath = Path.Combine(parentDir ?? server.InstallPath, newName);
+        var baseRoot = server.InstallPath;
+        var volumeResult = TryResolveVolumePrefix(server, relativePath);
+        if (volumeResult.HasValue)
+            baseRoot = volumeResult.Value.BasePath;
+        var newPath = Path.Combine(parentDir ?? baseRoot, newName);
 
         // Validate the new path is also within bounds
         ValidatePath(server, newPath);
@@ -549,12 +577,109 @@ public class ServerFileManager(ILogger<ServerFileManager> logger) : IServerFileM
 
     #region Private Methods
 
+    private const string VolumePrefixBase = "vol:";
+
     /// <summary>
-    /// Resolves a relative path to an absolute path within the server's install directory.
+    /// Gets all allowed root paths for a server (InstallPath + Docker volume mount host paths).
+    /// </summary>
+    private static IReadOnlyList<string> GetAllowedRoots(GameServer server)
+    {
+        var roots = new List<string> { server.InstallPath };
+        if (server.DockerConfig?.Volumes != null)
+        {
+            foreach (var vol in server.DockerConfig.Volumes)
+            {
+                if (!vol.IsNamedVolume && !string.IsNullOrEmpty(vol.HostPath)
+                    && Directory.Exists(vol.HostPath))
+                    roots.Add(vol.HostPath);
+            }
+        }
+        return roots;
+    }
+
+    /// <summary>
+    /// Tries to resolve a volume prefix (e.g. "vol:0/some/path") to a base path and relative path.
+    /// Returns null if the path doesn't use a volume prefix.
+    /// </summary>
+    private static (string BasePath, string RelativePath)? TryResolveVolumePrefix(
+        GameServer server, string path)
+    {
+        if (!path.StartsWith(VolumePrefixBase))
+            return null;
+
+        var afterPrefix = path[VolumePrefixBase.Length..];
+        var slashIdx = afterPrefix.IndexOf('/');
+        var indexStr = slashIdx >= 0 ? afterPrefix[..slashIdx] : afterPrefix;
+        var rest = slashIdx >= 0 ? afterPrefix[(slashIdx + 1)..] : "";
+
+        if (!int.TryParse(indexStr, out var volIndex))
+            return null;
+
+        var volumes = server.DockerConfig?.Volumes?
+            .Where(v => !v.IsNamedVolume && !string.IsNullOrEmpty(v.HostPath))
+            .ToList();
+
+        if (volumes == null || volIndex < 0 || volIndex >= volumes.Count)
+            return null;
+
+        return (volumes[volIndex].HostPath, rest);
+    }
+
+    /// <summary>
+    /// Computes a relative path with volume prefix if the full path is under a volume mount.
+    /// Falls back to relative-to-InstallPath for paths under the install directory.
+    /// </summary>
+    private static string GetPrefixedRelativePath(GameServer server, string fullPath)
+    {
+        var normalizedFull = Path.GetFullPath(fullPath);
+        var normalizedInstall = Path.GetFullPath(server.InstallPath).TrimEnd(Path.DirectorySeparatorChar);
+
+        // Check if under InstallPath first
+        if (normalizedFull.StartsWith(normalizedInstall + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+            normalizedFull.Equals(normalizedInstall, StringComparison.OrdinalIgnoreCase))
+        {
+            return Path.GetRelativePath(server.InstallPath, fullPath);
+        }
+
+        // Check volume mounts
+        if (server.DockerConfig?.Volumes != null)
+        {
+            var volumes = server.DockerConfig.Volumes
+                .Where(v => !v.IsNamedVolume && !string.IsNullOrEmpty(v.HostPath))
+                .ToList();
+
+            for (int i = 0; i < volumes.Count; i++)
+            {
+                var normalizedVolRoot = Path.GetFullPath(volumes[i].HostPath).TrimEnd(Path.DirectorySeparatorChar);
+                if (normalizedFull.StartsWith(normalizedVolRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                    normalizedFull.Equals(normalizedVolRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    var rel = Path.GetRelativePath(volumes[i].HostPath, fullPath);
+                    return $"vol:{i}/{rel}";
+                }
+            }
+        }
+
+        // Fallback
+        return Path.GetRelativePath(server.InstallPath, fullPath);
+    }
+
+    /// <summary>
+    /// Resolves a relative path to an absolute path within the server's install directory
+    /// or a Docker volume mount host path (via "vol:N/" prefix).
     /// </summary>
     private static string ResolvePath(GameServer server, string relativePath)
     {
-        // Normalize the path separators and remove leading slashes
+        // Check for volume mount prefix
+        var volumeResult = TryResolveVolumePrefix(server, relativePath ?? "");
+        if (volumeResult.HasValue)
+        {
+            var (basePath, rest) = volumeResult.Value;
+            rest = rest.Replace('/', Path.DirectorySeparatorChar).TrimStart(Path.DirectorySeparatorChar);
+            return string.IsNullOrEmpty(rest) ? basePath : Path.Combine(basePath, rest);
+        }
+
+        // Default: resolve against InstallPath
         relativePath = relativePath?.Replace('/', Path.DirectorySeparatorChar)
             .TrimStart(Path.DirectorySeparatorChar) ?? "";
 
@@ -570,23 +695,29 @@ public class ServerFileManager(ILogger<ServerFileManager> logger) : IServerFileM
     }
 
     /// <summary>
-    /// Validates that the resolved path is within the server's install directory.
+    /// Validates that the resolved path is within the server's install directory
+    /// or an allowed Docker volume mount host path.
     /// Throws UnauthorizedAccessException if path traversal is detected.
     /// </summary>
     private void ValidatePath(GameServer server, string fullPath)
     {
-        var normalizedBase = Path.GetFullPath(server.InstallPath).TrimEnd(Path.DirectorySeparatorChar);
         var normalizedPath = Path.GetFullPath(fullPath);
 
-        if (!normalizedPath.StartsWith(normalizedBase + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-            !normalizedPath.Equals(normalizedBase, StringComparison.OrdinalIgnoreCase))
+        foreach (var root in GetAllowedRoots(server))
         {
-            _logger.LogWarning(
-                "Path traversal attempt detected. Server: {ServerId}, AttemptedPath: {Path}, BasePath: {BasePath}",
-                server.Id, fullPath, server.InstallPath);
-
-            throw new UnauthorizedAccessException("Access denied: path traversal detected.");
+            var normalizedBase = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+            if (normalizedPath.StartsWith(normalizedBase + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                normalizedPath.Equals(normalizedBase, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
         }
+
+        _logger.LogWarning(
+            "Path traversal attempt detected. Server: {ServerId}, AttemptedPath: {Path}, InstallPath: {BasePath}",
+            server.Id, fullPath, server.InstallPath);
+
+        throw new UnauthorizedAccessException("Access denied: path traversal detected.");
     }
 
     /// <summary>
@@ -594,7 +725,7 @@ public class ServerFileManager(ILogger<ServerFileManager> logger) : IServerFileM
     /// </summary>
     private FileSystemEntry CreateFileEntry(GameServer server, FileInfo file)
     {
-        var relativePath = Path.GetRelativePath(server.InstallPath, file.FullName);
+        var relativePath = GetPrefixedRelativePath(server, file.FullName);
         var extension = file.Extension.ToLowerInvariant();
 
         return new FileSystemEntry
@@ -616,7 +747,7 @@ public class ServerFileManager(ILogger<ServerFileManager> logger) : IServerFileM
     /// </summary>
     private FileSystemEntry CreateDirectoryEntry(GameServer server, DirectoryInfo dir)
     {
-        var relativePath = Path.GetRelativePath(server.InstallPath, dir.FullName);
+        var relativePath = GetPrefixedRelativePath(server, dir.FullName);
 
         return new FileSystemEntry
         {

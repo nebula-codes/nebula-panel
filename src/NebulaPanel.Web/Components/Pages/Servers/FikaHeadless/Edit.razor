@@ -1,0 +1,744 @@
+@page "/servers/{ServerId:guid}/edit/fika-headless"
+@attribute [Authorize]
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Enums
+@using NebulaPanel.Domain.Interfaces
+@using NebulaPanel.Domain.ValueObjects
+@inject IGameServerService ServerService
+@inject IGameService GameService
+@inject IFikaHeadlessService HeadlessService
+@inject IOfficialGameRegistry GameRegistry
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Edit Fika Headless Client - Nebula Panel</PageTitle>
+<NavigationLock OnBeforeInternalNavigation="OnBeforeInternalNavigation" ConfirmExternalNavigation="_isDirty" />
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    @if (_loading)
+    {
+        <SkeletonCard Variant="SkeletonCard.SkeletonVariant.SettingsForm" />
+    }
+    else if (_server is null)
+    {
+        <div class="text-center py-12">
+            <Icon Name="alert-circle" Size="IconSize.Large" Class="text-nebula-error mb-4" />
+            <h2 class="text-xl font-medium text-nebula-text-primary mb-2">Server Not Found</h2>
+            <p class="text-nebula-text-muted mb-4">@(_error ?? "The requested server could not be found.")</p>
+            <Button Variant="ButtonVariant.Secondary" Text="Back to Servers" OnClick="@(() => Navigation.NavigateTo("/servers"))" />
+        </div>
+    }
+    else
+    {
+        @* Breadcrumb *@
+        <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-4">
+            <a href="/servers" class="hover:text-nebula-text-primary transition-colors">Servers</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <a href="/servers/@ServerId" class="hover:text-nebula-text-primary transition-colors">@_server.Name</a>
+            <Icon Name="chevron-right" Size="IconSize.Small" />
+            <span class="text-nebula-text-primary">Edit</span>
+        </nav>
+
+        <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Edit Fika Headless Client</h1>
+        <p class="text-nebula-text-muted mb-6">Modify the Fika headless client configuration. Changes will take effect on next server start.</p>
+
+        <ErrorAlert Message="@_error" Class="mb-6" />
+        <ErrorAlert Message="@_success" Severity="ErrorAlert.ErrorSeverity.Success" Class="mb-6" />
+
+        @* Server Info (Read-only) *@
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Server Info</h2>
+            </Header>
+            <ChildContent>
+                <div class="flex items-center gap-4 p-2 bg-nebula-bg-secondary rounded-nebula">
+                    @if (!string.IsNullOrEmpty(_server.EffectiveIcon))
+                    {
+                        <img src="@_server.EffectiveIcon" alt="@_server.GameName" class="w-12 h-12 object-contain rounded-lg" />
+                    }
+                    else
+                    {
+                        <div class="w-12 h-12 bg-nebula-bg-tertiary rounded-lg flex items-center justify-center">
+                            <Icon Name="gamepad-2" Size="IconSize.Medium" Class="text-nebula-text-muted" />
+                        </div>
+                    }
+                    <div>
+                        <div class="font-medium text-nebula-text-primary">@_server.GameName</div>
+                        <div class="flex items-center gap-2 text-sm text-nebula-text-muted">
+                            <Icon Name="box" Size="IconSize.Small" />
+                            <span>Docker Deployment</span>
+                        </div>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        <div @oninput="() => _isDirty = true">
+        @* Basic Configuration *@
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Basic Configuration</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="form-group">
+                        <label class="label">Server Name <span class="text-nebula-error">*</span></label>
+                        <input type="text" @bind="_serverName" @bind:event="oninput" class="input" />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="label">Version / Image Tag</label>
+                        @if (_loadingVersions)
+                        {
+                            <div class="input flex items-center text-nebula-text-muted">
+                                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-nebula-accent mr-2"></div>
+                                Loading...
+                            </div>
+                        }
+                        else if (_versions.Count > 0)
+                        {
+                            <select @bind="_imageTag" @bind:after="() => _isDirty = true" class="input">
+                                @foreach (var v in _versions)
+                                {
+                                    <option value="@v.Version">@v.DisplayName @(v.IsRecommended ? "(Recommended)" : "")</option>
+                                }
+                                @if (!_versions.Any(v => v.Version == _imageTag))
+                                {
+                                    <option value="@_imageTag">@_imageTag (current)</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <input type="text" @bind="_imageTag" class="input" />
+                        }
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        @* Profile Selection *@
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Headless Profile</h2>
+            </Header>
+            <ChildContent>
+                @if (_loadingProfiles)
+                {
+                    <div class="flex items-center justify-center py-6">
+                        <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-nebula-accent"></div>
+                        <span class="ml-3 text-nebula-text-muted">Loading profiles...</span>
+                    </div>
+                }
+                else if (_profileError is not null)
+                {
+                    <div class="text-center py-4">
+                        <Icon Name="alert-triangle" Size="IconSize.Medium" Class="text-nebula-warning mx-auto mb-2" />
+                        <p class="text-nebula-text-muted text-sm">@_profileError</p>
+                        <p class="text-xs text-nebula-text-muted mt-2">Current Profile ID: <code>@_profileId</code></p>
+                    </div>
+                }
+                else if (_profiles.Count == 0)
+                {
+                    <div class="text-center py-4">
+                        <p class="text-nebula-text-muted text-sm mb-1">No profiles available from parent server.</p>
+                        <p class="text-xs text-nebula-text-muted">Current Profile ID: <code>@_profileId</code></p>
+                    </div>
+                }
+                else
+                {
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        @foreach (var profile in _profiles)
+                        {
+                            <div class="@GetProfileCardClass(profile.ProfileId)" @onclick="() => SelectProfile(profile)">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 bg-nebula-bg-tertiary rounded-full flex items-center justify-center shrink-0">
+                                        <Icon Name="user" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="font-medium text-nebula-text-primary truncate">
+                                            @(profile.Nickname ?? "Unnamed Profile")
+                                        </div>
+                                        <div class="flex items-center gap-2 text-xs text-nebula-text-muted">
+                                            @if (!string.IsNullOrEmpty(profile.Edition))
+                                            {
+                                                <span>@profile.Edition</span>
+                                            }
+                                            @if (!string.IsNullOrEmpty(profile.Side))
+                                            {
+                                                <span>@profile.Side</span>
+                                            }
+                                        </div>
+                                        <div class="text-xs text-nebula-text-muted truncate mt-0.5">
+                                            <code>@profile.ProfileId</code>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </ChildContent>
+        </Card>
+
+        @* Connection Settings *@
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Connection Settings</h2>
+            </Header>
+            <ChildContent>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="form-group">
+                        <label class="label">Server URL <span class="text-nebula-error">*</span></label>
+                        <input type="text" @bind="_serverUrl" class="input" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Hostname of the parent Fika SPT server (Docker container name).</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="label">Server Port</label>
+                        <input type="number" value="@_serverPort" class="input bg-nebula-bg-tertiary" disabled />
+                        <p class="text-xs text-nebula-text-muted mt-1">Derived from parent server. Change on the parent.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="label">P2P Port <span class="text-nebula-error">*</span></label>
+                        <input type="number" @bind="_p2pPort" class="input" min="1024" max="65535" />
+                        <p class="text-xs text-nebula-text-muted mt-1">UDP port for peer-to-peer raid connections.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div class="form-group">
+                        <label class="label">Docker Network</label>
+                        <input type="text" @bind="_dockerNetwork" class="input" placeholder="bridge" />
+                        <p class="text-xs text-nebula-text-muted mt-1">Should match the parent server's Docker network.</p>
+                    </div>
+
+                    <div class="form-group flex items-center gap-3 pt-6">
+                        <input type="checkbox" id="https" @bind="_useHttps" @bind:after="() => _isDirty = true" class="checkbox" />
+                        <div>
+                            <label for="https" class="text-sm text-nebula-text-primary cursor-pointer">HTTPS</label>
+                            <p class="text-xs text-nebula-text-muted">Enable HTTPS for connection to SPT server.</p>
+                        </div>
+                    </div>
+                </div>
+            </ChildContent>
+        </Card>
+
+        @* Game Client Path *@
+        <Card Class="mb-6">
+            <Header>
+                <h2 class="text-lg font-medium text-nebula-text-primary">Game Client Path</h2>
+            </Header>
+            <ChildContent>
+                <div class="form-group">
+                    <label class="label">EFT Game Client Path <span class="text-nebula-error">*</span></label>
+                    <input type="text" @bind="_gameClientPath" @bind:event="oninput" class="input"
+                           placeholder="/app/servers/eft-client" />
+                    <p class="text-xs text-nebula-text-muted mt-1">Path to the EFT game client files with the Fika client mod installed. Mounted to <code>/opt/tarkov</code> in the container. Must contain <code>EscapeFromTarkov.exe</code>.</p>
+                </div>
+            </ChildContent>
+        </Card>
+
+        @* Advanced Settings (Collapsible) *@
+        <div class="border border-nebula-border-subtle rounded-nebula overflow-hidden mb-6 bg-nebula-bg-secondary">
+            <button type="button"
+                    class="w-full flex items-center justify-between p-4 text-left hover:bg-nebula-bg-tertiary transition-colors"
+                    @onclick="() => _showAdvanced = !_showAdvanced">
+                <span class="text-lg font-medium text-nebula-text-primary">Advanced Settings</span>
+                <Icon Name="@(_showAdvanced ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+            </button>
+            @if (_showAdvanced)
+            {
+                <div class="p-4 pt-0 border-t border-nebula-border-subtle space-y-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="esync" @bind="_esync" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="esync" class="text-sm text-nebula-text-primary">Esync</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="fsync" @bind="_fsync" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="fsync" class="text-sm text-nebula-text-primary">Fsync</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="ntsync" @bind="_ntsync" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="ntsync" class="text-sm text-nebula-text-primary">NTSync</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="autoRestart" @bind="_autoRestart" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="autoRestart" class="text-sm text-nebula-text-primary">Auto-Restart</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="logPurge" @bind="_enableLogPurge" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="logPurge" class="text-sm text-nebula-text-primary">Log Purge</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="modsync" @bind="_useModSync" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="modsync" class="text-sm text-nebula-text-primary">ModSync</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="dgpu" @bind="_useDgpu" @bind:after="() => _isDirty = true" class="checkbox" />
+                            <label for="dgpu" class="text-sm text-nebula-text-primary">Discrete GPU</label>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="form-group">
+                            <label class="label">Max Memory (MB)</label>
+                            <input type="number" @bind="_maxMemoryMb" class="input" min="0" placeholder="0 = unlimited" />
+                        </div>
+                        <div class="form-group">
+                            <label class="label">Max CPU (%)</label>
+                            <input type="number" @bind="_maxCpuPercent" class="input" min="0" max="100" placeholder="0 = unlimited" />
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* Actions *@
+        <div class="flex items-center justify-between gap-3">
+            <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+            <Button Variant="ButtonVariant.Primary" Text="Save Changes" IconName="check" Loading="_saving" OnClick="SaveChanges" />
+        </div>
+        </div> @* end oninput wrapper *@
+    }
+</div>
+
+@code {
+    [Parameter]
+    public Guid ServerId { get; set; }
+
+    private bool _loading = true;
+    private bool _saving;
+    private bool _isDirty;
+    private bool _navigationAllowed;
+    private string? _error;
+    private string? _success;
+    private GameServerDto? _server;
+
+    // Basic
+    private string _serverName = "";
+    private string _imageTag = "";
+
+    // Profile
+    private string _profileId = "";
+    private bool _loadingProfiles;
+    private string? _profileError;
+    private List<FikaHeadlessProfileDto> _profiles = [];
+    private List<FikaParentServerDto> _parentServers = [];
+
+    // Connection
+    private string _serverUrl = "";
+    private string _serverPort = "";
+    private int _p2pPort = 25565;
+    private string _dockerNetwork = "";
+    private bool _useHttps = true;
+
+    // Game client
+    private string _gameClientPath = "";
+
+    // Advanced
+    private bool _showAdvanced;
+    private bool _esync = true;
+    private bool _fsync = true;
+    private bool _ntsync;
+    private bool _autoRestart = true;
+    private bool _enableLogPurge = true;
+    private bool _useModSync;
+    private bool _useDgpu;
+    private int _maxMemoryMb;
+    private int _maxCpuPercent;
+
+    // Versions
+    private bool _loadingVersions;
+    private List<GameVersionInfo> _versions = [];
+
+    private async Task OnBeforeInternalNavigation(LocationChangingContext context)
+    {
+        if (_navigationAllowed || !_isDirty || _saving)
+            return;
+
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            "You have unsaved changes. Are you sure you want to leave?");
+
+        if (!confirmed)
+            context.PreventNavigation();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadServerAsync();
+    }
+
+    private async Task LoadServerAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            var result = await ServerService.GetServerByIdAsync(ServerId);
+            if (!result.IsSuccess)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _server = result.Value;
+
+            // Verify this is a fika-headless server
+            var gameResult = await GameService.GetGameByIdAsync(_server!.GameId);
+            if (!gameResult.IsSuccess || gameResult.Value!.Slug != "fika-headless")
+            {
+                _error = "This server is not a Fika Headless Client. Use the standard edit page.";
+                _server = null;
+                return;
+            }
+
+            PopulateFromServer();
+
+            // Load profiles and versions in parallel
+            await Task.WhenAll(LoadProfilesAsync(), LoadVersionsAsync());
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void PopulateFromServer()
+    {
+        if (_server is null) return;
+
+        _serverName = _server.Name;
+
+        var env = _server.DockerConfig?.EnvironmentVariables ?? new Dictionary<string, string>();
+
+        // Extract Fika env vars
+        _profileId = env.GetValueOrDefault("PROFILE_ID", "");
+        _serverUrl = env.GetValueOrDefault("SERVER_URL", "fika-spt");
+        _serverPort = env.GetValueOrDefault("SERVER_PORT", "6969");
+        _useHttps = ParseBool(env.GetValueOrDefault("HTTPS", "true"));
+        _esync = ParseBool(env.GetValueOrDefault("ESYNC", "true"));
+        _fsync = ParseBool(env.GetValueOrDefault("FSYNC", "true"));
+        _ntsync = ParseBool(env.GetValueOrDefault("NTSYNC", "false"));
+        _autoRestart = ParseBool(env.GetValueOrDefault("AUTO_RESTART_ON_RAID_END", "true"));
+        _enableLogPurge = ParseBool(env.GetValueOrDefault("ENABLE_LOG_PURGE", "true"));
+        _useModSync = ParseBool(env.GetValueOrDefault("USE_MODSYNC", "false"));
+        _useDgpu = ParseBool(env.GetValueOrDefault("USE_DGPU", "false"));
+
+        // Docker config
+        _imageTag = _server.DockerConfig?.Tag ?? "latest";
+        _dockerNetwork = _server.DockerConfig?.Network ?? "";
+
+        // P2P port from the port mappings
+        var udpPort = _server.DockerConfig?.Ports?.FirstOrDefault(p => p.Protocol == "udp");
+        _p2pPort = udpPort?.HostPort ?? _server.PrimaryPort;
+
+        // Game client path from volumes (the one mounted to /opt/tarkov)
+        var tarkovMount = _server.DockerConfig?.Volumes?.FirstOrDefault(v => v.ContainerPath == "/opt/tarkov");
+        _gameClientPath = tarkovMount?.HostPath ?? "";
+
+        // Resource limits
+        var limits = _server.ResourceLimits;
+        _maxMemoryMb = limits?.MaxMemoryMb ?? 0;
+        _maxCpuPercent = limits?.MaxCpuPercent ?? 0;
+    }
+
+    private async Task LoadProfilesAsync()
+    {
+        try
+        {
+            _loadingProfiles = true;
+            StateHasChanged();
+
+            // Find a parent server to load profiles from.
+            // We look at the SERVER_URL + SERVER_PORT to identify the parent, but since the
+            // headless connects via Docker network name, we load all parents and try to match.
+            _parentServers = (await HeadlessService.GetAvailableParentServersAsync()).ToList();
+
+            // Try to find matching parent by port
+            if (int.TryParse(_serverPort, out var port))
+            {
+                var matchingParent = _parentServers.FirstOrDefault(p => p.PrimaryPort == port);
+                if (matchingParent is not null)
+                {
+                    var profileResult = await HeadlessService.GetAvailableProfilesAsync(matchingParent.Id);
+                    if (profileResult.IsSuccess)
+                    {
+                        _profiles = profileResult.Value!.ToList();
+                    }
+                    else
+                    {
+                        _profileError = profileResult.Error;
+                    }
+                    return;
+                }
+            }
+
+            // Fallback: try first parent server
+            if (_parentServers.Count > 0)
+            {
+                var profileResult = await HeadlessService.GetAvailableProfilesAsync(_parentServers[0].Id);
+                if (profileResult.IsSuccess)
+                {
+                    _profiles = profileResult.Value!.ToList();
+                }
+                else
+                {
+                    _profileError = profileResult.Error;
+                }
+            }
+            else
+            {
+                _profileError = "No parent Fika SPT servers found. Cannot load profiles.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _profileError = $"Failed to load profiles: {ex.Message}";
+        }
+        finally
+        {
+            _loadingProfiles = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadVersionsAsync()
+    {
+        try
+        {
+            _loadingVersions = true;
+            StateHasChanged();
+
+            var provider = GameRegistry.GetProvider("fika-headless");
+            if (provider is not null)
+            {
+                var versions = await provider.GetAvailableVersionsAsync();
+                _versions = versions.ToList();
+            }
+        }
+        catch
+        {
+            // Silently fail — user can still type a tag manually
+        }
+        finally
+        {
+            _loadingVersions = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectProfile(FikaHeadlessProfileDto profile)
+    {
+        _profileId = profile.ProfileId;
+        _isDirty = true;
+    }
+
+    private async Task SaveChanges()
+    {
+        if (_server is null) return;
+
+        try
+        {
+            _saving = true;
+            _error = null;
+            _success = null;
+
+            // Validate
+            if (string.IsNullOrWhiteSpace(_serverName))
+            {
+                _error = "Server name is required.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_serverUrl))
+            {
+                _error = "Server URL is required.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_gameClientPath))
+            {
+                _error = "Game client path is required.";
+                return;
+            }
+
+            if (!Directory.Exists(_gameClientPath))
+            {
+                _error = $"Game client path does not exist: {_gameClientPath}";
+                return;
+            }
+
+            if (!File.Exists(Path.Combine(_gameClientPath, "EscapeFromTarkov.exe")))
+            {
+                _error = $"Game client path does not contain EscapeFromTarkov.exe: {_gameClientPath}";
+                return;
+            }
+
+            if (_p2pPort < 1024 || _p2pPort > 65535)
+            {
+                _error = "P2P port must be between 1024 and 65535.";
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_profileId))
+            {
+                _error = "A profile must be selected.";
+                return;
+            }
+
+            // Build env vars
+            var envVars = new Dictionary<string, string>
+            {
+                ["PROFILE_ID"] = _profileId,
+                ["SERVER_URL"] = _serverUrl,
+                ["SERVER_PORT"] = _serverPort,
+                ["HTTPS"] = _useHttps.ToString().ToLowerInvariant(),
+                ["ESYNC"] = _esync.ToString().ToLowerInvariant(),
+                ["FSYNC"] = _fsync.ToString().ToLowerInvariant(),
+                ["NTSYNC"] = _ntsync.ToString().ToLowerInvariant(),
+                ["AUTO_RESTART_ON_RAID_END"] = _autoRestart.ToString().ToLowerInvariant(),
+                ["ENABLE_LOG_PURGE"] = _enableLogPurge.ToString().ToLowerInvariant(),
+                ["USE_MODSYNC"] = _useModSync.ToString().ToLowerInvariant(),
+                ["USE_DGPU"] = _useDgpu.ToString().ToLowerInvariant()
+            };
+
+            // Preserve any extra env vars not managed by this form
+            if (_server.DockerConfig?.EnvironmentVariables is not null)
+            {
+                foreach (var kvp in _server.DockerConfig.EnvironmentVariables)
+                {
+                    if (!envVars.ContainsKey(kvp.Key))
+                        envVars[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // Volume: mount game client path to /opt/tarkov
+            var volumes = new List<VolumeMountRequest>
+            {
+                new(_gameClientPath, "/opt/tarkov", ReadOnly: false)
+            };
+
+            // Preserve any extra volumes not targeting /opt/tarkov
+            if (_server.DockerConfig?.Volumes is not null)
+            {
+                foreach (var vol in _server.DockerConfig.Volumes)
+                {
+                    if (vol.ContainerPath != "/opt/tarkov")
+                        volumes.Add(new VolumeMountRequest(vol.HostPath, vol.ContainerPath, vol.ReadOnly));
+                }
+            }
+
+            // P2P UDP port
+            var ports = new List<PortMappingRequest>
+            {
+                new(_p2pPort, _p2pPort, "udp")
+            };
+
+            // Preserve any extra ports that aren't the UDP p2p port
+            if (_server.DockerConfig?.Ports is not null)
+            {
+                foreach (var p in _server.DockerConfig.Ports)
+                {
+                    if (p.Protocol != "udp")
+                        ports.Add(new PortMappingRequest(p.HostPort, p.ContainerPort, p.Protocol));
+                }
+            }
+
+            var dockerConfig = new DockerConfigurationRequest(
+                Image: _server.DockerConfig?.Image ?? "ghcr.io/zhliau/fika-headless-docker",
+                Tag: _imageTag,
+                EnvironmentVariables: envVars,
+                Volumes: volumes,
+                Ports: ports,
+                Network: string.IsNullOrWhiteSpace(_dockerNetwork) ? null : _dockerNetwork,
+                Limits: (_maxMemoryMb > 0 || _maxCpuPercent > 0) ? new ResourceLimitsRequest(
+                    MaxMemoryMb: _maxMemoryMb > 0 ? _maxMemoryMb : null,
+                    MaxCpuPercent: _maxCpuPercent > 0 ? _maxCpuPercent : null,
+                    MaxDiskMb: null,
+                    MaxNetworkMbps: null) : null,
+                RestartPolicy: _server.DockerConfig?.RestartPolicy ?? RestartPolicy.UnlessStopped,
+                RunAsRoot: _server.DockerConfig?.RunAsRoot ?? true
+            );
+
+            var request = new UpdateGameServerRequest(
+                Name: _serverName,
+                Description: _server.Description,
+                IconUrl: _server.IconPath,
+                InstallPath: _server.InstallPath,
+                PrimaryPort: _p2pPort,
+                AdditionalPorts: _server.AdditionalPorts.Count > 0 ? _server.AdditionalPorts : null,
+                BindAddress: _server.BindAddress,
+                DockerConfig: dockerConfig,
+                NativeConfig: null,
+                RconConfig: null,
+                ResourceLimits: (_maxMemoryMb > 0 || _maxCpuPercent > 0) ? new ResourceLimitsRequest(
+                    MaxMemoryMb: _maxMemoryMb > 0 ? _maxMemoryMb : null,
+                    MaxCpuPercent: _maxCpuPercent > 0 ? _maxCpuPercent : null,
+                    MaxDiskMb: null,
+                    MaxNetworkMbps: null) : null
+            );
+
+            var updateResult = await ServerService.UpdateServerAsync(ServerId, request);
+            if (!updateResult.IsSuccess)
+            {
+                _error = updateResult.Error;
+                return;
+            }
+
+            // Recreate container if one exists and server is stopped
+            if (!string.IsNullOrEmpty(_server.DockerContainerId) &&
+                _server.Status != ServerStatus.Running &&
+                _server.Status != ServerStatus.Starting)
+            {
+                var recreateResult = await ServerService.RecreateContainerAsync(ServerId);
+                if (!recreateResult.IsSuccess)
+                {
+                    _success = "Settings saved, but container recreation failed: " + recreateResult.Error +
+                               " The container will be recreated on next start.";
+                    _isDirty = false;
+                    _server = updateResult.Value;
+                    return;
+                }
+            }
+
+            _isDirty = false;
+            _success = string.IsNullOrEmpty(_server.DockerContainerId)
+                ? "Settings saved. Changes will take effect when the server starts."
+                : "Settings saved and container recreated. Changes will take effect on next start.";
+            _server = updateResult.Value;
+            PopulateFromServer();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        _navigationAllowed = true;
+        Navigation.NavigateTo($"/servers/{ServerId}");
+    }
+
+    private static bool ParseBool(string value) =>
+        value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+        value == "1";
+
+    private string GetProfileCardClass(string profileId) =>
+        _profileId == profileId
+            ? "p-3 rounded-nebula border-2 border-nebula-accent bg-nebula-accent/5 cursor-pointer transition-all"
+            : "p-3 rounded-nebula border-2 border-nebula-border-subtle cursor-pointer hover:border-nebula-accent/50 bg-nebula-bg-secondary transition-all";
+}

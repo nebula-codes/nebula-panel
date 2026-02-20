@@ -253,8 +253,8 @@
 
                             <div class="form-group">
                                 <label class="label">Server URL</label>
-                                <input type="text" @bind="_serverUrl" class="input" placeholder="https://fika-server:6969" />
-                                <p class="text-xs text-nebula-text-muted mt-1">URL of the parent Fika SPT server.</p>
+                                <input type="text" @bind="_serverUrl" class="input" placeholder="fika-spt" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Hostname of the parent Fika SPT server (Docker container name). Port and protocol are set separately.</p>
                             </div>
                         </div>
 
@@ -543,9 +543,9 @@
         if (string.IsNullOrWhiteSpace(_serverName))
             _serverName = $"{_selectedParent!.Name} - Headless";
 
-        // Auto-compute server URL
+        // Auto-compute server URL (just hostname — protocol comes from HTTPS env var, port from SERVER_PORT)
         if (string.IsNullOrWhiteSpace(_serverUrl))
-            _serverUrl = $"https://fika-spt:{_selectedParent!.PrimaryPort}";
+            _serverUrl = "fika-spt";
 
         // Load versions
         await LoadVersionsAsync();
