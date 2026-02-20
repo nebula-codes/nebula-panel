@@ -188,7 +188,7 @@ public class ServerFilesController(
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Upload results.</returns>
     [HttpPost("upload")]
-    [RequestSizeLimit(100 * 1024 * 1024)] // 100MB
+    [RequestSizeLimit(2L * 1024 * 1024 * 1024)] // 2GB
     public async Task<ActionResult<BulkUploadResult>> UploadFiles(
         Guid serverId,
         [FromQuery] string path = "",
@@ -394,7 +394,7 @@ public class ServerFilesController(
     /// <param name="ct">Cancellation token.</param>
     /// <returns>No content on success.</returns>
     [HttpPost("extract")]
-    [RequestSizeLimit(100 * 1024 * 1024)] // 100MB
+    [RequestSizeLimit(2L * 1024 * 1024 * 1024)] // 2GB
     public async Task<ActionResult> ExtractArchive(
         Guid serverId,
         [FromQuery] string path = "",

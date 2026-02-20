@@ -560,6 +560,13 @@ public class DockerServerExecutor : IServerExecutor, IDisposable
             _logger.LogInformation("Stopped container {ContainerId} for server {ServerId}",
                 server.DockerContainerId, server.Id);
 
+            // Reclaim file ownership after RunAsRoot containers to prevent permission issues
+            // with mod installation, file management, and server deletion
+            if (server.DockerConfig is { RunAsRoot: true })
+            {
+                await EnsureHostPathOwnershipAsync(server, server.DockerConfig, ct).ConfigureAwait(false);
+            }
+
             // End Hytale game session if applicable
             if (IsHytaleServer(server))
             {

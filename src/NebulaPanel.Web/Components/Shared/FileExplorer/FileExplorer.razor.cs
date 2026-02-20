@@ -413,7 +413,7 @@ public partial class FileExplorer : ComponentBase
         {
             foreach (var file in files)
             {
-                await using var browserStream = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+                await using var browserStream = file.OpenReadStream(maxAllowedSize: 2L * 1024 * 1024 * 1024);
                 using var memoryStream = new MemoryStream();
                 await browserStream.CopyToAsync(memoryStream);
                 fileDataList.Add((file.Name, file.Size, memoryStream.ToArray()));

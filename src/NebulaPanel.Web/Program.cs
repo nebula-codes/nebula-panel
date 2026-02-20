@@ -42,6 +42,12 @@ if (!string.IsNullOrEmpty(urls))
     builder.WebHost.UseUrls(urls.Split(';'));
 }
 
+// Allow large file uploads (2GB) for the file browser
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 2L * 1024 * 1024 * 1024;
+});
+
 // Validate JWT secret is configured in production
 if (builder.Environment.IsProduction())
 {

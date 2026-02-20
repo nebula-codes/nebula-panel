@@ -339,8 +339,10 @@ public sealed class ModArchiveExtractor(ILogger<ModArchiveExtractor> logger) : I
         [
             "7z",
             "7za",
+            "7zz",
             "/usr/bin/7z",
             "/usr/bin/7za",
+            "/usr/bin/7zz",
             "/usr/local/bin/7z",
         ];
 

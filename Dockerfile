@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tar \
     procps \
     gosu \
+    p7zip-full \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security (use high UID/GID to avoid conflicts)
