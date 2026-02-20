@@ -580,6 +580,11 @@
                 Navigation.NavigateTo("/servers/create/hytale");
                 return;
             }
+            if (game.Slug == "fika-headless")
+            {
+                Navigation.NavigateTo("/servers/create/fika-headless");
+                return;
+            }
         }
 
         var result = await GameService.GetGameByIdAsync(game.Id);
@@ -897,6 +902,25 @@
                 ["ENABLE_PROFILE_BACKUP"] = "true",
                 ["UID"] = "1000",
                 ["GID"] = "1000"
+            };
+        }
+        else if (_selectedGame?.Slug == "fika-headless")
+        {
+            // Fika Headless Client needs root for Wine/Xvfb
+            runAsRoot = true;
+
+            // P2P UDP port for raid connections
+            var p2pPort = _model.PrimaryPort > 0 ? _model.PrimaryPort : 25565;
+            ports =
+            [
+                new PortMappingRequest(p2pPort, p2pPort, "udp")
+            ];
+
+            envVars = new Dictionary<string, string>
+            {
+                ["PROFILE_ID"] = "",
+                ["SERVER_URL"] = "",
+                ["SERVER_PORT"] = "6969"
             };
         }
 

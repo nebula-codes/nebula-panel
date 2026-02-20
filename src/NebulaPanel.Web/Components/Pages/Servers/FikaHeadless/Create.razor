@@ -1,0 +1,804 @@
+@page "/servers/create/fika-headless"
+@attribute [Authorize]
+@using System.Security.Claims
+@using NebulaPanel.Application.DTOs
+@using NebulaPanel.Application.Services
+@using NebulaPanel.Domain.Interfaces
+@inject IFikaHeadlessService HeadlessService
+@inject IGameServerService ServerService
+@inject IGameService GameService
+@inject IOfficialGameRegistry GameRegistry
+@inject IServerPathResolver PathResolver
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Create Fika Headless Client - Nebula Panel</PageTitle>
+
+<div class="max-w-4xl mx-auto py-6 px-4">
+    @* Breadcrumb *@
+    <nav class="flex items-center gap-2 text-sm text-nebula-text-muted mb-4">
+        <a href="/servers" class="hover:text-nebula-text-primary transition-colors">Servers</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <a href="/servers/create" class="hover:text-nebula-text-primary transition-colors">Create</a>
+        <Icon Name="chevron-right" Size="IconSize.Small" />
+        <span class="text-nebula-text-primary">Fika Headless Client</span>
+    </nav>
+
+    <h1 class="text-2xl font-semibold text-nebula-text-primary mb-2">Create Fika Headless Client</h1>
+    <p class="text-nebula-text-muted mb-6">Configure a headless client that connects to an existing Fika SPT server to host raids.</p>
+
+    @* Step Indicator *@
+    <div class="flex items-center justify-center mb-8">
+        @for (int i = 1; i <= 3; i++)
+        {
+            var step = i;
+            <div class="flex items-center">
+                <div class="@GetStepClass(step)">
+                    @if (_currentStep > step)
+                    {
+                        <Icon Name="check" Size="IconSize.Small" />
+                    }
+                    else
+                    {
+                        @step
+                    }
+                </div>
+                <span class="@GetStepLabelClass(step) ml-2 text-sm hidden sm:inline">@GetStepLabel(step)</span>
+                @if (i < 3)
+                {
+                    <div class="w-6 sm:w-12 h-0.5 mx-2 sm:mx-3 @(_currentStep > step ? "bg-nebula-accent" : "bg-nebula-border-subtle")"></div>
+                }
+            </div>
+        }
+    </div>
+
+    <ErrorAlert Message="@_error" Class="mb-6" />
+
+    @switch (_currentStep)
+    {
+        case 1:
+            @* Step 1: Parent Server & Profile Selection *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Select Parent Server</h2>
+                </Header>
+                <ChildContent>
+                    @if (_loadingParents)
+                    {
+                        <div class="flex items-center justify-center py-8">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+                            <span class="ml-3 text-nebula-text-muted">Loading Fika SPT servers...</span>
+                        </div>
+                    }
+                    else if (_parentServers.Count == 0)
+                    {
+                        <div class="text-center py-8">
+                            <div class="w-16 h-16 bg-nebula-bg-tertiary rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Icon Name="server" Size="IconSize.Large" Class="text-nebula-text-muted" />
+                            </div>
+                            <p class="text-nebula-text-muted mb-2">No Fika SPT servers found.</p>
+                            <p class="text-sm text-nebula-text-muted mb-4">You need to create a Fika SPT server first before adding a headless client.</p>
+                            <Button Variant="ButtonVariant.Primary" Text="Create Fika SPT Server" OnClick="@(() => Navigation.NavigateTo("/servers/create"))" />
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="text-nebula-text-muted mb-4">Choose which Fika SPT server this headless client will connect to.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            @foreach (var parent in _parentServers)
+                            {
+                                <div class="@GetParentCardClass(parent.Id)" @onclick="async () => await SelectParentServer(parent)">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="font-medium text-nebula-text-primary">@parent.Name</span>
+                                        <StatusBadge Status="@GetServerStatusType(parent.Status)"
+                                                     Text="@parent.Status.ToString()"
+                                                     ShowDot="true" />
+                                    </div>
+                                    <div class="space-y-1 text-sm">
+                                        <div class="flex justify-between">
+                                            <span class="text-nebula-text-muted">Port</span>
+                                            <code class="text-nebula-text-secondary">@parent.PrimaryPort</code>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(parent.InstalledVersion))
+                                        {
+                                            <div class="flex justify-between">
+                                                <span class="text-nebula-text-muted">Version</span>
+                                                <span class="text-nebula-text-secondary">@parent.InstalledVersion</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </ChildContent>
+            </Card>
+
+            @if (_selectedParent is not null)
+            {
+                <Card Class="mb-6">
+                    <Header>
+                        <h2 class="text-lg font-medium text-nebula-text-primary">Select Headless Profile</h2>
+                    </Header>
+                    <ChildContent>
+                        @if (_loadingProfiles)
+                        {
+                            <div class="flex items-center justify-center py-8">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-nebula-accent"></div>
+                                <span class="ml-3 text-nebula-text-muted">Loading profiles...</span>
+                            </div>
+                        }
+                        else if (_profileError is not null)
+                        {
+                            <div class="text-center py-6">
+                                <Icon Name="alert-triangle" Size="IconSize.Large" Class="text-nebula-warning mx-auto mb-3" />
+                                <p class="text-nebula-text-muted">@_profileError</p>
+                            </div>
+                        }
+                        else if (_profiles.Count == 0)
+                        {
+                            <div class="text-center py-6">
+                                <Icon Name="user" Size="IconSize.Large" Class="text-nebula-text-muted mx-auto mb-3" />
+                                <p class="text-nebula-text-muted mb-2">No headless profiles found.</p>
+                                <p class="text-sm text-nebula-text-muted">Set <code class="text-nebula-accent">NUM_HEADLESS_PROFILES</code> on the parent server and restart it to generate profiles.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-nebula-text-muted mb-4">Choose which profile the headless client will use.</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                @foreach (var profile in _profiles)
+                                {
+                                    <div class="@GetProfileCardClass(profile.ProfileId)" @onclick="() => SelectProfile(profile)">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-10 h-10 bg-nebula-bg-tertiary rounded-full flex items-center justify-center shrink-0">
+                                                <Icon Name="user" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                            </div>
+                                            <div class="min-w-0">
+                                                <div class="font-medium text-nebula-text-primary truncate">
+                                                    @(profile.Nickname ?? "Unnamed Profile")
+                                                </div>
+                                                <div class="flex items-center gap-2 text-xs text-nebula-text-muted">
+                                                    @if (!string.IsNullOrEmpty(profile.Edition))
+                                                    {
+                                                        <span>@profile.Edition</span>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(profile.Side))
+                                                    {
+                                                        <span>@profile.Side</span>
+                                                    }
+                                                </div>
+                                                <div class="text-xs text-nebula-text-muted truncate mt-0.5">
+                                                    <code>@profile.ProfileId</code>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </ChildContent>
+                </Card>
+            }
+
+            <div class="flex items-center justify-end gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Cancel" OnClick="Cancel" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                        Disabled="@(_selectedParent is null || _selectedProfile is null)" OnClick="GoToStep2" />
+            </div>
+            break;
+
+        case 2:
+            @* Step 2: Server Configuration *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Server Configuration</h2>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="form-group">
+                                <label class="label">Server Name <span class="text-nebula-error">*</span></label>
+                                <input type="text" @bind="_serverName" @bind:event="oninput" class="input"
+                                       placeholder="My Fika Headless" />
+                            </div>
+
+                            <div class="form-group">
+                                <label class="label">Version</label>
+                                @if (_loadingVersions)
+                                {
+                                    <div class="input flex items-center text-nebula-text-muted">
+                                        <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-nebula-accent mr-2"></div>
+                                        Loading...
+                                    </div>
+                                }
+                                else
+                                {
+                                    <select @bind="_selectedVersion" class="input">
+                                        @foreach (var v in _versions)
+                                        {
+                                            <option value="@v.Version">@v.DisplayName @(v.IsRecommended ? "(Recommended)" : "")</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="label">Install Path</label>
+                            <input type="text" @bind="_installPath" class="input"
+                                   placeholder="Auto-generated from server name" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Directory for headless client data. The parent server's SPT files are shared via Docker volume mount.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="label">Game Client Path <span class="text-nebula-error">*</span></label>
+                            <input type="text" @bind="_gameClientPath" @bind:event="oninput" class="input"
+                                   placeholder="/app/servers/eft-client" />
+                            <p class="text-xs text-nebula-text-muted mt-1">Path to the EFT game client files with the Fika client mod installed. This directory is mounted to <code>/opt/tarkov</code> in the container. Must contain <code>EscapeFromTarkov.exe</code>.</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="form-group">
+                                <label class="label">P2P Port <span class="text-nebula-error">*</span></label>
+                                <input type="number" @bind="_p2pPort" class="input" min="1024" max="65535" />
+                                <p class="text-xs text-nebula-text-muted mt-1">UDP port for peer-to-peer raid connections (default: 25565).</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="label">Docker Network</label>
+                                <input type="text" @bind="_dockerNetwork" class="input" placeholder="bridge" />
+                                <p class="text-xs text-nebula-text-muted mt-1">Should match the parent server's Docker network.</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="label">Server URL</label>
+                                <input type="text" @bind="_serverUrl" class="input" placeholder="https://fika-server:6969" />
+                                <p class="text-xs text-nebula-text-muted mt-1">URL of the parent Fika SPT server.</p>
+                            </div>
+                        </div>
+
+                        @* Advanced Settings (Collapsible) *@
+                        <div class="border border-nebula-border-subtle rounded-nebula overflow-hidden">
+                            <button type="button"
+                                    class="w-full flex items-center justify-between p-4 text-left hover:bg-nebula-bg-tertiary transition-colors"
+                                    @onclick="() => _showAdvanced = !_showAdvanced">
+                                <span class="text-sm font-medium text-nebula-text-primary">Advanced Settings</span>
+                                <Icon Name="@(_showAdvanced ? "chevron-up" : "chevron-down")" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                            </button>
+                            @if (_showAdvanced)
+                            {
+                                <div class="p-4 pt-0 border-t border-nebula-border-subtle space-y-4">
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="esync" @bind="_esync" class="checkbox" />
+                                            <label for="esync" class="text-sm text-nebula-text-primary">Esync</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="fsync" @bind="_fsync" class="checkbox" />
+                                            <label for="fsync" class="text-sm text-nebula-text-primary">Fsync</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="ntsync" @bind="_ntsync" class="checkbox" />
+                                            <label for="ntsync" class="text-sm text-nebula-text-primary">NTSync</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="https" @bind="_useHttps" class="checkbox" />
+                                            <label for="https" class="text-sm text-nebula-text-primary">HTTPS</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="autoRestart" @bind="_autoRestart" class="checkbox" />
+                                            <label for="autoRestart" class="text-sm text-nebula-text-primary">Auto-Restart</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="logPurge" @bind="_enableLogPurge" class="checkbox" />
+                                            <label for="logPurge" class="text-sm text-nebula-text-primary">Log Purge</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="modsync" @bind="_useModSync" class="checkbox" />
+                                            <label for="modsync" class="text-sm text-nebula-text-primary">ModSync</label>
+                                        </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="dgpu" @bind="_useDgpu" class="checkbox" />
+                                            <label for="dgpu" class="text-sm text-nebula-text-primary">Discrete GPU</label>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div class="form-group">
+                                            <label class="label">Max Memory (MB)</label>
+                                            <input type="number" @bind="_maxMemoryMb" class="input" min="0" placeholder="0 = unlimited" />
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="label">Max CPU (%)</label>
+                                            <input type="number" @bind="_maxCpuPercent" class="input" min="0" max="100" placeholder="0 = unlimited" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Next" IconName="arrow-right"
+                        Disabled="@(!IsStep2Valid)" OnClick="NextStep" />
+            </div>
+            break;
+
+        case 3:
+            @* Step 3: Review & Create *@
+            <Card Class="mb-6">
+                <Header>
+                    <h2 class="text-lg font-medium text-nebula-text-primary">Review & Create</h2>
+                </Header>
+                <ChildContent>
+                    <div class="space-y-6">
+                        @* Parent Server *@
+                        <div>
+                            <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Parent Server</h3>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Server</span>
+                                    <span class="text-nebula-text-primary font-medium">@_selectedParent?.Name</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Port</span>
+                                    <code class="text-nebula-text-secondary">@_selectedParent?.PrimaryPort</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* Profile *@
+                        <div>
+                            <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Profile</h3>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Nickname</span>
+                                    <span class="text-nebula-text-primary font-medium">@(_selectedProfile?.Nickname ?? "Unnamed")</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Profile ID</span>
+                                    <code class="text-nebula-text-secondary text-sm">@_selectedProfile?.ProfileId</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* Server Info *@
+                        <div>
+                            <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Headless Client</h3>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4 space-y-2">
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Name</span>
+                                    <span class="text-nebula-text-primary font-medium">@_serverName</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Version</span>
+                                    <span class="text-nebula-text-primary">@_selectedVersion</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Install Path</span>
+                                    <code class="text-nebula-text-secondary text-sm truncate max-w-xs">@GetEffectiveInstallPath()</code>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">P2P Port</span>
+                                    <code class="text-nebula-text-primary">@_p2pPort/udp</code>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Docker Image</span>
+                                    <code class="text-nebula-text-secondary text-sm">ghcr.io/zhliau/fika-headless-docker:@_selectedVersion</code>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Network</span>
+                                    <span class="text-nebula-text-secondary">@(string.IsNullOrWhiteSpace(_dockerNetwork) ? "bridge" : _dockerNetwork)</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-nebula-text-muted">Server URL</span>
+                                    <code class="text-nebula-text-secondary text-sm">@_serverUrl</code>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* Docker Volume *@
+                        <div>
+                            <h3 class="text-sm font-medium text-nebula-text-muted uppercase tracking-wide mb-3">Volume Mounts</h3>
+                            <div class="bg-nebula-bg-secondary rounded-nebula p-4">
+                                <div class="flex items-center gap-2 text-sm">
+                                    <Icon Name="folder" Size="IconSize.Small" Class="text-nebula-accent" />
+                                    <code class="text-nebula-text-secondary">@_gameClientPath</code>
+                                    <Icon Name="arrow-right" Size="IconSize.Small" Class="text-nebula-text-muted" />
+                                    <code class="text-nebula-text-secondary">/opt/tarkov</code>
+                                    <span class="text-xs text-nebula-text-muted">(read-write)</span>
+                                </div>
+                                <p class="text-xs text-nebula-text-muted mt-2">EFT game client files with the Fika client mod installed.</p>
+                            </div>
+                        </div>
+                    </div>
+                </ChildContent>
+            </Card>
+
+            <div class="flex items-center justify-between gap-3 mt-6">
+                <Button Variant="ButtonVariant.Secondary" Text="Back" IconName="arrow-left" OnClick="PreviousStep" />
+                <Button Variant="ButtonVariant.Primary" Text="Create Server" IconName="check" Loading="_submitting" OnClick="CreateServer" />
+            </div>
+            break;
+    }
+</div>
+
+@code {
+    private int _currentStep = 1;
+    private string? _error;
+    private bool _submitting;
+
+    // Step 1 state
+    private bool _loadingParents = true;
+    private List<FikaParentServerDto> _parentServers = [];
+    private FikaParentServerDto? _selectedParent;
+    private bool _loadingProfiles;
+    private string? _profileError;
+    private List<FikaHeadlessProfileDto> _profiles = [];
+    private FikaHeadlessProfileDto? _selectedProfile;
+
+    // Step 2 state
+    private string _serverName = "";
+    private string _installPath = "";
+    private string _gameClientPath = "/app/servers/eft-client";
+    private string _dockerNetwork = "";
+    private string _serverUrl = "";
+    private string _selectedVersion = "";
+    private bool _loadingVersions;
+    private List<GameVersionInfo> _versions = [];
+    private bool _showAdvanced;
+
+    // Network
+    private int _p2pPort = 25565;
+
+    // Advanced settings
+    private bool _useHttps = true;
+    private bool _esync = true;
+    private bool _fsync = true;
+    private bool _ntsync;
+    private bool _autoRestart = true;
+    private bool _enableLogPurge = true;
+    private bool _useModSync;
+    private bool _useDgpu;
+    private int _maxMemoryMb;
+    private int _maxCpuPercent;
+
+    // Resolved game ID
+    private Guid _gameId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadParentServersAsync();
+    }
+
+    private async Task LoadParentServersAsync()
+    {
+        try
+        {
+            _loadingParents = true;
+            _parentServers = (await HeadlessService.GetAvailableParentServersAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load parent servers: {ex.Message}";
+        }
+        finally
+        {
+            _loadingParents = false;
+        }
+    }
+
+    private async Task SelectParentServer(FikaParentServerDto parent)
+    {
+        _selectedParent = parent;
+        _selectedProfile = null;
+        _profiles = [];
+        _profileError = null;
+
+        await LoadProfilesAsync(parent.Id);
+    }
+
+    private async Task LoadProfilesAsync(Guid parentServerId)
+    {
+        try
+        {
+            _loadingProfiles = true;
+            StateHasChanged();
+
+            var result = await HeadlessService.GetAvailableProfilesAsync(parentServerId);
+            if (result.IsSuccess)
+            {
+                _profiles = result.Value!.ToList();
+            }
+            else
+            {
+                _profileError = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _profileError = $"Failed to load profiles: {ex.Message}";
+        }
+        finally
+        {
+            _loadingProfiles = false;
+            StateHasChanged();
+        }
+    }
+
+    private void SelectProfile(FikaHeadlessProfileDto profile)
+    {
+        _selectedProfile = profile;
+    }
+
+    private async Task GoToStep2()
+    {
+        _error = null;
+
+        // Auto-fill defaults from parent
+        if (string.IsNullOrWhiteSpace(_serverName))
+            _serverName = $"{_selectedParent!.Name} - Headless";
+
+        // Auto-compute server URL
+        if (string.IsNullOrWhiteSpace(_serverUrl))
+            _serverUrl = $"https://fika-spt:{_selectedParent!.PrimaryPort}";
+
+        // Load versions
+        await LoadVersionsAsync();
+
+        // Resolve game ID for fika-headless
+        if (_gameId == Guid.Empty)
+            await ResolveGameIdAsync();
+
+        // Auto-fill install path
+        if (string.IsNullOrWhiteSpace(_installPath))
+        {
+            var provider = GameRegistry.GetProvider("fika-headless");
+            _installPath = provider?.GetDefaultInstallPath(_serverName) ?? "";
+        }
+
+        _currentStep = 2;
+    }
+
+    private async Task LoadVersionsAsync()
+    {
+        try
+        {
+            _loadingVersions = true;
+            StateHasChanged();
+
+            var provider = GameRegistry.GetProvider("fika-headless");
+            if (provider is not null)
+            {
+                var versions = await provider.GetAvailableVersionsAsync();
+                _versions = versions.ToList();
+
+                if (_versions.Count > 0 && string.IsNullOrWhiteSpace(_selectedVersion))
+                {
+                    _selectedVersion = _versions.FirstOrDefault(v => v.IsRecommended)?.Version
+                                       ?? _versions[0].Version;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load versions: {ex.Message}";
+        }
+        finally
+        {
+            _loadingVersions = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResolveGameIdAsync()
+    {
+        var games = await GameService.GetAllGamesAsync();
+        var fikaHeadless = games.FirstOrDefault(g => g.Slug == "fika-headless");
+        if (fikaHeadless is not null)
+            _gameId = fikaHeadless.Id;
+    }
+
+    private void NextStep()
+    {
+        _error = null;
+        _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _error = null;
+        _currentStep--;
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/servers/create");
+    }
+
+    private string GetEffectiveInstallPath()
+    {
+        if (!string.IsNullOrWhiteSpace(_installPath))
+            return _installPath;
+
+        var provider = GameRegistry.GetProvider("fika-headless");
+        return provider?.GetDefaultInstallPath(_serverName) ?? "";
+    }
+
+    private bool IsStep2Valid =>
+        !string.IsNullOrWhiteSpace(_serverName)
+        && !string.IsNullOrWhiteSpace(_selectedVersion)
+        && !string.IsNullOrWhiteSpace(_serverUrl)
+        && !string.IsNullOrWhiteSpace(_gameClientPath)
+        && _p2pPort >= 1024 && _p2pPort <= 65535;
+
+    private async Task CreateServer()
+    {
+        try
+        {
+            _submitting = true;
+            _error = null;
+
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            {
+                _error = "Unable to determine current user.";
+                return;
+            }
+
+            if (_gameId == Guid.Empty)
+            {
+                _error = "Fika Headless Client game not found. Ensure official games have been synced.";
+                return;
+            }
+
+            var effectiveInstallPath = GetEffectiveInstallPath();
+
+            // Validate game client path
+            if (!Directory.Exists(_gameClientPath))
+            {
+                _error = $"Game client path does not exist: {_gameClientPath}";
+                return;
+            }
+
+            if (!File.Exists(Path.Combine(_gameClientPath, "EscapeFromTarkov.exe")))
+            {
+                _error = $"Game client path does not contain EscapeFromTarkov.exe. Ensure the EFT game client with the Fika client mod is installed at: {_gameClientPath}";
+                return;
+            }
+
+            // Build env vars
+            var envVars = new Dictionary<string, string>
+            {
+                ["PROFILE_ID"] = _selectedProfile!.ProfileId,
+                ["SERVER_URL"] = _serverUrl,
+                ["SERVER_PORT"] = _selectedParent!.PrimaryPort.ToString(),
+                ["HTTPS"] = _useHttps.ToString().ToLowerInvariant(),
+                ["ESYNC"] = _esync.ToString().ToLowerInvariant(),
+                ["FSYNC"] = _fsync.ToString().ToLowerInvariant(),
+                ["NTSYNC"] = _ntsync.ToString().ToLowerInvariant(),
+                ["AUTO_RESTART_ON_RAID_END"] = _autoRestart.ToString().ToLowerInvariant(),
+                ["ENABLE_LOG_PURGE"] = _enableLogPurge.ToString().ToLowerInvariant(),
+                ["USE_MODSYNC"] = _useModSync.ToString().ToLowerInvariant(),
+                ["USE_DGPU"] = _useDgpu.ToString().ToLowerInvariant()
+            };
+
+            // Volume: mount the EFT game client path to /opt/tarkov
+            var volumes = new List<VolumeMountRequest>
+            {
+                new(_gameClientPath, "/opt/tarkov", ReadOnly: false)
+            };
+
+            // P2P UDP port for raid connections (like docker-compose: 25565:25565/udp)
+            var ports = new List<PortMappingRequest>
+            {
+                new(_p2pPort, _p2pPort, "udp")
+            };
+
+            var dockerConfig = new DockerConfigurationRequest(
+                Image: "ghcr.io/zhliau/fika-headless-docker",
+                Tag: _selectedVersion,
+                EnvironmentVariables: envVars,
+                Volumes: volumes,
+                Ports: ports,
+                Network: string.IsNullOrWhiteSpace(_dockerNetwork) ? null : _dockerNetwork,
+                Limits: (_maxMemoryMb > 0 || _maxCpuPercent > 0) ? new ResourceLimitsRequest(
+                    MaxMemoryMb: _maxMemoryMb > 0 ? _maxMemoryMb : null,
+                    MaxCpuPercent: _maxCpuPercent > 0 ? _maxCpuPercent : null,
+                    MaxDiskMb: null,
+                    MaxNetworkMbps: null) : null,
+                RestartPolicy: RestartPolicy.UnlessStopped,
+                RunAsRoot: true
+            );
+
+            var request = new CreateGameServerRequest(
+                Name: _serverName,
+                Description: $"Headless client for {_selectedParent.Name}",
+                IconUrl: null,
+                GameId: _gameId,
+                DeploymentType: ServerDeploymentType.Docker,
+                InstallPath: effectiveInstallPath,
+                PrimaryPort: _p2pPort,
+                AdditionalPorts: null,
+                BindAddress: null,
+                DockerConfig: dockerConfig,
+                NativeConfig: null,
+                RconConfig: null,
+                ResourceLimits: (_maxMemoryMb > 0 || _maxCpuPercent > 0) ? new ResourceLimitsRequest(
+                    MaxMemoryMb: _maxMemoryMb > 0 ? _maxMemoryMb : null,
+                    MaxCpuPercent: _maxCpuPercent > 0 ? _maxCpuPercent : null,
+                    MaxDiskMb: null,
+                    MaxNetworkMbps: null) : null
+            );
+
+            var result = await ServerService.CreateServerAsync(request, userId);
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo($"/servers/{result.Value!.Id}");
+            }
+            else
+            {
+                _error = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
+    // UI Helpers
+    private string GetStepClass(int step) => step switch
+    {
+        _ when _currentStep > step => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-accent text-white",
+        _ when _currentStep == step => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-accent text-white",
+        _ => "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium bg-nebula-bg-tertiary text-nebula-text-muted"
+    };
+
+    private string GetStepLabelClass(int step) => step switch
+    {
+        _ when _currentStep >= step => "text-nebula-text-primary",
+        _ => "text-nebula-text-muted"
+    };
+
+    private string GetStepLabel(int step) => step switch
+    {
+        1 => "Parent & Profile",
+        2 => "Config",
+        3 => "Review",
+        _ => ""
+    };
+
+    private string GetParentCardClass(Guid id) =>
+        _selectedParent?.Id == id
+            ? "p-4 rounded-nebula border-2 border-nebula-accent bg-nebula-accent/5 cursor-pointer transition-all"
+            : "p-4 rounded-nebula border-2 border-nebula-border-subtle cursor-pointer hover:border-nebula-accent/50 bg-nebula-bg-secondary transition-all";
+
+    private string GetProfileCardClass(string profileId) =>
+        _selectedProfile?.ProfileId == profileId
+            ? "p-3 rounded-nebula border-2 border-nebula-accent bg-nebula-accent/5 cursor-pointer transition-all"
+            : "p-3 rounded-nebula border-2 border-nebula-border-subtle cursor-pointer hover:border-nebula-accent/50 bg-nebula-bg-secondary transition-all";
+
+    private static StatusBadge.StatusType GetServerStatusType(ServerStatus status) => status switch
+    {
+        ServerStatus.Running => StatusBadge.StatusType.Success,
+        ServerStatus.Starting => StatusBadge.StatusType.Warning,
+        ServerStatus.Stopping => StatusBadge.StatusType.Warning,
+        ServerStatus.Stopped => StatusBadge.StatusType.Neutral,
+        ServerStatus.Crashed => StatusBadge.StatusType.Error,
+        ServerStatus.Updating => StatusBadge.StatusType.Info,
+        ServerStatus.Installing => StatusBadge.StatusType.Info,
+        _ => StatusBadge.StatusType.Neutral
+    };
+}

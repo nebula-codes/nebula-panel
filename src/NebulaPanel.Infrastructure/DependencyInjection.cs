@@ -30,6 +30,7 @@ using NebulaPanel.Infrastructure.OfficialGames.Hytale;
 using NebulaPanel.Infrastructure.OfficialGames.ArkSurvivalAscended;
 using NebulaPanel.Infrastructure.OfficialGames.Terraria;
 using NebulaPanel.Infrastructure.OfficialGames.FikaSpt;
+using NebulaPanel.Infrastructure.OfficialGames.FikaHeadless;
 using NebulaPanel.Infrastructure.ModProviders.SptForge;
 using NebulaPanel.Infrastructure.Security;
 using NebulaPanel.Infrastructure.Health;
@@ -231,12 +232,22 @@ public static class DependencyInjection
         });
         services.AddSingleton<FikaSptVersionFetcher>();
 
+        // Fika Headless Client integration
+        services.AddHttpClient("FikaHeadless", client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("NebulaPanel/1.0");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+        services.AddSingleton<FikaHeadlessVersionFetcher>();
+        services.AddScoped<IFikaHeadlessService, FikaHeadlessService>();
+
         // Official game providers and registry
         services.AddSingleton<IOfficialGameProvider, MinecraftProvider>();
         services.AddSingleton<IOfficialGameProvider, HytaleGameProvider>();
         services.AddSingleton<IOfficialGameProvider, TerrariaProvider>();
         services.AddSingleton<IOfficialGameProvider, ArkSurvivalAscendedProvider>();
         services.AddSingleton<IOfficialGameProvider, FikaSptProvider>();
+        services.AddSingleton<IOfficialGameProvider, FikaHeadlessProvider>();
         // services.AddSingleton<IOfficialGameProvider, ValheimProvider>();
         services.AddSingleton<IOfficialGameRegistry, OfficialGameRegistry>();
 
