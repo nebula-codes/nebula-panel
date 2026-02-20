@@ -302,6 +302,10 @@
                                             <input type="checkbox" id="dgpu" @bind="_useDgpu" class="checkbox" />
                                             <label for="dgpu" class="text-sm text-nebula-text-primary">Discrete GPU</label>
                                         </div>
+                                        <div class="flex items-center gap-2">
+                                            <input type="checkbox" id="disableNoDynamicAI" @bind="_disableNoDynamicAI" class="checkbox" />
+                                            <label for="disableNoDynamicAI" class="text-sm text-nebula-text-primary">Disable NoDynamicAI</label>
+                                        </div>
                                     </div>
 
                                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -464,6 +468,7 @@
     private bool _enableLogPurge = true;
     private bool _useModSync;
     private bool _useDgpu;
+    private bool _disableNoDynamicAI = true;
     private int _maxMemoryMb;
     private int _maxCpuPercent;
 
@@ -686,7 +691,8 @@
                 ["AUTO_RESTART_ON_RAID_END"] = _autoRestart.ToString().ToLowerInvariant(),
                 ["ENABLE_LOG_PURGE"] = _enableLogPurge.ToString().ToLowerInvariant(),
                 ["USE_MODSYNC"] = _useModSync.ToString().ToLowerInvariant(),
-                ["USE_DGPU"] = _useDgpu.ToString().ToLowerInvariant()
+                ["USE_DGPU"] = _useDgpu.ToString().ToLowerInvariant(),
+                ["DISABLE_NODYNAMICAI"] = _disableNoDynamicAI.ToString().ToLowerInvariant()
             };
 
             // Volume: mount the EFT game client path to /opt/tarkov
