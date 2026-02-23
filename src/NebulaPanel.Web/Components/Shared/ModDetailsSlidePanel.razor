@@ -186,12 +186,36 @@
                 </div>
             }
 
+            @* Dependencies *@
+            @if (_details?.Dependencies?.Count > 0)
+            {
+                <div class="section">
+                    <h5 class="section-title">Dependencies</h5>
+                    <div class="dependencies">
+                        @foreach (var dep in _details.Dependencies)
+                        {
+                            <div class="dependency @GetDependencyClass(dep.Type)">
+                                <Icon Name="@GetDependencyIcon(dep.Type)" Size="IconSize.XSmall" />
+                                <span class="dep-name">@(dep.ModName ?? dep.ModId)</span>
+                                <span class="dep-type">@dep.Type.ToString().ToLowerInvariant()</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
             @* External links *@
             @if (_details != null && HasExternalLinks())
             {
                 <div class="section">
                     <h5 class="section-title">Links</h5>
                     <div class="external-links">
+                        @if (!string.IsNullOrEmpty(_details.PageUrl))
+                        {
+                            <a href="@_details.PageUrl" target="_blank" rel="noopener noreferrer">
+                                <Icon Name="external-link" Size="IconSize.Small" /> @GetProviderDisplayName(Mod!.Provider)
+                            </a>
+                        }
                         @if (!string.IsNullOrEmpty(_details.SourceUrl))
                         {
                             <a href="@_details.SourceUrl" target="_blank" rel="noopener noreferrer">
@@ -371,10 +395,29 @@
     private bool HasExternalLinks()
     {
         return _details != null && (
+            !string.IsNullOrEmpty(_details.PageUrl) ||
             !string.IsNullOrEmpty(_details.SourceUrl) ||
             !string.IsNullOrEmpty(_details.WikiUrl) ||
             !string.IsNullOrEmpty(_details.DiscordUrl));
     }
+
+    private static string GetDependencyIcon(ModDependencyType type) => type switch
+    {
+        ModDependencyType.Required => "package",
+        ModDependencyType.Optional => "puzzle",
+        ModDependencyType.Incompatible => "alert-triangle",
+        ModDependencyType.Embedded => "box",
+        _ => "package"
+    };
+
+    private static string GetDependencyClass(ModDependencyType type) => type switch
+    {
+        ModDependencyType.Required => "dep-required",
+        ModDependencyType.Optional => "dep-optional",
+        ModDependencyType.Incompatible => "dep-incompatible",
+        ModDependencyType.Embedded => "dep-embedded",
+        _ => "dep-required"
+    };
 
     private static string SanitizeHtml(string html)
     {

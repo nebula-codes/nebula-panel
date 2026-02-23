@@ -116,6 +116,7 @@ public sealed class SteamWorkshopProvider : IModProvider
                 Description: item.Description,
                 IconUrl: item.PreviewUrl,
                 BannerUrl: item.PreviewUrl,
+                PageUrl: $"https://steamcommunity.com/sharedfiles/filedetails/?id={item.Id}",
                 SourceUrl: null,
                 WikiUrl: null,
                 DiscordUrl: null,
@@ -129,6 +130,7 @@ public sealed class SteamWorkshopProvider : IModProvider
                 Screenshots: item.PreviewUrl is not null
                     ? [new ModScreenshot(item.PreviewUrl, null)]
                     : [],
+                Dependencies: [],
                 Provider: ModProviderType.SteamWorkshop
             );
         }

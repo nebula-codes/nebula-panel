@@ -158,6 +158,7 @@ public record ModDetails(
     string? Description,
     string? IconUrl,
     string? BannerUrl,
+    string? PageUrl,
     string? SourceUrl,
     string? WikiUrl,
     string? DiscordUrl,
@@ -169,6 +170,7 @@ public record ModDetails(
     List<string> GameVersions,
     List<string> Loaders,
     List<ModScreenshot> Screenshots,
+    List<ModDependency> Dependencies,
     ModProviderType Provider
 );
 

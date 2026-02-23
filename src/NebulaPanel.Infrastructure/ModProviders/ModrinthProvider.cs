@@ -139,6 +139,7 @@ public sealed class ModrinthProvider : IModProvider
             Description: project.Body,
             IconUrl: project.IconUrl,
             BannerUrl: project.Gallery?.FirstOrDefault(g => g.Featured)?.Url,
+            PageUrl: $"https://modrinth.com/mod/{project.Slug}",
             SourceUrl: project.SourceUrl,
             WikiUrl: project.WikiUrl,
             DiscordUrl: project.DiscordUrl,
@@ -150,6 +151,7 @@ public sealed class ModrinthProvider : IModProvider
             GameVersions: project.GameVersions.ToList(),
             Loaders: project.Loaders.ToList(),
             Screenshots: screenshots,
+            Dependencies: [],
             Provider: ModProviderType.Modrinth
         );
     }

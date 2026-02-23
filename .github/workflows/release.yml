@@ -22,14 +22,14 @@ jobs:
             os: ubuntu-latest
             archive: tar.gz
             asset_name: NebulaPanel-linux-x64.tar.gz
-          - rid: linux-arm64
-            os: ubuntu-latest
-            archive: tar.gz
-            asset_name: NebulaPanel-linux-arm64.tar.gz
-          - rid: win-x64
-            os: windows-latest
-            archive: zip
-            asset_name: NebulaPanel-win-x64.zip
+          # - rid: linux-arm64
+          #   os: ubuntu-latest
+          #   archive: tar.gz
+          #   asset_name: NebulaPanel-linux-arm64.tar.gz
+          # - rid: win-x64
+          #   os: windows-latest
+          #   archive: zip
+          #   asset_name: NebulaPanel-win-x64.zip
 
     steps:
       - name: Checkout repository
@@ -206,17 +206,17 @@ jobs:
           name: linux-x64
           path: ./artifacts/linux-x64
 
-      - name: Download linux-arm64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-arm64
-          path: ./artifacts/linux-arm64
+      # - name: Download linux-arm64 artifact
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: linux-arm64
+      #     path: ./artifacts/linux-arm64
 
-      - name: Download win-x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: win-x64
-          path: ./artifacts/win-x64
+      # - name: Download win-x64 artifact
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: win-x64
+      #     path: ./artifacts/win-x64
 
       - name: Prepare release assets
         run: |

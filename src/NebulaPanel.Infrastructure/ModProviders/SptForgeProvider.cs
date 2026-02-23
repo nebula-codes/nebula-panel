@@ -97,6 +97,17 @@ public sealed class SptForgeProvider : IModProvider
             }
         }
 
+        var sourceUrl = mod.SourceCodeLinks?
+            .FirstOrDefault(l => l.Url.Contains("github.com", StringComparison.OrdinalIgnoreCase))?.Url;
+
+        // Collect dependencies from the latest version
+        var dependencies = new List<ModDependency>();
+        var latestVersion = mod.Versions?.FirstOrDefault();
+        if (latestVersion?.Dependencies is not null)
+        {
+            dependencies = MapDependencies(latestVersion.Dependencies);
+        }
+
         return new ModDetails(
             Id: mod.Id.ToString(),
             Slug: mod.Slug,
@@ -105,7 +116,8 @@ public sealed class SptForgeProvider : IModProvider
             Description: mod.Description,
             IconUrl: mod.Thumbnail,
             BannerUrl: null,
-            SourceUrl: null,
+            PageUrl: $"https://forge.sp-tarkov.com/mod/{mod.Id}/{mod.Slug}",
+            SourceUrl: sourceUrl,
             WikiUrl: null,
             DiscordUrl: null,
             Authors: authors,
@@ -116,6 +128,7 @@ public sealed class SptForgeProvider : IModProvider
             GameVersions: gameVersions,
             Loaders: ["spt"],
             Screenshots: [],
+            Dependencies: dependencies,
             Provider: ModProviderType.SptForge
         );
     }

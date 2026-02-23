@@ -507,6 +507,7 @@ public sealed class TerrariaModService : ITerrariaModService
             Description: item.Description,
             IconUrl: item.PreviewUrl,
             BannerUrl: item.PreviewUrl,
+            PageUrl: $"https://steamcommunity.com/sharedfiles/filedetails/?id={item.Id}",
             SourceUrl: null,
             WikiUrl: null,
             DiscordUrl: null,
@@ -518,6 +519,7 @@ public sealed class TerrariaModService : ITerrariaModService
             GameVersions: [],
             Loaders: ["tModLoader"],
             Screenshots: [],
+            Dependencies: [],
             Provider: ModProviderType.SteamWorkshop
         );
     }

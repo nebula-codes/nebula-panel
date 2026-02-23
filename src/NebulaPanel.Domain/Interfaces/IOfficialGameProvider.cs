@@ -48,4 +48,13 @@ public interface IOfficialGameProvider
     /// Gets the default install path for a new server of this game type.
     /// </summary>
     string GetDefaultInstallPath(string serverName);
+
+    /// <summary>
+    /// Called before the server starts. Allows providers to ensure required files
+    /// are present (e.g., downloading plugins, validating configs).
+    /// Default implementation is a no-op.
+    /// </summary>
+    Task PrepareForStartAsync(
+        GameServer server,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

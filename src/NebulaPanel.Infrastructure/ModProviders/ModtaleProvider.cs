@@ -141,6 +141,7 @@ public sealed class ModtaleProvider : IModProvider
             Description: project.About,
             IconUrl: project.ImageUrl ?? project.GalleryImages?.FirstOrDefault()?.Url,
             BannerUrl: project.GalleryImages?.FirstOrDefault(g => g.Featured)?.Url,
+            PageUrl: null,
             SourceUrl: project.RepositoryUrl,
             WikiUrl: null,
             DiscordUrl: null,
@@ -152,6 +153,7 @@ public sealed class ModtaleProvider : IModProvider
             GameVersions: gameVersions,
             Loaders: [], // Hytale doesn't have mod loaders like Minecraft
             Screenshots: screenshots,
+            Dependencies: [],
             Provider: ModProviderType.Modtale
         );
     }

@@ -204,6 +204,7 @@ public sealed class CurseForgeProvider : IModProvider
             Description: null, // CurseForge doesn't return full description in API
             IconUrl: mod.Logo?.Url,
             BannerUrl: mod.Screenshots?.FirstOrDefault()?.Url,
+            PageUrl: mod.Links?.WebsiteUrl,
             SourceUrl: mod.Links?.SourceUrl,
             WikiUrl: mod.Links?.WikiUrl,
             DiscordUrl: null, // CurseForge doesn't provide Discord URL
@@ -215,6 +216,7 @@ public sealed class CurseForgeProvider : IModProvider
             GameVersions: gameVersions,
             Loaders: loaders,
             Screenshots: screenshots,
+            Dependencies: [],
             Provider: ModProviderType.CurseForge
         );
     }

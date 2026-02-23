@@ -21,7 +21,8 @@ public class GameServerService(
     IEncryptionService encryptionService,
     ILogger<GameServerService> logger,
     IAuditService? auditService = null,
-    INodeRepository? nodeRepository = null) : IGameServerService
+    INodeRepository? nodeRepository = null,
+    IOfficialGameRegistry? officialGameRegistry = null) : IGameServerService
 {
     private readonly IGameServerRepository _serverRepository = serverRepository;
     private readonly IGameRepository _gameRepository = gameRepository;
@@ -33,6 +34,7 @@ public class GameServerService(
     private readonly IEncryptionService _encryptionService = encryptionService;
     private readonly IAuditService? _auditService = auditService;
     private readonly INodeRepository? _nodeRepository = nodeRepository;
+    private readonly IOfficialGameRegistry? _officialGameRegistry = officialGameRegistry;
     private readonly ILogger<GameServerService> _logger = logger;
 
     public async Task<IReadOnlyList<GameServerListItemDto>> GetAllServersAsync(CancellationToken cancellationToken = default)
@@ -390,6 +392,16 @@ public class GameServerService(
             {
                 _logger.LogWarning("Concurrent modification detected when starting server {ServerId}", serverId);
                 return Result.Failure(Error.Conflict("Server state was modified by another request. Please try again."));
+            }
+
+            // Allow official game providers to prepare before start (e.g., download required files)
+            if (_officialGameRegistry is not null && server.Game?.Slug is not null)
+            {
+                var provider = _officialGameRegistry.GetProvider(server.Game.Slug);
+                if (provider is not null)
+                {
+                    await provider.PrepareForStartAsync(server, cancellationToken).ConfigureAwait(false);
+                }
             }
 
             var success = await executor.StartAsync(server, cancellationToken).ConfigureAwait(false);
